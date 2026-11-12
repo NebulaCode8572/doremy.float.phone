@@ -73,7 +73,7 @@ object DailyAlarmWatchdogScheduler {
     }
 
     @Synchronized
-    fun restore(context: Context) {
+    fun restore(context: Context, allowRecentLate: Boolean = false) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val config = runCatching { JSONObject(prefs.getString(KEY_CONFIG, "").orEmpty()) }.getOrNull() ?: return
         val pending = runCatching { JSONObject(prefs.getString(KEY_PENDING, "").orEmpty()) }.getOrNull()
@@ -85,7 +85,7 @@ object DailyAlarmWatchdogScheduler {
         val fireAt = pending.optLong("fire_at", 0L)
         if (fireAt <= System.currentTimeMillis()) {
             val lateBy = System.currentTimeMillis() - fireAt
-            if (lateBy <= 60_000L) {
+            if (allowRecentLate && lateBy <= MAX_DELIVERY_LATENESS_MS) {
                 // The app may resume just after the watchdog deadline, before AlarmManager
                 // has delivered it. Run this occurrence now instead of silently skipping it.
                 onFire(context, Intent().setData(Uri.parse("floatshell://daily-alarm-watchdog/${Uri.encode(config.optString("id"))}")))
