@@ -84,6 +84,7 @@ export function CallLayer() {
         session,
         character,
         initiator: call.initiator,
+        initiallyAccepted: call.accepted,
         minimized: call.minimized,
         onMinimize: minimizeCall,
         onRestore: restoreCall,
