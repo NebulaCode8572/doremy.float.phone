@@ -289,17 +289,22 @@ class PushService : Service() {
                     }
                     if (msg.optString("event") != "broadcast") return
                     val payload = msg.optJSONObject("payload") ?: return
-                    if (payload.optString("event") != "notify") return
-                    val body = payload.optJSONObject("payload") ?: return
+                    val eventName = payload.optString("event")
+                    if (eventName != "notify") return
+                    // Realtime Broadcast 标准结构是 payload.payload；兼容网关/旧版
+                    // 包装层直接把业务字段放在 payload 下的情况。
+                    val body = payload.optJSONObject("payload") ?: payload.optJSONObject("data") ?: payload
                     val title = body.optString("title").ifEmpty { "小手机" }
                     val text2 = body.optString("body").ifEmpty { "有新消息" }
-                    // 来电：全屏来电通知（任何一步失败回落普通通知，主路不受影响）
-                    if (body.optString("kind") == "call") {
+                    val isCall = body.optString("kind") == "call" || body.optString("type") == "incoming_call"
+                    updateKeepAlive(if (isCall) "已收到来电事件，正在显示…" else "已收到角色消息，正在显示…")
+                    // 来电：全屏来电通知（失败时保留明确诊断，不再静默吞掉异常）
+                    if (isCall) {
                         val characterName = body.optString("characterName").ifEmpty { title }
                         val sessionId = body.optString("sessionId")
                         val alarmInstanceId = body.optString("alarmInstanceId")
                         val alarmAttempt = body.optInt("alarmAttempt", 1)
-                        val shown = runCatching {
+                        val result = runCatching {
                             showIncomingCallNotification(
                                 characterName,
                                 sessionId,
@@ -308,8 +313,13 @@ class PushService : Service() {
                                 alarmAttempt,
                                 body.optString("avatar"),
                             )
-                        }.isSuccess
-                        if (shown) return
+                        }
+                        if (result.isSuccess) {
+                            updateKeepAlive("已收到来电事件，来电通知已提交")
+                            return
+                        }
+                        val detail = result.exceptionOrNull()?.message?.take(100) ?: "未知通知错误"
+                        updateKeepAlive("来电通知失败：$detail")
                         if (alarmInstanceId.isNotBlank()) {
                             // A failed native notification is a failed call delivery: retry once,
                             // then use the native alarm if the second presentation also fails.
@@ -320,6 +330,9 @@ class PushService : Service() {
                         }
                     }
                     showMessageNotification(title, text2, body.optString("sessionId"), body.optString("avatar"))
+                    updateKeepAlive("已收到角色消息")
+                }.onFailure { error ->
+                    updateKeepAlive("推送处理失败：${error.message?.take(100) ?: error.javaClass.simpleName}")
                 }
             }
 
