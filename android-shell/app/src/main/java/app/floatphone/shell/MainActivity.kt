@@ -246,6 +246,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
+    override fun onResume() {
+        super.onResume()
+        // Re-arm exact local timers after the user returns from Android's Alarms & reminders settings.
+        runCatching { DailyAlarmWatchdogScheduler.restore(this) }
+        runCatching { DailyAlarmCallScheduler.restore(this) }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (intent?.action == CheckInAlarmScheduler.ACTION_OPEN_REMINDER) {
@@ -1324,6 +1330,22 @@ class MainActivity : AppCompatActivity() {
             true
         }.getOrDefault(false)
         // ── 每日 AI 闹钟本机看门狗 ──────────────────────────────
+        @JavascriptInterface
+        fun canScheduleExactAlarms(): Boolean = runCatching {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                (getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager).canScheduleExactAlarms()
+        }.getOrDefault(false)
+
+        @JavascriptInterface
+        fun requestExactAlarmPermission(): Boolean = runCatching {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || canScheduleExactAlarms()) return@runCatching true
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            true
+        }.getOrDefault(false)
+
         @JavascriptInterface
         fun scheduleDailyAlarmWatchdog(id: String, sessionId: String, characterName: String, localTime: String, timeZone: String): Boolean =
             runCatching { DailyAlarmWatchdogScheduler.schedule(this@MainActivity, id, sessionId, characterName, localTime, timeZone) }
