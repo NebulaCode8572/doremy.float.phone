@@ -16,6 +16,7 @@ object DailyAlarmCallScheduler {
     private const val KEY_PENDING = "pending"
     private const val KEY_TERMINAL_INSTANCE = "terminal_instance"
     private const val KEY_TERMINAL_INSTANCES = "terminal_instances"
+    private const val KEY_ATTEMPT_WATERMARKS = "attempt_watermarks"
     private const val REQUEST_CODE = 4201
     const val EXTRA_ALARM_INSTANCE_ID = "daily_alarm_instance_id"
     const val EXTRA_ATTEMPT = "daily_alarm_attempt"
@@ -27,7 +28,9 @@ object DailyAlarmCallScheduler {
     fun schedule(context: Context, sessionId: String, characterName: String, callTs: Long, alarmInstanceId: String, attempt: Int): Boolean {
         if (alarmInstanceId.isBlank() || attempt !in 1..2) return false
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (prefs.getString(KEY_TERMINAL_INSTANCE, "") == alarmInstanceId) return false
+        if (isTerminalInstance(context, alarmInstanceId)) return false
+        val previousAttemptForInstance = attemptWatermark(prefs, alarmInstanceId)
+        if (attempt <= previousAttemptForInstance) return false
         val dueAt = System.currentTimeMillis() + CallAlert.TIMEOUT_MS
         val value = JSONObject()
             .put(EXTRA_SESSION_ID, sessionId)
@@ -51,7 +54,12 @@ object DailyAlarmCallScheduler {
                     .cancel(pendingIntent(context, previousToken))
             }
         }
-        if (!prefs.edit().putString(KEY_PENDING, value).commit()) throw IllegalStateException("Unable to persist daily alarm retry state")
+        val watermarkJson = updatedAttemptWatermarks(prefs, alarmInstanceId, attempt)
+        if (!prefs.edit()
+                .putString(KEY_ATTEMPT_WATERMARKS, watermarkJson)
+                .putString(KEY_PENDING, value)
+                .commit()
+        ) throw IllegalStateException("Unable to persist daily alarm retry state")
         val pending = pendingIntent(context, JSONObject(value).optString("token"))
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         runCatching {
@@ -61,6 +69,31 @@ object DailyAlarmCallScheduler {
         return true
     }
 
+    private fun attemptWatermark(prefs: android.content.SharedPreferences, alarmInstanceId: String): Int {
+        val raw = prefs.getString(KEY_ATTEMPT_WATERMARKS, "[]").orEmpty()
+        val items = runCatching { JSONArray(raw) }.getOrNull() ?: return 0
+        for (index in 0 until items.length()) {
+            val item = items.optJSONObject(index) ?: continue
+            if (item.optString("id") == alarmInstanceId) return item.optInt("attempt", 0)
+        }
+        return 0
+    }
+
+    private fun updatedAttemptWatermarks(
+        prefs: android.content.SharedPreferences,
+        alarmInstanceId: String,
+        attempt: Int,
+    ): String {
+        val raw = prefs.getString(KEY_ATTEMPT_WATERMARKS, "[]").orEmpty()
+        val existing = runCatching { JSONArray(raw) }.getOrNull() ?: JSONArray()
+        val retained = mutableListOf<JSONObject>()
+        for (index in 0 until existing.length()) {
+            val item = existing.optJSONObject(index) ?: continue
+            if (item.optString("id") != alarmInstanceId) retained.add(item)
+        }
+        retained.add(JSONObject().put("id", alarmInstanceId).put("attempt", attempt))
+        return JSONArray(retained.takeLast(32)).toString()
+    }
     @Synchronized
     fun cancel(context: Context, expectedInstanceId: String = "") {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -72,7 +105,7 @@ object DailyAlarmCallScheduler {
             return
         }
         if (expectedInstanceId.isNotBlank() && currentInstanceId.isBlank()) {
-            prefs.edit().putString(KEY_TERMINAL_INSTANCE, expectedInstanceId).commit()
+            markTerminal(context, expectedInstanceId)
             return
         }
         val token = pendingItem?.optString("token").orEmpty()
