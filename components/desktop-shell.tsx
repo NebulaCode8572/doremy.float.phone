@@ -2031,14 +2031,24 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       if (!sessionId) return;
       if (callTs > 0 && Date.now() - callTs > CALL_VALID_MS) return;
       if (answered) {
-        // 壳上已经按过接听：跳过横幅，直接开聊天进通话屏（同横幅接听键的路径）
+        // 锁屏/通知栏已接听：先合并服务端 outbox，把本次来电前生成的开场消息
+        // 和来电记录写入聊天，再进入通话页，避免角色开场重复或记录顺序错乱。
         setActiveApp("chat" as IconId);
         setChatInitSessionId(sessionId);
-        window.setTimeout(() => {
+        const dispatchAcceptedCall = () => {
           window.dispatchEvent(new CustomEvent("ai-call-trigger", {
             detail: { sessionId, type: "voice", __fromBar: true },
           }));
-        }, 600);
+        };
+        void import("@/lib/push-outbox-client").then(async module => {
+          await Promise.race([
+            module.consumeServerOutbox({ force: true, silent: true }),
+            new Promise(resolve => window.setTimeout(resolve, 1_200)),
+          ]);
+          window.setTimeout(dispatchAcceptedCall, 100);
+        }).catch(() => {
+          window.setTimeout(dispatchAcceptedCall, 600);
+        });
         return;
       }
       window.dispatchEvent(new CustomEvent("ai-call-trigger", { detail: { sessionId, type: "voice" } }));
