@@ -261,6 +261,36 @@ async function decryptPayload(payload: EncryptedPayload, serviceKey: string): Pr
   return new TextDecoder().decode(plain);
 }
 
+/** Resolve a future local wall-clock occurrence without assuming a fixed UTC offset. */
+function dailyAlarmOccurrence(nowMs: number, localTime: string, timeZone: string): { fireAt: number; dateKey: string } {
+  const [hour, minute] = localTime.split(":").map(Number);
+  const formatter = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const partsOf = (epoch: number) => {
+    const parts = formatter.formatToParts(new Date(epoch));
+    const value = (key: string) => Number(parts.find(part => part.type === key)?.value || 0);
+    return { year: value("year"), month: value("month"), day: value("day"), hour: value("hour"), minute: value("minute") };
+  };
+  const toEpoch = (year: number, month: number, day: number) => {
+    const target = Date.UTC(year, month - 1, day, hour, minute);
+    let guess = target;
+    for (let i = 0; i < 3; i += 1) {
+      const local = partsOf(guess);
+      const represented = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute);
+      guess += target - represented;
+    }
+    return guess;
+  };
+  const today = partsOf(nowMs);
+  let year = today.year, month = today.month, day = today.day;
+  let fireAt = toEpoch(year, month, day);
+  if (fireAt <= nowMs + 5_000) {
+    const tomorrow = new Date(Date.UTC(year, month - 1, day + 1));
+    year = tomorrow.getUTCFullYear(); month = tomorrow.getUTCMonth() + 1; day = tomorrow.getUTCDate();
+    fireAt = toEpoch(year, month, day);
+  }
+  const dateKey = String(year) + "-" + String(month).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+  return { fireAt, dateKey };
+}
 // ── 主流程 ──
 type JobRow = { id: string; user_id: string; trigger_key: string; kind: string; payload: EncryptedPayload };
 type SubscriptionRow = { endpoint: string; p256dh: string; auth: string };
@@ -526,6 +556,34 @@ Deno.serve(async (req: Request) => {
     }
     const payload = JSON.parse(await decryptPayload(job.payload, payloadKey)) as JobPayload;
     let shortcutStoragePath = "";
+
+    // Arm tomorrow before generation so a provider failure does not erase recurrence.
+    const dailyAlarm = payload.merge?.dailyAlarm as { id?: string; localTime?: string; timeZone?: string } | undefined;
+    if (dailyAlarm?.id && dailyAlarm.localTime && dailyAlarm.timeZone && !(await isCancelled())) {
+      const next = dailyAlarmOccurrence(Date.now(), dailyAlarm.localTime, dailyAlarm.timeZone);
+      const nextTriggerKey = "dailyalarm:" + dailyAlarm.id + ":" + next.dateKey;
+      const nextMerge = {
+        ...payload.merge,
+        armAt: new Date(next.fireAt).toISOString(),
+        dailyAlarm: { ...dailyAlarm, dateKey: next.dateKey },
+        alarmInstanceId: dailyAlarm.id + ":" + next.dateKey,
+      };
+      await rest("push_jobs", {
+        method: "POST",
+        body: JSON.stringify([{
+          id: "job_" + crypto.randomUUID(),
+          user_id: job.user_id,
+          trigger_key: nextTriggerKey,
+          kind: "timed_task",
+          execute_at: new Date(next.fireAt + 15_000).toISOString(),
+          status: "pending",
+          payload: await encryptPayload(JSON.stringify({ ...payload, merge: nextMerge }), payloadKey),
+        }]),
+      }).catch(() => undefined);
+      if (await isCancelled()) {
+        await rest("push_jobs?user_id=eq." + encodeURIComponent(job.user_id) + "&trigger_key=eq." + encodeURIComponent(nextTriggerKey) + "&status=eq.pending", { method: "DELETE" }).catch(() => undefined);
+      }
+    }
 
     if (job.kind === "shortcut_resume" && payload.shortcut) {
       const commandResponse = await rest(
