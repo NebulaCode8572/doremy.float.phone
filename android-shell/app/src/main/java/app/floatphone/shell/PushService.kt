@@ -85,13 +85,13 @@ class PushService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DAILY_ALARM_RETRY) {
-            showIncomingCallNotification(
-                intent.getStringExtra(DailyAlarmCallScheduler.EXTRA_CHARACTER_NAME).orEmpty().ifBlank { "角色" },
-                intent.getStringExtra(DailyAlarmCallScheduler.EXTRA_SESSION_ID).orEmpty(),
-                intent.getLongExtra(DailyAlarmCallScheduler.EXTRA_CALL_TS, System.currentTimeMillis()),
-                intent.getStringExtra(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID).orEmpty(),
-                intent.getIntExtra(DailyAlarmCallScheduler.EXTRA_ATTEMPT, 2),
-            )
+            val name = intent.getStringExtra(DailyAlarmCallScheduler.EXTRA_CHARACTER_NAME).orEmpty().ifBlank { "角色" }
+            val sessionId = intent.getStringExtra(DailyAlarmCallScheduler.EXTRA_SESSION_ID).orEmpty()
+            val alarmInstanceId = intent.getStringExtra(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID).orEmpty()
+            val callTs = intent.getLongExtra(DailyAlarmCallScheduler.EXTRA_CALL_TS, System.currentTimeMillis())
+            val attempt = intent.getIntExtra(DailyAlarmCallScheduler.EXTRA_ATTEMPT, 2)
+            runCatching { showIncomingCallNotification(name, sessionId, callTs, alarmInstanceId, attempt) }
+                .onFailure { DailyAlarmFallbackScheduler.schedule(this, sessionId, name, alarmInstanceId) }
         }
         return START_STICKY
     }
