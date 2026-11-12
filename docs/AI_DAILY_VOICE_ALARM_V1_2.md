@@ -168,3 +168,6 @@ Still requires physical-device verification: exact-alarm permission state, serve
 - Returning from system permission settings refreshes the visible permission status and re-arms persisted watchdog and unanswered-call timers, allowing Android to use exact scheduling when access has been granted.
 - Android shell package version is now 1.0.13 / versionCode 12 so the updated APK can be installed over the prior 1.0.12 build.
 - Exact-alarm and OEM background behavior still require testing on the target device. The implementation retains an inexact idle-allowed fallback when exact scheduling is unavailable.
+- Android retains a bounded history of attempt watermarks and terminal occurrence IDs. Repeated attempt-1 pushes cannot restart a timed-out occurrence, and delayed pushes for disabled/replaced occurrences or occurrences more than 10 minutes past their configured wall-clock time are ignored.
+- If the device boots after a watchdog deadline, the missed occurrence is marked terminal and skipped; the next future occurrence is restored. When the app itself resumes near a deadline, it may process the recent occurrence immediately rather than losing it to an AlarmManager delivery race.
+- Native timers are restored after boot, system clock/date/timezone changes, and APK updates.
