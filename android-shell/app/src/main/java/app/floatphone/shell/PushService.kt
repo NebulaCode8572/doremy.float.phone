@@ -45,6 +45,7 @@ class PushService : Service() {
         private const val CH_MESSAGES = "shell_messages"
         private const val CH_CALLS = "shell_calls"
         private const val NOTIF_FG_ID = 1
+        const val ACTION_DAILY_ALARM_RETRY = "app.floatphone.shell.DAILY_ALARM_RETRY"
         private var running = false
 
         fun start(context: Context) {
@@ -82,7 +83,18 @@ class PushService : Service() {
         thread(name = "shell-push-loop") { connectionLoop() }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_DAILY_ALARM_RETRY) {
+            showIncomingCallNotification(
+                intent.getStringExtra(DailyAlarmCallScheduler.EXTRA_CHARACTER_NAME).orEmpty().ifBlank { "角色" },
+                intent.getStringExtra(DailyAlarmCallScheduler.EXTRA_SESSION_ID).orEmpty(),
+                intent.getLongExtra(DailyAlarmCallScheduler.EXTRA_CALL_TS, System.currentTimeMillis()),
+                intent.getStringExtra(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID).orEmpty(),
+                intent.getIntExtra(DailyAlarmCallScheduler.EXTRA_ATTEMPT, 2),
+            )
+        }
+        return START_STICKY
+    }
 
     override fun onDestroy() {
         stopped = true
@@ -247,6 +259,8 @@ class PushService : Service() {
                                 body.optString("characterName").ifEmpty { title },
                                 body.optString("sessionId"),
                                 body.optLong("callTs", System.currentTimeMillis()),
+                                body.optString("alarmInstanceId"),
+                                body.optInt("alarmAttempt", 1),
                             )
                         }.isSuccess
                         if (shown) return
@@ -339,7 +353,13 @@ class PushService : Service() {
      * 全屏来电通知：锁屏/熄屏直接弹 IncomingCallActivity，亮屏时是带
      * 接听/拒接按钮的 heads-up。振动循环 + 55s 超时未接由 CallAlert 管。
      */
-    private fun showIncomingCallNotification(characterName: String, sessionId: String, callTs: Long) {
+    private fun showIncomingCallNotification(
+        characterName: String,
+        sessionId: String,
+        callTs: Long,
+        alarmInstanceId: String = "",
+        alarmAttempt: Int = 1,
+    ) {
         val fullScreen = Intent(this, IncomingCallActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra(IncomingCallActivity.EXTRA_SESSION_ID, sessionId)
@@ -374,10 +394,15 @@ class PushService : Service() {
             .addAction(0, "接听", buildAction(CallActionReceiver.ACTION_ANSWER, 62))
             .build()
         getSystemService(NotificationManager::class.java).notify(CallAlert.NOTIF_CALL_ID, notification)
-        CallAlert.start(this, sessionId, characterName) {
-            // 超时未接：收场 + 换一条"未接来电"普通通知（正文消息本来就会进聊天）
-            CallAlert.stop(this)
-            runCatching { showMissedCallNotification(characterName) }
+        if (alarmInstanceId.isNotBlank()) {
+            DailyAlarmCallScheduler.schedule(this, sessionId, characterName, callTs, alarmInstanceId, alarmAttempt)
+            CallAlert.start(this, sessionId, characterName, timeoutMs = 0L)
+        } else {
+            CallAlert.start(this, sessionId, characterName) {
+                // 普通来电超时：收场并显示未接来电通知。
+                CallAlert.stop(this)
+                runCatching { showMissedCallNotification(characterName) }
+            }
         }
     }
 
