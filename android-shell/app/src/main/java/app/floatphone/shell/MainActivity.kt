@@ -1381,20 +1381,6 @@ class MainActivity : AppCompatActivity() {
         }
     }.getOrNull()
 
-    /** 按扩展名猜 MIME，MediaStore 用；猜不中给通用二进制。 */
-    private fun guessMimeType(fileName: String): String = when (fileName.substringAfterLast('.', "").lowercase()) {
-        "json" -> "application/json"
-        "zip" -> "application/zip"
-        "txt" -> "text/plain"
-        "md" -> "text/markdown"
-        "png" -> "image/png"
-        "jpg", "jpeg" -> "image/jpeg"
-        "gif" -> "image/gif"
-        "webp" -> "image/webp"
-        "mp3" -> "audio/mpeg"
-        "wav" -> "audio/wav"
-        "mp4" -> "video/mp4"
-        else -> "application/octet-stream"
         // ── 来电铃声同步桥 ─────────────────────────────────────
         // 网页端按 sessionId（或保留键 "global"）分块同步 incomingCall 音频。
         // 单块限制由原生存储层校验；不接受任意文件路径或非音频 MIME。
@@ -1428,6 +1414,20 @@ class MainActivity : AppCompatActivity() {
             true
         }.getOrDefault(false)
 
+    /** 按扩展名猜 MIME，MediaStore 用；猜不中给通用二进制。 */
+    private fun guessMimeType(fileName: String): String = when (fileName.substringAfterLast('.', "").lowercase()) {
+        "json" -> "application/json"
+        "zip" -> "application/zip"
+        "txt" -> "text/plain"
+        "md" -> "text/markdown"
+        "png" -> "image/png"
+        "jpg", "jpeg" -> "image/jpeg"
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        "mp3" -> "audio/mpeg"
+        "wav" -> "audio/wav"
+        "mp4" -> "video/mp4"
+        else -> "application/octet-stream"
     }
 
     /**
