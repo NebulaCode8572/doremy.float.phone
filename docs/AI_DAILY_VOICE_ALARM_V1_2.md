@@ -164,7 +164,7 @@ Still requires physical-device verification: exact-alarm permission state, serve
 
 - Android now persists a per-occurrence attempt watermark. Once attempt 1 has been presented, a delayed duplicate attempt-1 push cannot restart it after its timeout while attempt 2 is being dispatched.
 - Recent terminal occurrence IDs are retained as a bounded history (32 entries), rather than a single last-seen ID. Delayed pushes for recently answered, rejected, dismissed, or cancelled occurrences remain suppressed after newer alarms complete.
-- The shell exposes Android's exact-alarm access state to the Daily AI Alarm settings. If access is unavailable, the settings page explains that local fallback timing may be delayed and provides a direct route to Android's Alarms & reminders settings.
-- Returning from the system permission page re-arms persisted watchdog and unanswered-call timers, allowing Android to use exact scheduling when access has been granted.
+- The shell exposes Android's exact-alarm, full-screen-intent, and notification permission states to the Daily AI Alarm settings. Missing access is explained with direct routes to the corresponding Android settings or runtime permission prompt.
+- Returning from system permission settings refreshes the visible permission status and re-arms persisted watchdog and unanswered-call timers, allowing Android to use exact scheduling when access has been granted.
 - Android shell package version is now 1.0.13 / versionCode 12 so the updated APK can be installed over the prior 1.0.12 build.
 - Exact-alarm and OEM background behavior still require testing on the target device. The implementation retains an inexact idle-allowed fallback when exact scheduling is unavailable.
