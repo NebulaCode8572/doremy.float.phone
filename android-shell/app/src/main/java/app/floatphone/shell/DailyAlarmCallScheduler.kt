@@ -32,7 +32,17 @@ object DailyAlarmCallScheduler {
             .put("token", UUID.randomUUID().toString())
             .put("due_at", dueAt)
             .toString()
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_PENDING, value).apply()
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        // Cancel the previous attempt's distinct PendingIntent before replacing its token.
+        val previousRaw = prefs.getString(KEY_PENDING, "").orEmpty()
+        val previousToken = runCatching { JSONObject(previousRaw).optString("token") }.getOrDefault("")
+        if (previousToken.isNotBlank()) {
+            runCatching {
+                (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager)
+                    .cancel(pendingIntent(context, previousToken))
+            }
+        }
+        prefs.edit().putString(KEY_PENDING, value).apply()
         val pending = pendingIntent(context, JSONObject(value).optString("token"))
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         runCatching {
