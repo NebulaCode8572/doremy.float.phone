@@ -106,7 +106,7 @@ async function synthesizeMinimax(text: string, config: VoiceApiConfig, emotion?:
 
     // Remove the optional [语音条: ...] wrapper before sending text to MiniMax.
     const cleanText = typeof text === "string"
-        ? text.replace(/^\\[语音条[:：]\\s*/, "").replace(/\\]$/, "").trim()
+        ? text.replace(/^\[语音条[:：]\s*/, "").replace(/\]$/, "").trim()
         : text;
 
     const response = await fetchWithTimeout(`${baseUrl}/t2a_v2`, {
