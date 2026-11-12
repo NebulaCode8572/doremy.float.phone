@@ -59,6 +59,8 @@ type VoiceCallScreenProps = {
     onEnd: () => void;
     onConnect?: () => void;
     initiator?: "user" | "character";
+    /** Android 锁屏界面已经接听：进入通话屏时直接视为已接通。 */
+    initiallyAccepted?: boolean;
     /** 通话是否处于缩小的悬浮窗状态：通话继续（识别/播放/计时不停），界面缩为小窗 */
     minimized?: boolean;
     /** 点击左上角返回键：请求缩小为悬浮窗（通话继续，不挂断） */
@@ -104,7 +106,7 @@ function stripBilingualForSpeech(text: string): string {
 
 // ── Component ───────────────────────────────────────
 
-export function VoiceCallScreen({ session, character, onEnd, onConnect, initiator = "user", minimized = false, onMinimize, onRestore }: VoiceCallScreenProps) {
+export function VoiceCallScreen({ session, character, onEnd, onConnect, initiator = "user", initiallyAccepted = false, minimized = false, onMinimize, onRestore }: VoiceCallScreenProps) {
     // iOS 保留 Web Speech 免提 + Web Audio 播放（麦克风会话共存的老方案）；
     // 其余设备改「按住说话 + 云端转写」，播放走媒体元素（音量键可控、无静音拨键坑）。
     // 没配 OpenAI 兼容识别时回落旧行为（安卓=文字输入）。
@@ -118,7 +120,7 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
     const androidTextInputOnly = androidTextInputOnlyRef.current;
     const playCallAudio = iosDevice ? playAudioBlob : playAudioBlobViaMediaElement;
     const keyboardOffsetStyle = useCallKeyboardOffsetStyle();
-    const [callState, setCallState] = useState<CallState>("CONNECTING");
+    const [callState, setCallState] = useState<CallState>(initiallyAccepted ? "IDLE" : "CONNECTING");
     const hasConnectedRef = useRef(false);
     // 来电接通后只主动开口一次；避免状态往返 IDLE 时重复生成第一句话。
     const initialIncomingGreetingStartedRef = useRef(false);
