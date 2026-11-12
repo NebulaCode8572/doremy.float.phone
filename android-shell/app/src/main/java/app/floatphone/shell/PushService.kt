@@ -17,6 +17,7 @@ import android.util.Log
 import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
+import androidx.core.graphics.drawable.IconCompat
 import androidx.core.app.NotificationManagerCompat
 // RemoteInput 必须用 androidx 版：NotificationCompat.Action.addRemoteInput()
 // 收的是 androidx.core.app.RemoteInput，与框架的 android.app.RemoteInput
@@ -449,17 +450,20 @@ class PushService : Service() {
 
         // Android 12+ 使用系统 CallStyle：由系统绘制桌面/锁屏来电卡片，
         // 包含来电者身份、拒接与接听按钮；旧系统保留兼容的 heads-up action。
+        val callerAvatar = loadAvatarBitmap(avatarUrl)
         if (Build.VERSION.SDK_INT >= 31) {
-            val caller = Person.Builder()
+            val callerBuilder = Person.Builder()
                 .setName(characterName)
                 .setImportant(true)
-                .build()
-            builder.setStyle(NotificationCompat.CallStyle.forIncomingCall(caller, declinePending, answerPending))
+            callerAvatar?.let { callerBuilder.setIcon(IconCompat.createWithBitmap(it)) }
+            builder.setStyle(
+                NotificationCompat.CallStyle.forIncomingCall(callerBuilder.build(), declinePending, answerPending),
+            )
         } else {
             builder.addAction(0, "拒接", declinePending)
                 .addAction(0, "接听", answerPending)
         }
-        loadAvatarBitmap(avatarUrl)?.let { builder.setLargeIcon(it) }
+        callerAvatar?.let { builder.setLargeIcon(it) }
         val notification = builder.build()
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.notify(CallAlert.NOTIF_CALL_ID, notification)
