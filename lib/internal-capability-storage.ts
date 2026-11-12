@@ -1440,7 +1440,7 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     {
         id: TIMED_WAKE_CAPABILITY_ID,
         name: "稍后主动联系",
-        description: "让角色约定「过一会儿主动联系对方」：现在设定一个延时与想法，到点后由角色决定主动发消息或静默（不是睡觉醒来）。",
+        description: "让角色安排稍后的主动联系：可选择到点后由角色决定发消息，或明确安排一次语音来电；两种任务独立排期。",
         enabled: false,
         mode: "auto",
         createdAt: 0,
