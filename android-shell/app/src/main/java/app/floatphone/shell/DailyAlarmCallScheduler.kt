@@ -55,7 +55,7 @@ object DailyAlarmCallScheduler {
                 .setAction(PushService.ACTION_DAILY_ALARM_RETRY)
                 .putExtra(EXTRA_SESSION_ID, item.optString(EXTRA_SESSION_ID))
                 .putExtra(EXTRA_CHARACTER_NAME, item.optString(EXTRA_CHARACTER_NAME))
-                .putExtra(EXTRA_CALL_TS, item.optLong(EXTRA_CALL_TS))
+                .putExtra(EXTRA_CALL_TS, System.currentTimeMillis())
                 .putExtra(EXTRA_ALARM_INSTANCE_ID, item.optString(EXTRA_ALARM_INSTANCE_ID))
                 .putExtra(EXTRA_ATTEMPT, 2)
             runCatching {
