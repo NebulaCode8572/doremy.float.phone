@@ -96,7 +96,7 @@ import {
 } from "./local-data-fs";
 import { makeTimedWakeId, saveTimedWakeSchedule } from "./timed-wake-storage";
 import { pushChatMessage } from "./chat-storage";
-import { makeProactiveCallId, saveProactiveCallSchedule } from "./proactive-call-storage";
+import { makeProactiveCallId, removeProactiveCallSchedule, saveProactiveCallSchedule } from "./proactive-call-storage";
 import { resolveUserIdentity } from "./settings-storage";
 import { attachAbortSignal, isAbortError, throwIfAborted } from "./abort-utils";
 import {
@@ -3497,6 +3497,7 @@ async function executeProactiveCallTool(call: ToolCall, context?: ToolExecutionC
         .then(module => module.armProactiveCallBailout(schedule))
         .catch(() => ({ ok: false as const, reason: "服务端预约请求失败" }));
     if (!result.ok) {
+        removeProactiveCallSchedule(schedule.id);
         return {
             name: "稍后主动来电",
             success: false,
