@@ -33,8 +33,10 @@ object DailyAlarmWatchdogScheduler {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val oldConfig = runCatching { JSONObject(prefs.getString(KEY_CONFIG, "").orEmpty()) }.getOrNull()
         val oldId = oldConfig?.optString("id").orEmpty()
-        if (oldId.isNotBlank() && oldId != id) runCatching {
-            (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pendingIntent(context, oldId))
+        if (oldId.isNotBlank() && oldId != id) {
+            runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pendingIntent(context, oldId)) }
+            DailyAlarmCallScheduler.cancelForConfig(context, oldId)
+            DailyAlarmFallbackScheduler.cancelForConfig(context, oldId)
         }
         val config = JSONObject()
             .put("id", id)
@@ -57,8 +59,10 @@ object DailyAlarmWatchdogScheduler {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val config = runCatching { JSONObject(prefs.getString(KEY_CONFIG, "").orEmpty()) }.getOrNull()
         val id = config?.optString("id").orEmpty()
-        if (id.isNotBlank()) runCatching {
-            (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pendingIntent(context, id))
+        if (id.isNotBlank()) {
+            runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pendingIntent(context, id)) }
+            DailyAlarmCallScheduler.cancelForConfig(context, id)
+            DailyAlarmFallbackScheduler.cancelForConfig(context, id)
         }
         prefs.edit().remove(KEY_CONFIG).remove(KEY_PENDING).commit()
     }
