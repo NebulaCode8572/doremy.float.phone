@@ -446,7 +446,7 @@ class PushService : Service() {
             .build()
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.notify(CallAlert.NOTIF_CALL_ID, notification)
-        logCallPresentationDiagnostics(notificationManager)
+        // 来电主流程必须先启动；诊断代码即使在个别 ROM 上异常，也不能阻断响铃。
         if (alarmInstanceId.isNotBlank()) {
             CallAlert.start(this, sessionId, characterName, timeoutMs = 0L)
         } else {
@@ -456,6 +456,8 @@ class PushService : Service() {
                 runCatching { showMissedCallNotification(characterName) }
             }
         }
+        runCatching { logCallPresentationDiagnostics(notificationManager) }
+            .onFailure { Log.w(TAG_CALL_PRESENTATION, "diagnostics failed", it) }
     }
 
     /**
