@@ -7,7 +7,7 @@ import type { RegexConfig } from "./settings-types";
 import { stripHallucinatedTimestamps } from "./llm-provider-adapter";
 import { MacroEngine } from "./macro-engine";
 import { getActiveAppTags } from "./content-tag-utils";
-import { loadChatMessages, loadChatSessions, reindexSessionMessageOrdersByTime } from "./chat-storage";
+import { loadChatMessages, loadChatSessions, pushChatMessage, reindexSessionMessageOrdersByTime } from "./chat-storage";
 import { hasAccountPushSubscription, isShellEnvironment } from "./push-client";
 import { isPersonalPushCloudActive, loadPersonalPushCloudState, personalPushFetch } from "./personal-push-cloud";
 import { removeTimedWakeSchedule } from "./timed-wake-storage";
@@ -31,6 +31,9 @@ type OutboxEntry = {
         appTags?: string[];
         followUpCount?: number;
         armAt?: string;
+        proactiveCall?: boolean;
+        proactiveCallId?: string;
+        dailyAlarm?: { id?: string; dateKey?: string };
         /** 云端触发快捷动作失败的摘要；成功时不带这个字段 */
         shortcutDeliveryError?: string;
     } | null;
@@ -252,6 +255,25 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                         { silent: options?.silent !== false, ...(shortcutMarker ? { shortcutMarker } : {}) },
                     );
                     if (hasVisible && newCount < 10) scheduleFollowUp(sessionId, newCount, stateValues);
+                    if (meta.proactiveCall === true) {
+                        // 服务端已经确定并发起了主动来电；无论用户是否接听，都在聊天里留下一条来电记录。
+                        // 锁屏接听路径会先合并 outbox，再打开通话页，因此通话页可识别这条记录并避免重复插入。
+                        const mergedMessages = loadChatMessages(sessionId);
+                        const hasRecentCallRecord = mergedMessages.some(message =>
+                            message.role === "assistant"
+                            && message.content.includes("发起了语音通话")
+                            && Number.isFinite(Date.parse(message.createdAt))
+                            && Date.parse(message.createdAt) >= (Number.isFinite(armAtMs) ? armAtMs - 60_000 : passStartMs - 15 * 60_000),
+                        );
+                        if (!hasRecentCallRecord) {
+                            pushChatMessage({
+                                sessionId,
+                                role: "assistant",
+                                content: "[我发起了语音通话]",
+                            });
+                            window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId } }));
+                        }
+                    }
                     clearTimedWakeIfHandled(entry.trigger_key);
                         clearProactiveCallIfHandled(entry.trigger_key);
                     consumedIds.push(entry.id);
