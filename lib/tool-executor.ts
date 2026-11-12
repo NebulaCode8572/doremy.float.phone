@@ -95,6 +95,7 @@ import {
     searchLocalDataRecords,
 } from "./local-data-fs";
 import { makeTimedWakeId, saveTimedWakeSchedule } from "./timed-wake-storage";
+import { makeProactiveCallId, saveProactiveCallSchedule } from "./proactive-call-storage";
 import { resolveUserIdentity } from "./settings-storage";
 import { attachAbortSignal, isAbortError, throwIfAborted } from "./abort-utils";
 import {
@@ -824,6 +825,7 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (call.name === "在桌面留句话") return executePhoneWidgetTool(call, context);
     if (call.name === "请求看屏幕") return executeCheckInRequestTool(call, context);
     if (isRealityBridgeToolName(call.name)) return executeRealityBridgeTool(call, context);
+    if (call.name === "稍后主动来电") return executeProactiveCallTool(call, context);
     if (call.name === "稍后主动联系" || call.name === "设置定时醒来") return executeTimedWakeTool(call, context);
 
     if (call.name !== "写入记忆") return null;
@@ -3450,6 +3452,63 @@ async function executeTimedWakeTool(call: ToolCall, context?: ToolExecutionConte
         success: true,
         data: `已设置稍后主动联系：约 ${delayMinutes} 分钟后到点。\n目的：${intent}`,
         userNotice: `已设置 ${delayMinutes} 分钟后主动联系`,
+    };
+}
+
+async function executeProactiveCallTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
+    const capability = getInternalCapability(TIMED_WAKE_CAPABILITY_ID);
+    if (!capability || !capability.enabled || capability.mode === "off") {
+        return {
+            name: "稍后主动来电",
+            success: false,
+            error: "稍后主动联系能力未启用",
+            userNotice: "稍后主动联系能力未启用",
+        };
+    }
+    if (!context?.sessionId || !context.characterId || context.appId !== "chat" || context.sourceEngine !== "chat") {
+        return {
+            name: "稍后主动来电",
+            success: false,
+            error: "当前场景暂不支持稍后主动来电",
+            userNotice: "当前场景暂不支持稍后主动来电",
+        };
+    }
+
+    const intent = cleanToolString(call.args.intent, 300);
+    if (!intent) {
+        return { name: "稍后主动来电", success: false, error: "缺少 intent 参数" };
+    }
+
+    const delayMinutes = numberArg(call.args.delayMinutes ?? call.args.delay_minutes, 1, 10080, 15);
+    const now = Date.now();
+    const schedule = {
+        id: makeProactiveCallId(context.sessionId),
+        sessionId: context.sessionId,
+        characterId: context.characterId,
+        createdAt: now,
+        fireAt: now + delayMinutes * 60 * 1000,
+        delayMinutes,
+        intent,
+    };
+    saveProactiveCallSchedule(schedule);
+
+    const result = await import("./push-bailout-client")
+        .then(module => module.armProactiveCallBailout(schedule))
+        .catch(() => ({ ok: false as const, reason: "服务端预约请求失败" }));
+    if (!result.ok) {
+        return {
+            name: "稍后主动来电",
+            success: false,
+            error: `本地已记录排期，但服务端离线预约失败：${result.reason}`,
+            userNotice: "稍后主动来电预约未能同步",
+        };
+    }
+
+    return {
+        name: "稍后主动来电",
+        success: true,
+        data: `已设置稍后主动来电：约 ${delayMinutes} 分钟后拨打。\n计划时间：${new Date(schedule.fireAt).toLocaleString()}\n通话主题：${intent}`,
+        userNotice: `已设置 ${delayMinutes} 分钟后主动来电`,
     };
 }
 
