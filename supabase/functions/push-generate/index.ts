@@ -1170,24 +1170,23 @@ Deno.serve(async (req: Request) => {
     let pushed = 0;
     const pushErrors: string[] = [];
     // 安卓壳（FloatShell App）的合成订阅（endpoint 以 shell: 开头）不走 Web Push，
-    // 改由 Supabase Realtime 广播送达壳内长连接。
+    // 改由 Supabase Realtime 广播送达壳内长连接。个人云任务 user_id=OWNER_ID，
+    // 壳订阅则由站点账号 id 写入，二者不保证相同，因此不能按 job.user_id 过滤；
+    // 不设小额 limit，避免订阅记录超过上限时漏掉壳设备。
     const webSubs = subs.filter(sub => !sub.endpoint.startsWith("shell:"));
     // 壳订阅由站点按站点账号 id 注册（单机自部署下是 local_user），而个人云的任务
     // 一律挂在 OWNER_ID(owner) 下——按 job.user_id 过滤永远取不到壳那行，
     // hasShellSub 恒为 false，下面的广播整段被跳过：消息生成成功、写得进 outbox，
     // 却永远弹不出通知。壳订阅本就只属于本项目唯一的主人，按 endpoint 前缀单独取，
     // 不掺 user_id；topic 也改用 endpoint 里带的站点 id，与壳实际订阅的频道一致。
-    const shellEndpoint = `shell:${job.user_id}`;
-    const shellSubsResponse = await rest(
-      `push_subscriptions?user_id=eq.${encodeURIComponent(job.user_id)}`
-        + `&endpoint=eq.${encodeURIComponent(shellEndpoint)}&select=endpoint&limit=1`,
-    );
+    const shellSubsResponse = await rest("push_subscriptions?endpoint=like.shell:*&select=endpoint");
     const shellSubRows = shellSubsResponse.ok
       ? await shellSubsResponse.json() as { endpoint: string }[]
       : [];
     const shellTopics = shellSubRows
-      .filter(sub => sub.endpoint === shellEndpoint)
-      .map(() => `shellpush:${job.user_id}`);
+      .map(sub => String(sub.endpoint || "").slice("shell:".length).trim())
+      .filter(Boolean)
+      .map(userId => `shellpush:${userId}`);
     const hasShellSub = shellTopics.length > 0;
     if (!shellSubsResponse.ok) {
       const detail = await shellSubsResponse.text().catch(() => "");
