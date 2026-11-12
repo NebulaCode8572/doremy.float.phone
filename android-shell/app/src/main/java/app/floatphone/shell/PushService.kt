@@ -287,10 +287,20 @@ class PushService : Service() {
                         }
                         return
                     }
-                    if (msg.optString("event") != "broadcast") return
-                    val payload = msg.optJSONObject("payload") ?: return
+                    val outerEvent = msg.optString("event")
+                    if (outerEvent != "broadcast") {
+                        updateKeepAlive("收到推送协议消息：$outerEvent")
+                        return
+                    }
+                    val payload = msg.optJSONObject("payload") ?: run {
+                        updateKeepAlive("收到广播，但缺少 payload")
+                        return
+                    }
                     val eventName = payload.optString("event")
-                    if (eventName != "notify") return
+                    if (eventName != "notify") {
+                        updateKeepAlive("收到广播事件：${eventName.ifBlank { "未知" }}")
+                        return
+                    }
                     // Realtime Broadcast 标准结构是 payload.payload；兼容网关/旧版
                     // 包装层直接把业务字段放在 payload 下的情况。
                     val body = payload.optJSONObject("payload") ?: payload.optJSONObject("data") ?: payload
