@@ -48,6 +48,20 @@ class PushService : Service() {
         const val ACTION_DAILY_ALARM_RETRY = "app.floatphone.shell.DAILY_ALARM_RETRY"
         private var running = false
 
+        fun startDailyAlarmCall(context: Context, sessionId: String, characterName: String, alarmInstanceId: String, attempt: Int): Boolean {
+            val intent = Intent(context, PushService::class.java)
+                .setAction(ACTION_DAILY_ALARM_RETRY)
+                .putExtra(DailyAlarmCallScheduler.EXTRA_SESSION_ID, sessionId)
+                .putExtra(DailyAlarmCallScheduler.EXTRA_CHARACTER_NAME, characterName)
+                .putExtra(DailyAlarmCallScheduler.EXTRA_CALL_TS, System.currentTimeMillis())
+                .putExtra(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
+                .putExtra(DailyAlarmCallScheduler.EXTRA_ATTEMPT, attempt)
+            return runCatching {
+                if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
+                true
+            }.getOrDefault(false)
+        }
+
         fun start(context: Context) {
             if (running) return
             val intent = Intent(context, PushService::class.java)
@@ -91,7 +105,7 @@ class PushService : Service() {
             val callTs = intent.getLongExtra(DailyAlarmCallScheduler.EXTRA_CALL_TS, System.currentTimeMillis())
             val attempt = intent.getIntExtra(DailyAlarmCallScheduler.EXTRA_ATTEMPT, 2)
             runCatching { showIncomingCallNotification(name, sessionId, callTs, alarmInstanceId, attempt) }
-                .onFailure { DailyAlarmFallbackScheduler.schedule(this, sessionId, name, alarmInstanceId) }
+                .onFailure { DailyAlarmCallScheduler.onDeliveryFailure(this, sessionId, name, alarmInstanceId, attempt) }
         }
         return START_STICKY
     }
@@ -372,6 +386,12 @@ class PushService : Service() {
         alarmInstanceId: String = "",
         alarmAttempt: Int = 1,
     ) {
+        // Persist the timeout before exposing the notification. Duplicate deliveries for an
+        // existing instance/attempt are ignored; attempt 2 replaces attempt 1.
+        if (alarmInstanceId.isNotBlank()) {
+            val accepted = DailyAlarmCallScheduler.schedule(this, sessionId, characterName, callTs, alarmInstanceId, alarmAttempt)
+            if (!accepted) return
+        }
         val fullScreen = Intent(this, IncomingCallActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra(IncomingCallActivity.EXTRA_SESSION_ID, sessionId)
@@ -407,7 +427,6 @@ class PushService : Service() {
             .build()
         getSystemService(NotificationManager::class.java).notify(CallAlert.NOTIF_CALL_ID, notification)
         if (alarmInstanceId.isNotBlank()) {
-            DailyAlarmCallScheduler.schedule(this, sessionId, characterName, callTs, alarmInstanceId, alarmAttempt)
             CallAlert.start(this, sessionId, characterName, timeoutMs = 0L)
         } else {
             CallAlert.start(this, sessionId, characterName) {
