@@ -89,7 +89,7 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
                     <Clock size={18} /> 每日 AI 闹钟
                 </div>
                 <p className="mt-2 text-sm leading-relaxed text-[var(--c-text-secondary)]">
-                    每天按设定时间，由选定角色发送一条早安消息并发起语音来电。需要启用离线推送。
+                    每天按设定时间，由选定角色发送一条早安消息并发起语音来电。Android 本机会额外登记备用计时：若服务端来电推送未抵达，短暂等待后会尝试在本机发起来电。
                 </p>
                 <div className="mt-4 flex flex-col gap-2">
                     <label className="text-sm font-medium">叫醒你的角色</label>
