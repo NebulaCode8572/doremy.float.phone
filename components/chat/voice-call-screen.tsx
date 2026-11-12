@@ -1156,7 +1156,7 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
                     />
                     <div className="flex gap-2 mt-3 items-center">
                         <CSSSchemeBar target="call_screen" currentCSS={callCssDraft} onLoad={setCallCssDraft} />
-                        <button type="button" className="ui-btn ui-btn-outline" onClick={() => setCallCssDraft(CHAT_SESSION_CSS_EXAMPLE)}>示例</button>
+                        <button type="button" className="ui-btn ui-btn-outline" onClick={() => setCallCssDraft(CALL_SCREEN_CSS_EXAMPLE)}>示例</button>
                         <button type="button" className="ui-btn ui-btn-soft-action flex-1" onClick={() => {
                             saveChatAppSettings({ ...loadChatAppSettings(), globalCallCustomCSS: callCssDraft });
                             setCallCssApplied(callCssDraft);
