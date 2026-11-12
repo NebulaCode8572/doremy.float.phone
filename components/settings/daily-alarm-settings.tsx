@@ -12,7 +12,7 @@ import {
     type DailyAlarmConfig,
 } from "@/lib/daily-alarm-storage";
 import { armDailyAlarmBailout } from "@/lib/push-bailout-client";
-import { scheduleNativeDailyAlarmWatchdog, cancelNativeDailyAlarmWatchdog, getNativeExactAlarmPermission, requestNativeExactAlarmPermission } from "@/lib/call-ringtone-sync";
+import { scheduleNativeDailyAlarmWatchdog, cancelNativeDailyAlarmWatchdog, getNativeExactAlarmPermission, requestNativeExactAlarmPermission, getNativeFullScreenIntentPermission, requestNativeFullScreenIntentPermission, getNativePostNotificationsPermission, requestNativePostNotificationsPermission } from "@/lib/call-ringtone-sync";
 
 export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) => void }) {
     const characters = useMemo(() => loadCharacters(), []);
@@ -22,6 +22,8 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
     const [exactAlarmPermission, setExactAlarmPermission] = useState<boolean | null>(null);
+    const [fullScreenIntentPermission, setFullScreenIntentPermission] = useState<boolean | null>(null);
+    const [notificationPermission, setNotificationPermission] = useState<boolean | null>(null);
 
     const eligibleCharacters = useMemo(() => {
         const sessions = loadChatSessions();
@@ -38,7 +40,11 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
         }
     }, []);
     useEffect(() => {
-        const refreshPermission = () => setExactAlarmPermission(getNativeExactAlarmPermission());
+        const refreshPermission = () => {
+            setExactAlarmPermission(getNativeExactAlarmPermission());
+            setFullScreenIntentPermission(getNativeFullScreenIntentPermission());
+            setNotificationPermission(getNativePostNotificationsPermission());
+        };
         refreshPermission();
         document.addEventListener("visibilitychange", refreshPermission);
         window.addEventListener("native-exact-alarm-permission-changed", refreshPermission);
@@ -75,11 +81,15 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
             const characterName = characters.find(character => character.id === characterId)?.name || "角色";
             const nativeWatchdog = scheduleNativeDailyAlarmWatchdog(nextConfig, characterName);
             const exactAllowed = getNativeExactAlarmPermission();
+            const fullScreenAllowed = getNativeFullScreenIntentPermission();
+            const notificationsAllowed = getNativePostNotificationsPermission();
             setExactAlarmPermission(exactAllowed);
+            setFullScreenIntentPermission(fullScreenAllowed);
+            setNotificationPermission(notificationsAllowed);
             onNotice(nativeWatchdog === false
                 ? "AI 闹钟已开启，但本机备用计时未能登记；请检查系统权限。"
-                : exactAllowed === false
-                    ? `AI 闹钟已开启，每天 ${localTime} 提醒；系统未授予精确闹钟权限，本机备用计时可能延迟。`
+                : exactAllowed === false || fullScreenAllowed === false || notificationsAllowed === false
+                    ? `AI 闹钟已开启，每天 ${localTime} 提醒；仍有系统权限未开启，请查看闹钟设置中的提示。`
                     : `AI 闹钟已开启，每天 ${localTime} 提醒`);
         } finally {
             setBusy(false);
@@ -141,6 +151,31 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
                                 }}
                             >
                                 前往开启精确闹钟权限
+                            </button>
+                        </div>
+                    ) : null}                    {fullScreenIntentPermission === false ? (
+                        <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+                            <p className="text-xs leading-relaxed text-[var(--c-text-secondary)]">
+                                Android 未允许本应用使用全屏通知。锁屏时可能只显示普通通知，无法自动弹出接听界面。
+                            </p>
+                            <button type="button" className="ui-btn ui-btn-outline mt-2 w-full" onClick={() => {
+                                const opened = requestNativeFullScreenIntentPermission();
+                                if (opened === false) setError("无法打开全屏通知权限页面，请在 Android 应用通知设置中手动开启。");
+                            }}>
+                                开启全屏来电显示权限
+                            </button>
+                        </div>
+                    ) : null}
+                    {notificationPermission === false ? (
+                        <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+                            <p className="text-xs leading-relaxed text-[var(--c-text-secondary)]">
+                                Android 通知权限尚未开启。来电通知和原生闹钟提醒可能无法正常显示。
+                            </p>
+                            <button type="button" className="ui-btn ui-btn-outline mt-2 w-full" onClick={() => {
+                                const opened = requestNativePostNotificationsPermission();
+                                if (opened === false) setError("无法申请通知权限，请在 Android 设置中手动开启本应用通知。");
+                            }}>
+                                开启通知权限
                             </button>
                         </div>
                     ) : null}
