@@ -38,14 +38,18 @@ object DailyAlarmCallScheduler {
             .toString()
         // Cancel the previous attempt's distinct PendingIntent before replacing its token.
         val previousRaw = prefs.getString(KEY_PENDING, "").orEmpty()
-        val previousToken = runCatching { JSONObject(previousRaw).optString("token") }.getOrDefault("")
+        val previousItem = runCatching { JSONObject(previousRaw) }.getOrNull()
+        val previousInstance = previousItem?.optString(EXTRA_ALARM_INSTANCE_ID).orEmpty()
+        val previousAttempt = previousItem?.optInt(EXTRA_ATTEMPT, 0) ?: 0
+        if (previousInstance == alarmInstanceId && previousAttempt >= attempt) return false
+        val previousToken = previousItem?.optString("token").orEmpty()
         if (previousToken.isNotBlank()) {
             runCatching {
                 (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager)
                     .cancel(pendingIntent(context, previousToken))
             }
         }
-        if (!prefs.edit().putString(KEY_PENDING, value).commit()) return
+        if (!prefs.edit().putString(KEY_PENDING, value).commit()) return false
         val pending = pendingIntent(context, JSONObject(value).optString("token"))
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         runCatching {
