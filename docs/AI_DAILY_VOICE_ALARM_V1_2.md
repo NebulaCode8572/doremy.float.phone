@@ -131,3 +131,7 @@ Verification still required:
 - The greeting uses the normal chat-message persistence, subtitle, TTS synthesis, and playback pipeline; its one-time instruction is ephemeral and is not stored in chat history.
 - The Android lock-screen answer flag is now carried through the deep-link event, active-call store, and call layer, so a call already accepted on the lock screen opens directly in the connected state and triggers the greeting once.
 - Normal incoming calls still require an explicit user answer in the call UI; this change does not auto-answer calls.
+### Retry persistence and explicit decline
+
+- The native unanswered-call timeout now persists its absolute due time. After reboot, the remaining timeout is restored; if it elapsed while the device was powered off, the retry/fallback path runs immediately rather than receiving a fresh 5-second timeout.
+- Explicitly declining or closing the lock-screen incoming-call activity cancels the daily-alarm retry, matching the notification-action decline behavior. A deliberate decline does not trigger a second call or native fallback.
