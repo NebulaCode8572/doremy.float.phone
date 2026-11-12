@@ -88,6 +88,7 @@ class PushService : Service() {
     private var msgSeq = 2
     private var notifId = 100
     private var shellSubRegisteredUserId: String? = null
+    private var lastConfigError: String? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -133,7 +134,7 @@ class PushService : Service() {
         while (!stopped) {
             val config = fetchConfig()
             if (config == null) {
-                updateKeepAlive("未登录或站点不可达，稍后重试")
+                updateKeepAlive(lastConfigError ?: "未登录或站点不可达，稍后重试")
                 sleepSec(60); continue
             }
             updateKeepAlive("正在连接推送服务…")
@@ -177,7 +178,11 @@ class PushService : Service() {
         val url = online.optString("supabaseUrl")
         val key = online.optString("anonKey")
         if (url.isEmpty() || key.isEmpty()) return null
-        registerShellSubscription(cookie, userId)
+        val registrationError = registerShellSubscription(cookie, userId)
+        if (registrationError != null) {
+            lastConfigError = "设备登记失败：$registrationError"
+            return null
+        }
         PushConfig(url.trimEnd('/'), key, userId)
     }.getOrNull()
 
@@ -186,9 +191,9 @@ class PushService : Service() {
      * 作用是让离线消息排期的"账号已订阅"门控放行，并让服务端知道
      * 要往 shellpush 频道广播；服务端不会对它做 Web Push 投递。
      */
-    private fun registerShellSubscription(cookie: String, userId: String) {
-        if (shellSubRegisteredUserId == userId) return
-        runCatching {
+    private fun registerShellSubscription(cookie: String, userId: String): String? {
+        if (shellSubRegisteredUserId == userId) return null
+        return runCatching {
             val body = JSONObject()
                 .put("endpoint", "shell:$userId")
                 .put(
@@ -203,8 +208,19 @@ class PushService : Service() {
             if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
             val request = builder.build()
             client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) shellSubRegisteredUserId = userId
+                val responseText = response.body?.string().orEmpty()
+                val responseJson = runCatching { JSONObject(responseText) }.getOrNull()
+                if (response.isSuccessful && responseJson?.optBoolean("ok") == true) {
+                    shellSubRegisteredUserId = userId
+                    null
+                } else {
+                    val detail = responseJson?.optString("error")?.takeIf { it.isNotBlank() }
+                        ?: responseText.take(120).ifBlank { "服务器未返回错误详情" }
+                    "HTTP ${response.code}: $detail"
+                }
             }
+        }.getOrElse { error ->
+            "请求异常：${error.message?.take(120) ?: error.javaClass.simpleName}"
         }
     }
 
