@@ -3501,7 +3501,7 @@ async function executeProactiveCallTool(call: ToolCall, context?: ToolExecutionC
         return {
             name: "稍后主动来电",
             success: false,
-            error: `本地已记录排期，但服务端离线预约失败：${result.reason}`,
+            error: `稍后主动来电未能同步到服务端：${result.reason}`,
             userNotice: "稍后主动来电预约未能同步",
         };
     }
