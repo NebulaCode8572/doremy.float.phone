@@ -136,6 +136,7 @@ object DailyAlarmFallbackScheduler {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_PENDING).apply()
         runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(fallbackPendingIntent(context)) }
         runCatching { context.getSystemService(android.app.NotificationManager::class.java).cancel(NOTIFICATION_ID) }
+        runCatching { context.stopService(Intent(context, DailyAlarmRingingService::class.java)) }
         CallAlert.stop(context)
     }
 
@@ -154,6 +155,17 @@ object DailyAlarmFallbackScheduler {
     internal fun fire(context: Context) {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_PENDING, "").orEmpty()
         if (raw.isBlank()) return
+        val service = Intent(context, DailyAlarmRingingService::class.java).setAction(DailyAlarmRingingService.ACTION_START)
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(service) else context.startService(service)
+        }.onFailure {
+            // If Android refuses the foreground service start, retain the previous direct-notification path.
+            runCatching { fireDirect(context, raw) }
+        }
+    }
+
+    /** Best-effort fallback used only if the foreground ringing service cannot be started. */
+    private fun fireDirect(context: Context, raw: String) {
         val item = runCatching { JSONObject(raw) }.getOrNull() ?: return
         val sessionId = item.optString(DailyAlarmCallScheduler.EXTRA_SESSION_ID)
         val name = item.optString(DailyAlarmCallScheduler.EXTRA_CHARACTER_NAME).ifBlank { "角色" }
