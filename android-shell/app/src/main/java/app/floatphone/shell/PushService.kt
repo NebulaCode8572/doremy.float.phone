@@ -16,6 +16,7 @@ import android.util.Base64
 import android.util.Log
 import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
 import androidx.core.app.NotificationManagerCompat
 // RemoteInput 必须用 androidx 版：NotificationCompat.Action.addRemoteInput()
 // 收的是 androidx.core.app.RemoteInput，与框架的 android.app.RemoteInput
@@ -291,6 +292,7 @@ class PushService : Service() {
                                 body.optLong("callTs", System.currentTimeMillis()),
                                 alarmInstanceId,
                                 alarmAttempt,
+                                body.optString("avatar"),
                             )
                         }.isSuccess
                         if (shown) return
@@ -397,6 +399,7 @@ class PushService : Service() {
         callTs: Long,
         alarmInstanceId: String = "",
         alarmAttempt: Int = 1,
+        avatarUrl: String = "",
     ) {
         // Persist the timeout before exposing the notification. Duplicate deliveries for an
         // existing instance/attempt are ignored; attempt 2 replaces attempt 1.
@@ -430,10 +433,12 @@ class PushService : Service() {
             },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val notification = NotificationCompat.Builder(this, CH_CALLS)
+        val declinePending = buildAction(CallActionReceiver.ACTION_DECLINE, 61)
+        val answerPending = buildAction(CallActionReceiver.ACTION_ANSWER, 62)
+        val builder = NotificationCompat.Builder(this, CH_CALLS)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle(characterName)
-            .setContentText("语音来电…")
+            .setContentText("邀请你语音通话…")
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setOngoing(true)
@@ -441,9 +446,21 @@ class PushService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setFullScreenIntent(fullScreenPending, true)
             .setContentIntent(fullScreenPending)
-            .addAction(0, "拒接", buildAction(CallActionReceiver.ACTION_DECLINE, 61))
-            .addAction(0, "接听", buildAction(CallActionReceiver.ACTION_ANSWER, 62))
-            .build()
+
+        // Android 12+ 使用系统 CallStyle：由系统绘制桌面/锁屏来电卡片，
+        // 包含来电者身份、拒接与接听按钮；旧系统保留兼容的 heads-up action。
+        if (Build.VERSION.SDK_INT >= 31) {
+            val caller = Person.Builder()
+                .setName(characterName)
+                .setImportant(true)
+                .build()
+            builder.setStyle(NotificationCompat.CallStyle.forIncomingCall(caller, declinePending, answerPending))
+        } else {
+            builder.addAction(0, "拒接", declinePending)
+                .addAction(0, "接听", answerPending)
+        }
+        loadAvatarBitmap(avatarUrl)?.let { builder.setLargeIcon(it) }
+        val notification = builder.build()
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.notify(CallAlert.NOTIF_CALL_ID, notification)
         // 来电主流程必须先启动；诊断代码即使在个别 ROM 上异常，也不能阻断响铃。
