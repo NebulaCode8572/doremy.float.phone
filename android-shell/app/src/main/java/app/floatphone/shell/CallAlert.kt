@@ -1,6 +1,8 @@
 package app.floatphone.shell
 
 import android.app.NotificationManager
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.content.Context
 import android.os.Build
 import android.os.Handler
@@ -20,6 +22,8 @@ object CallAlert {
     const val TIMEOUT_MS = 55_000L
 
     private var vibrator: Vibrator? = null
+    private var ringtonePlayer: MediaPlayer? = null
+    private var playbackGeneration = 0
     private val handler = Handler(Looper.getMainLooper())
     private var timeoutRunnable: Runnable? = null
     /** 当前振铃中的会话（IncomingCallActivity 读取；空表示没有活动来电） */
@@ -40,6 +44,7 @@ object CallAlert {
         stop(context, cancelNotification = false)
         activeSessionId = sessionId
         activeCharacterName = characterName
+        startRingtone(context.applicationContext, sessionId)
         val pattern = longArrayOf(0, 500, 250, 500, 1400)
         vibrator = systemVibrator(context)?.also { v ->
             runCatching {
@@ -59,10 +64,52 @@ object CallAlert {
         handler.postDelayed(runnable, TIMEOUT_MS)
     }
 
-    /** 收场：停振动、撤超时，可选把来电通知一并撤下。 */
+    /** 使用已同步到 Android 私有目录的角色来电铃声；缺失或静音时保持振动兜底。 */
+    private fun startRingtone(context: Context, sessionId: String) {
+        val file = CallRingtoneStore.resolve(context, sessionId) ?: return
+        val generation = ++playbackGeneration
+        runCatching {
+            MediaPlayer().also { player ->
+                ringtonePlayer = player
+                player.setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build(),
+                )
+                player.isLooping = true
+                player.setDataSource(file.absolutePath)
+                player.setOnPreparedListener {
+                    if (generation == playbackGeneration && ringtonePlayer === player) {
+                        runCatching { player.start() }
+                    } else {
+                        runCatching { player.release() }
+                    }
+                }
+                player.setOnErrorListener { failed, _, _ ->
+                    if (ringtonePlayer === failed) ringtonePlayer = null
+                    runCatching { failed.release() }
+                    true
+                }
+                player.prepareAsync()
+            }
+        }.onFailure {
+            ringtonePlayer?.let { runCatching { it.release() } }
+            ringtonePlayer = null
+        }
+    }
+
+    /** 收场：停音频、停振动、撤超时，可选把来电通知一并撤下。 */
     fun stop(context: Context, cancelNotification: Boolean = true) {
         activeSessionId = ""
         activeCharacterName = ""
+        playbackGeneration++
+        ringtonePlayer?.let { player ->
+            runCatching { if (player.isPlaying) player.stop() }
+            runCatching { player.reset() }
+            runCatching { player.release() }
+        }
+        ringtonePlayer = null
         timeoutRunnable?.let { handler.removeCallbacks(it) }
         timeoutRunnable = null
         runCatching { vibrator?.cancel() }
