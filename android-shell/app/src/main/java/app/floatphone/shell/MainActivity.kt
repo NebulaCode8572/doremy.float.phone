@@ -1351,12 +1351,12 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun canUseFullScreenIntent(): Boolean = runCatching {
-            Build.VERSION.SDK_INT < 34 || getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+            Build.VERSION.SDK_INT < 34 || this@MainActivity.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
         }.getOrDefault(false)
 
         @JavascriptInterface
         fun requestFullScreenIntentPermission(): Boolean = runCatching {
-            val allowed = Build.VERSION.SDK_INT < 34 || getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+            val allowed = Build.VERSION.SDK_INT < 34 || this@MainActivity.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
             if (allowed) return@runCatching true
             this@MainActivity.startActivity(
                 Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${this@MainActivity.packageName}"))
@@ -1373,7 +1373,7 @@ class MainActivity : AppCompatActivity() {
         fun requestPostNotificationsPermission(): Boolean = runCatching {
             if (Build.VERSION.SDK_INT >= 33 &&
                 ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-            ) notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            ) this@MainActivity.notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             true
         }.getOrDefault(false)
         @JavascriptInterface
