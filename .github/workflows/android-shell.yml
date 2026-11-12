@@ -8,7 +8,7 @@ on:
         required: false
         type: string
   push:
-    branches: [main]
+    branches: [main, feature/android-callstyle-from-130]
     paths: ["android-shell/**", ".github/workflows/android-shell.yml"]
   pull_request:
     branches: [main]
