@@ -372,6 +372,8 @@ export type ChatAppSettings = {
     globalChatBackgroundImage?: string;
     /** 聊天室 CSS 默认值；单独会话 CSS 优先，主页外观 CSS 优先级最低 */
     globalChatCustomCSS?: string;
+    /** 通话界面字幕气泡 CSS；与聊天室 CSS 分开保存。 */
+    globalCallCustomCSS?: string;
     /** 全局私聊的邀请见面卡片输出契约与沙盒渲染。 */
     meetingInviteCard?: MeetingInviteCardConfig;
     /** 私聊默认传入的最近图片数量；单独会话设置优先 */
