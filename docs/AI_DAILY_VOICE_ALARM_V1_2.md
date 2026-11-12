@@ -93,3 +93,20 @@ Verification still pending:
 - Verify delivery and lock-screen call behavior on a real Android device.
 
 This phase does not yet implement daily recurrence, retry/fallback state transitions, or reboot restoration. No merge or deployment has occurred.
+
+
+## Phase 3C implementation status — daily alarm scheduling
+
+Implemented on `feature/ai-daily-voice-alarm`:
+- Added a Daily AI Alarm settings page: select a chat character, choose a local wall-clock time, enable/update/disable.
+- Persisted a distinct daily alarm config with an IANA timezone; each config update gets a new ID and cancels the old server-side task prefix.
+- Added a daily alarm task builder. It prepares one LLM snapshot for the selected chat and marks the generated result as a deterministic incoming call. The generated assistant text is stored once through the existing outbox path, while the same event dispatches the call.
+- Added server-side recurrence: each occurrence arms the next local calendar day before generating, so provider failure does not silently stop future recurrence. The next occurrence uses a stable date-scoped trigger key and accounts for timezone/DST changes.
+- Added startup/foreground scheduled-task refresh for an enabled daily alarm.
+
+Not yet implemented in this phase:
+- The two-attempt unanswered-call state machine and explicit rejection handling.
+- Pre-registered Android native fallback alarm, fallback cancellation, and reboot restoration.
+- On-device verification of actual daily delivery and timezone behavior.
+
+Release remains blocked on CI and real-device verification. No merge or deployment has occurred.
