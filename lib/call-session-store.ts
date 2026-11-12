@@ -24,6 +24,8 @@ export type ActiveCall = {
     initiator: "user" | "character";
     /** initiator="character" 时发起通话的角色名（群聊来电要显示具体是谁打来的）。 */
     initiatorName?: string;
+    /** Android lock-screen accept action already happened before the web call screen opened. */
+    accepted: boolean;
     minimized: boolean;
     /**
      * 每次拨号都换一个新值，用作 React key：
@@ -69,9 +71,11 @@ export function startCall(input: {
     kind: ActiveCallKind;
     initiator: "user" | "character";
     initiatorName?: string;
+    accepted?: boolean;
 }): void {
     activeCall = {
         ...input,
+        accepted: input.accepted === true,
         minimized: false,
         callId: `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     };
