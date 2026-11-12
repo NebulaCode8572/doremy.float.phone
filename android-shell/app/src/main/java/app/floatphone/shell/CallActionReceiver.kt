@@ -13,11 +13,17 @@ class CallActionReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_ANSWER = "app.floatphone.shell.CALL_ANSWER"
         const val ACTION_DECLINE = "app.floatphone.shell.CALL_DECLINE"
+        const val ACTION_DISMISS_ALARM = "app.floatphone.shell.DISMISS_DAILY_ALARM"
         const val EXTRA_SESSION_ID = "session_id"
         const val EXTRA_CALL_TS = "call_ts"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_DISMISS_ALARM) {
+            DailyAlarmFallbackScheduler.cancel(context)
+            return
+        }
+        DailyAlarmCallScheduler.cancel(context)
         CallAlert.stop(context)
         if (intent.action != ACTION_ANSWER) return
         val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
