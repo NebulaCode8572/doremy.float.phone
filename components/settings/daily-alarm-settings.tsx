@@ -12,7 +12,7 @@ import {
     type DailyAlarmConfig,
 } from "@/lib/daily-alarm-storage";
 import { armDailyAlarmBailout } from "@/lib/push-bailout-client";
-import { scheduleNativeDailyAlarmWatchdog, cancelNativeDailyAlarmWatchdog } from "@/lib/call-ringtone-sync";
+import { scheduleNativeDailyAlarmWatchdog, cancelNativeDailyAlarmWatchdog, getNativeExactAlarmPermission, requestNativeExactAlarmPermission } from "@/lib/call-ringtone-sync";
 
 export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) => void }) {
     const characters = useMemo(() => loadCharacters(), []);
@@ -21,6 +21,7 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
     const [localTime, setLocalTime] = useState(() => loadDailyAlarmConfig()?.localTime || "07:00");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
+    const [exactAlarmPermission, setExactAlarmPermission] = useState<boolean | null>(null);
 
     const eligibleCharacters = useMemo(() => {
         const sessions = loadChatSessions();
@@ -35,6 +36,12 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
             setCharacterId(current.characterId);
             setLocalTime(current.localTime);
         }
+    }, []);
+    useEffect(() => {
+        const refreshPermission = () => setExactAlarmPermission(getNativeExactAlarmPermission());
+        refreshPermission();
+        document.addEventListener("visibilitychange", refreshPermission);
+        return () => document.removeEventListener("visibilitychange", refreshPermission);
     }, []);
 
     const enable = async () => {
@@ -63,9 +70,13 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
             setConfig(nextConfig);
             const characterName = characters.find(character => character.id === characterId)?.name || "角色";
             const nativeWatchdog = scheduleNativeDailyAlarmWatchdog(nextConfig, characterName);
+            const exactAllowed = getNativeExactAlarmPermission();
+            setExactAlarmPermission(exactAllowed);
             onNotice(nativeWatchdog === false
-                ? "AI 闹钟已开启，但本机备用计时未能登记；请检查系统精确闹钟权限。"
-                : `AI 闹钟已开启，每天 ${localTime} 提醒`);
+                ? "AI 闹钟已开启，但本机备用计时未能登记；请检查系统权限。"
+                : exactAllowed === false
+                    ? `AI 闹钟已开启，每天 ${localTime} 提醒；系统未授予精确闹钟权限，本机备用计时可能延迟。`
+                    : `AI 闹钟已开启，每天 ${localTime} 提醒`);
         } finally {
             setBusy(false);
         }
@@ -112,6 +123,23 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
                     <p className="text-xs leading-relaxed text-[var(--c-text-secondary)]">
                         使用时区：{config?.enabled ? config.timeZone : (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC")}
                     </p>
+                    {exactAlarmPermission === false ? (
+                        <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+                            <p className="text-xs leading-relaxed text-[var(--c-text-secondary)]">
+                                Android 尚未授予“闹钟和提醒”精确闹钟权限。本机备用计时可能被系统延迟；开启权限后，返回应用会自动重新登记。
+                            </p>
+                            <button
+                                type="button"
+                                className="ui-btn ui-btn-outline mt-2 w-full"
+                                onClick={() => {
+                                    const opened = requestNativeExactAlarmPermission();
+                                    if (opened === false) setError("无法打开系统精确闹钟权限页面，请在 Android 设置中手动查找“闹钟和提醒”。");
+                                }}
+                            >
+                                前往开启精确闹钟权限
+                            </button>
+                        </div>
+                    ) : null}
                 </div>
                 {error ? <p className="mt-3 text-sm text-red-500">{error}</p> : null}
                 {config?.enabled ? (
