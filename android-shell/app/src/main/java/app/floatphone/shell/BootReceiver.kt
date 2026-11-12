@@ -4,15 +4,23 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 
-/** 开机恢复原生查岗提醒与推送服务（部分国产 ROM 需用户允许自启动）。 */
+/** Restore persisted native reminders after boot, clock changes, or an app update. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            runCatching { CheckInAlarmScheduler.restore(context) }
-            runCatching { DailyAlarmWatchdogScheduler.restore(context) }
-            runCatching { DailyAlarmCallScheduler.restore(context) }
-            runCatching { DailyAlarmFallbackScheduler.restore(context) }
-            runCatching { PushService.start(context) }
+        when (intent.action) {
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_DATE_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED -> {
+                runCatching { CheckInAlarmScheduler.restore(context) }
+                runCatching { DailyAlarmWatchdogScheduler.restore(context) }
+                runCatching { DailyAlarmCallScheduler.restore(context) }
+                if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+                    runCatching { DailyAlarmFallbackScheduler.restore(context) }
+                    runCatching { PushService.start(context) }
+                }
+            }
         }
     }
 }
