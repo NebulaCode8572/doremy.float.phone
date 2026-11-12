@@ -20,17 +20,18 @@ object DailyAlarmCallScheduler {
 
     fun schedule(context: Context, sessionId: String, characterName: String, callTs: Long, alarmInstanceId: String, attempt: Int) {
         if (alarmInstanceId.isBlank() || attempt !in 1..2) return
+        val dueAt = System.currentTimeMillis() + CallAlert.TIMEOUT_MS
         val value = JSONObject()
             .put(EXTRA_SESSION_ID, sessionId)
             .put(EXTRA_CHARACTER_NAME, characterName)
             .put(EXTRA_CALL_TS, callTs)
             .put(EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
             .put(EXTRA_ATTEMPT, attempt)
+            .put("due_at", dueAt)
             .toString()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_PENDING, value).apply()
         val pending = pendingIntent(context)
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val dueAt = System.currentTimeMillis() + CallAlert.TIMEOUT_MS
         runCatching {
             if (Build.VERSION.SDK_INT >= 23) manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, dueAt, pending)
             else manager.setExact(AlarmManager.RTC_WAKEUP, dueAt, pending)
@@ -87,7 +88,11 @@ object DailyAlarmCallScheduler {
         if (attempt !in 1..2) return
         val pending = pendingIntent(context)
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val dueAt = System.currentTimeMillis() + 5_000L
+        // Preserve the remaining timeout across reboot; if it already elapsed while powered off,
+        // fire immediately rather than granting another full unanswered-call window.
+        val savedDueAt = item.optLong("due_at", 0L)
+        val dueAt = if (savedDueAt > 0L) maxOf(System.currentTimeMillis(), savedDueAt)
+            else System.currentTimeMillis() + 5_000L
         runCatching {
             if (Build.VERSION.SDK_INT >= 23) manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, dueAt, pending)
             else manager.setExact(AlarmManager.RTC_WAKEUP, dueAt, pending)
