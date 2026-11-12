@@ -3510,7 +3510,7 @@ async function executeProactiveCallTool(call: ToolCall, context?: ToolExecutionC
         sessionId: context.sessionId,
         role: "system",
         content: `已安排稍后主动来电：${new Date(schedule.fireAt).toLocaleString()}。通话主题：${intent}`,
-        meta: { compactSystemInstruction: true, shortTermMemoryEvent: true },
+        mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true },
     });
     return {
         name: "稍后主动来电",
