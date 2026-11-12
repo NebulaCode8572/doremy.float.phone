@@ -40,7 +40,7 @@ object CallAlert {
     }.getOrNull()
 
     /** 开始来电：循环振动 + 挂超时。已有来电时先收掉旧的。 */
-    fun start(context: Context, sessionId: String, characterName: String, onTimeout: () -> Unit) {
+    fun start(context: Context, sessionId: String, characterName: String, timeoutMs: Long = TIMEOUT_MS, onTimeout: () -> Unit = {}) {
         stop(context, cancelNotification = false)
         activeSessionId = sessionId
         activeCharacterName = characterName
@@ -56,12 +56,14 @@ object CallAlert {
                 }
             }
         }
-        val runnable = Runnable {
-            timeoutRunnable = null
-            runCatching { onTimeout() }
+        if (timeoutMs > 0L) {
+            val runnable = Runnable {
+                timeoutRunnable = null
+                runCatching { onTimeout() }
+            }
+            timeoutRunnable = runnable
+            handler.postDelayed(runnable, timeoutMs)
         }
-        timeoutRunnable = runnable
-        handler.postDelayed(runnable, TIMEOUT_MS)
     }
 
     /** 使用已同步到 Android 私有目录的角色来电铃声；缺失或静音时保持振动兜底。 */
