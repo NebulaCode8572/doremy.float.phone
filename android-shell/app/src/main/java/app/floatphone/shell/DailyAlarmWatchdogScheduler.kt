@@ -44,6 +44,11 @@ object DailyAlarmWatchdogScheduler {
             .put("time_zone", zone.id)
             .toString()
         if (!prefs.edit().putString(KEY_CONFIG, config).commit()) return false
+        val existing = runCatching { JSONObject(prefs.getString(KEY_PENDING, "").orEmpty()) }.getOrNull()
+        val existingFireAt = existing?.optLong("fire_at", 0L) ?: 0L
+        if (existing?.optString("config_id") == id && existingFireAt > System.currentTimeMillis()) {
+            return arm(context, id, existingFireAt)
+        }
         return scheduleNext(context, JSONObject(config))
     }
 
@@ -68,8 +73,12 @@ object DailyAlarmWatchdogScheduler {
             return
         }
         val fireAt = pending.optLong("fire_at", 0L)
-        if (fireAt <= 0L) { scheduleNext(context, config); return }
-        arm(context, config.optString("id"), maxOf(System.currentTimeMillis() + 1_000L, fireAt))
+        if (fireAt <= System.currentTimeMillis()) {
+            // Do not ring a stale occurrence after a long shutdown; restore the next future day.
+            scheduleNext(context, config)
+            return
+        }
+        arm(context, config.optString("id"), fireAt)
     }
 
     @Synchronized
