@@ -168,6 +168,11 @@
         <receiver android:name=".DailyAlarmFallbackReceiver" android:exported="false" />
 
         <service
+            android:name=".DailyAlarmRingingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <service
             android:name=".PushService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
