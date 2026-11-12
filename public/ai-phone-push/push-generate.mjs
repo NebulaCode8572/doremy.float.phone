@@ -720,7 +720,10 @@ Deno.serve(async (req: Request) => {
       /【我发起了语音通话】/,
       /【拨打电话】/,
     ];
-    let deliverAsCall = payload.merge?.proactiveCall === true;
+    // The dedicated proactive-call trigger is authoritative. Preserve call semantics
+    // even if an older client or an intermediate payload serializer drops merge.proactiveCall.
+    const isExplicitProactiveCall = job.trigger_key.startsWith("proactivecall:");
+    let deliverAsCall = payload.merge?.proactiveCall === true || isExplicitProactiveCall;
     {
       const head = rawText.slice(0, 200);
       const matched = callMarkers
@@ -1141,6 +1144,7 @@ Deno.serve(async (req: Request) => {
         raw_text: rawText,
         meta: {
           ...(payload.merge ?? {}),
+          ...(isExplicitProactiveCall ? { proactiveCall: true } : {}),
           pushGenerated: true,
           ...(executedShortcutMarker ? { shortcutMarker: executedShortcutMarker } : {}),
         },
