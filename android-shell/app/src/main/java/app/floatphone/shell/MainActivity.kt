@@ -250,6 +250,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         // Re-arm exact local timers after the user returns from Android's Alarms & reminders settings.
         runCatching { DailyAlarmWatchdogScheduler.restore(this, allowRecentLate = true) }
+        runCatching { DailyAlarmCallScheduler.restoreRetryDispatch(this) }
         runCatching { DailyAlarmCallScheduler.restore(this) }
         runCatching { webView.evaluateJavascript("window.dispatchEvent(new Event('native-alarm-permissions-changed'))", null) }
     }
