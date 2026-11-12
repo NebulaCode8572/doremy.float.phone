@@ -26,7 +26,7 @@ object DailyAlarmWatchdogScheduler {
     private const val KEY_DISABLED = "disabled"
     private const val REQUEST_CODE = 4205
     private const val DELIVERY_GRACE_MS = 45_000L
-    private const val MAX_DELIVERY_LATENESS_MS = 10 * 60_000L
+    const val MAX_DELIVERY_LATENESS_MS = 15 * 60_000L
 
     @Synchronized
     fun schedule(context: Context, id: String, sessionId: String, characterName: String, localTime: String, timeZone: String): Boolean {
