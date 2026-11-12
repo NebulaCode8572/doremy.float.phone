@@ -47,10 +47,10 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
         };
         refreshPermission();
         document.addEventListener("visibilitychange", refreshPermission);
-        window.addEventListener("native-exact-alarm-permission-changed", refreshPermission);
+        window.addEventListener("native-alarm-permissions-changed", refreshPermission);
         return () => {
             document.removeEventListener("visibilitychange", refreshPermission);
-            window.removeEventListener("native-exact-alarm-permission-changed", refreshPermission);
+            window.removeEventListener("native-alarm-permissions-changed", refreshPermission);
         };
     }, []);
 
