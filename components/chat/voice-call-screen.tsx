@@ -1098,7 +1098,7 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
             className="absolute inset-0 z-[100] flex flex-col text-white overflow-hidden call-bg-default call-keyboard-shift"
             style={bgImageResolved ? { ...keyboardOffsetStyle, background: `url(${bgImageResolved}) center/cover no-repeat` } : keyboardOffsetStyle}
         >
-            {callCssApplied && <SessionCustomCSS css={callCssApplied} scope=".voicecall-subtitle-mask" />}
+            {callCssApplied && <SessionCustomCSS css={callCssApplied} scope=".voicecall-subtitle-mask" allowImports={false} />}
             {/* Dark overlay for readability */}
             <div
                 className="call-overlay absolute inset-0 z-0"
