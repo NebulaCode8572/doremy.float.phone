@@ -1373,7 +1373,11 @@ class MainActivity : AppCompatActivity() {
         fun requestPostNotificationsPermission(): Boolean = runCatching {
             if (Build.VERSION.SDK_INT >= 33 &&
                 ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-            ) this@MainActivity.notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            ) {
+                this@MainActivity.runOnUiThread {
+                    this@MainActivity.notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
             true
         }.getOrDefault(false)
         @JavascriptInterface
