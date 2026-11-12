@@ -49,7 +49,7 @@ object DailyAlarmCallScheduler {
                     .cancel(pendingIntent(context, previousToken))
             }
         }
-        if (!prefs.edit().putString(KEY_PENDING, value).commit()) return false
+        if (!prefs.edit().putString(KEY_PENDING, value).commit()) throw IllegalStateException("Unable to persist daily alarm retry state")
         val pending = pendingIntent(context, JSONObject(value).optString("token"))
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         runCatching {
