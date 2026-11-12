@@ -95,6 +95,7 @@ import {
     searchLocalDataRecords,
 } from "./local-data-fs";
 import { makeTimedWakeId, saveTimedWakeSchedule } from "./timed-wake-storage";
+import { pushChatMessage } from "./chat-storage";
 import { makeProactiveCallId, saveProactiveCallSchedule } from "./proactive-call-storage";
 import { resolveUserIdentity } from "./settings-storage";
 import { attachAbortSignal, isAbortError, throwIfAborted } from "./abort-utils";
@@ -3504,6 +3505,12 @@ async function executeProactiveCallTool(call: ToolCall, context?: ToolExecutionC
         };
     }
 
+    pushChatMessage({
+        sessionId: context.sessionId,
+        role: "system",
+        content: `已安排稍后主动来电：${new Date(schedule.fireAt).toLocaleString()}。通话主题：${intent}`,
+        meta: { compactSystemInstruction: true, shortTermMemoryEvent: true },
+    });
     return {
         name: "稍后主动来电",
         success: true,
