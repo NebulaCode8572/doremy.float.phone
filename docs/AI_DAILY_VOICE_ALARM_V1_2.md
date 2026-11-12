@@ -125,3 +125,9 @@ Verification still required:
 - Real-device tests for full-screen intent, exact-alarm permission behavior, audio focus, notification permission, Do Not Disturb, OEM background restrictions, reboot restoration, and stop-action behavior.
 - This implementation is Android-shell specific; browser-only web push does not have the native retry/fallback state machine.
 - No merge or Netlify deployment has occurred.
+### Incoming-call first greeting
+
+- Character-initiated voice calls now generate the character's first spoken turn immediately after the user accepts, without waiting for user speech and without relying on the optional auto-chat feature.
+- The greeting uses the normal chat-message persistence, subtitle, TTS synthesis, and playback pipeline; its one-time instruction is ephemeral and is not stored in chat history.
+- The Android lock-screen answer flag is now carried through the deep-link event, active-call store, and call layer, so a call already accepted on the lock screen opens directly in the connected state and triggers the greeting once.
+- Normal incoming calls still require an explicit user answer in the call UI; this change does not auto-answer calls.
