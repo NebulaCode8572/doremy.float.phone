@@ -136,3 +136,8 @@ Verification still required:
 - The native unanswered-call timeout now persists its absolute due time. After reboot, the remaining timeout is restored; if it elapsed while the device was powered off, the retry/fallback path runs immediately rather than receiving a fresh 5-second timeout.
 - Explicitly declining or closing the lock-screen incoming-call activity cancels the daily-alarm retry, matching the notification-action decline behavior. A deliberate decline does not trigger a second call or native fallback.
 - The lock-screen incoming-call activity now treats both its decline button and Android system Back as explicit declines, cancelling the pending retry in either case.
+### Proactive call handoff polish
+
+- When a character-initiated call is answered, the first spoken turn now checks for a recent assistant message (within 15 minutes) already delivered to chat. The ephemeral call instruction asks the character to continue naturally without repeating that message, which is important for daily-alarm and scheduled proactive-call openings.
+- Once a `proactivecall:<id>` server outbox entry is merged (including duplicate/already-handled paths), the corresponding local one-shot schedule is removed so completed calls do not leave stale local schedule records.
+- `supabase/functions/push-generate/index.ts` and `public/ai-phone-push/push-generate.mjs` were checked and are byte-for-byte identical at the current branch revision.
