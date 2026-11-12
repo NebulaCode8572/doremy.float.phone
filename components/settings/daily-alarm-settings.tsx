@@ -53,7 +53,7 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
                 timeZone,
                 updatedAt: Date.now(),
             };
-            const result = await armDailyAlarmBailout(nextConfig);
+            const result = await armDailyAlarmBailout(nextConfig, { force: true });
             if (!result.ok) {
                 setError(result.reason || "离线闹钟预约失败。");
                 return;
