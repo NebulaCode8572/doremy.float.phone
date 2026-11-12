@@ -15,6 +15,7 @@ class BootReceiver : BroadcastReceiver() {
             Intent.ACTION_TIMEZONE_CHANGED -> {
                 runCatching { CheckInAlarmScheduler.restore(context) }
                 runCatching { DailyAlarmWatchdogScheduler.restore(context) }
+                runCatching { DailyAlarmCallScheduler.restoreRetryDispatch(context) }
                 runCatching { DailyAlarmCallScheduler.restore(context) }
                 if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
                     runCatching { DailyAlarmFallbackScheduler.restore(context) }
