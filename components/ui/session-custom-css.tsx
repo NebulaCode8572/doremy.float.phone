@@ -14,11 +14,12 @@ import { extractCssImports, scopeSessionCSS } from "@/lib/css-scoper";
  * <link> 带 precedence 属性由 React 19 提升进 <head> 并按 href 去重，跨重渲染
  * 保持稳定；字体加载失败只缺字体，不影响其余自定义样式。
  */
-export function SessionCustomCSS({ css, scope }: { css: string; scope: string }) {
+export function SessionCustomCSS({ css, scope, allowImports = true }: { css: string; scope: string; allowImports?: boolean }) {
     const { imports, body } = useMemo(() => {
         const extracted = extractCssImports(css || "");
-        return { imports: extracted.imports, body: extracted.css };
-    }, [css]);
+        // 通话字幕样式必须严格留在通话页面内；@import 会把外部样式表挂到 document，无法做作用域隔离。
+        return { imports: allowImports ? extracted.imports : [], body: extracted.css };
+    }, [css, allowImports]);
     const scoped = useMemo(() => scopeSessionCSS(body, scope), [body, scope]);
 
     return (
