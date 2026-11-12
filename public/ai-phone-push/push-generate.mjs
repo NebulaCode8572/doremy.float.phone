@@ -1210,6 +1210,11 @@ Deno.serve(async (req: Request) => {
         tag: `${job.id}-${index}`,
         url: targetUrl,
         ...(deliverAsCall ? { sessionId: callSessionId, callTs: Date.now() } : {}),
+        ...(payload.merge?.dailyAlarm && deliverAsCall ? {
+          dailyAlarm: payload.merge.dailyAlarm,
+          alarmInstanceId: String(payload.merge.alarmInstanceId || ""),
+          alarmAttempt: 1,
+        } : {}),
       });
       if (vapid) {
         for (const sub of webSubs) {
@@ -1248,6 +1253,11 @@ Deno.serve(async (req: Request) => {
                     ? { avatar: payload.notify.avatar }
                     : {}),
                   ...(deliverAsCall ? { kind: "call", characterName: title, callTs: Date.now() } : {}),
+                  ...(payload.merge?.dailyAlarm && deliverAsCall ? {
+                    dailyAlarm: payload.merge.dailyAlarm,
+                    alarmInstanceId: String(payload.merge.alarmInstanceId || ""),
+                    alarmAttempt: 1,
+                  } : {}),
                 },
               })),
             }),
