@@ -11,9 +11,12 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Base64
+import android.util.Log
 import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 // RemoteInput 必须用 androidx 版：NotificationCompat.Action.addRemoteInput()
 // 收的是 androidx.core.app.RemoteInput，与框架的 android.app.RemoteInput
 // 是两个类型（同名不同源），混用会直接编译失败。
@@ -45,6 +48,7 @@ class PushService : Service() {
         private const val CH_MESSAGES = "shell_messages"
         private const val CH_CALLS = "shell_calls"
         private const val NOTIF_FG_ID = 1
+        private const val TAG_CALL_PRESENTATION = "CallPresentation"
         const val ACTION_DAILY_ALARM_RETRY = "app.floatphone.shell.DAILY_ALARM_RETRY"
         private var running = false
 
@@ -440,7 +444,9 @@ class PushService : Service() {
             .addAction(0, "拒接", buildAction(CallActionReceiver.ACTION_DECLINE, 61))
             .addAction(0, "接听", buildAction(CallActionReceiver.ACTION_ANSWER, 62))
             .build()
-        getSystemService(NotificationManager::class.java).notify(CallAlert.NOTIF_CALL_ID, notification)
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(CallAlert.NOTIF_CALL_ID, notification)
+        logCallPresentationDiagnostics(notificationManager)
         if (alarmInstanceId.isNotBlank()) {
             CallAlert.start(this, sessionId, characterName, timeoutMs = 0L)
         } else {
@@ -450,6 +456,37 @@ class PushService : Service() {
                 runCatching { showMissedCallNotification(characterName) }
             }
         }
+    }
+
+    /**
+     * Records the OS-side conditions that determine whether Android can launch the
+     * full-screen incoming-call Activity or downgrade it to a heads-up notification.
+     * This is diagnostic only: it does not change notification behavior or permissions.
+     */
+    private fun logCallPresentationDiagnostics(notificationManager: NotificationManager) {
+        val notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
+        val fullScreenIntentAllowed = if (Build.VERSION.SDK_INT >= 34) {
+            runCatching { notificationManager.canUseFullScreenIntent() }.getOrNull()
+        } else {
+            null // Android 13 and below do not expose this runtime query.
+        }
+        val channelImportance = notificationManager.getNotificationChannel(CH_CALLS)?.importance ?: -1
+        val notificationPosted = runCatching {
+            notificationManager.activeNotifications.any { it.id == CallAlert.NOTIF_CALL_ID }
+        }.getOrDefault(false)
+        val screenInteractive = runCatching {
+            getSystemService(PowerManager::class.java).isInteractive
+        }.getOrDefault(false)
+
+        Log.i(
+            TAG_CALL_PRESENTATION,
+            "call notification posted; sdk=${Build.VERSION.SDK_INT}, " +
+                "notificationsEnabled=$notificationsEnabled, " +
+                "fullScreenIntentAllowed=$fullScreenIntentAllowed, " +
+                "channelImportance=$channelImportance, " +
+                "activeNotification=$notificationPosted, " +
+                "screenInteractive=$screenInteractive, category=CALL, fullScreenIntent=true",
+        )
     }
 
     private fun showMissedCallNotification(characterName: String) {
