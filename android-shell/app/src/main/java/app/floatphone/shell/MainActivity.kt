@@ -1333,14 +1333,16 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun canScheduleExactAlarms(): Boolean = runCatching {
             Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
-                (getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager).canScheduleExactAlarms()
+                (this@MainActivity.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager).canScheduleExactAlarms()
         }.getOrDefault(false)
 
         @JavascriptInterface
         fun requestExactAlarmPermission(): Boolean = runCatching {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || canScheduleExactAlarms()) return@runCatching true
-            startActivity(
-                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName"))
+            val exactAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                (this@MainActivity.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager).canScheduleExactAlarms()
+            if (exactAllowed) return@runCatching true
+            this@MainActivity.startActivity(
+                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${this@MainActivity.packageName}"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
             true
