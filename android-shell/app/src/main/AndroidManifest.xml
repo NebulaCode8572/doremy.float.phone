@@ -152,6 +152,14 @@
             android:turnScreenOn="true"
             android:theme="@style/Theme.FloatShell" />
 
+        <activity
+            android:name=".DailyAlarmFallbackActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.FloatShell" />
+
         <receiver
             android:name=".CallActionReceiver"
             android:exported="false" />
