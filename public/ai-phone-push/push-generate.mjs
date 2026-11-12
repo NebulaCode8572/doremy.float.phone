@@ -1177,14 +1177,22 @@ Deno.serve(async (req: Request) => {
     // hasShellSub 恒为 false，下面的广播整段被跳过：消息生成成功、写得进 outbox，
     // 却永远弹不出通知。壳订阅本就只属于本项目唯一的主人，按 endpoint 前缀单独取，
     // 不掺 user_id；topic 也改用 endpoint 里带的站点 id，与壳实际订阅的频道一致。
-    const shellSubsResponse = await rest("push_subscriptions?endpoint=like.shell:*&select=endpoint&limit=50");
-    const shellTopics = (shellSubsResponse.ok
+    const shellEndpoint = `shell:${job.user_id}`;
+    const shellSubsResponse = await rest(
+      `push_subscriptions?user_id=eq.${encodeURIComponent(job.user_id)}`
+        + `&endpoint=eq.${encodeURIComponent(shellEndpoint)}&select=endpoint&limit=1`,
+    );
+    const shellSubRows = shellSubsResponse.ok
       ? await shellSubsResponse.json() as { endpoint: string }[]
-      : [])
-      .map(sub => String(sub.endpoint || "").slice("shell:".length).trim())
-      .filter(Boolean)
-      .map(userId => `shellpush:${userId}`);
+      : [];
+    const shellTopics = shellSubRows
+      .filter(sub => sub.endpoint === shellEndpoint)
+      .map(() => `shellpush:${job.user_id}`);
     const hasShellSub = shellTopics.length > 0;
+    if (!shellSubsResponse.ok) {
+      const detail = await shellSubsResponse.text().catch(() => "");
+      pushErrors.push(`shell subscription lookup http ${shellSubsResponse.status}${detail ? `: ${detail.slice(0, 100)}` : ""}`);
+    }
     const vapid = vapidRow
       ? { publicKey: vapidRow.vapid_public_key, privateKey: vapidRow.vapid_private_key, subject: siteOrigin || "mailto:push@ai-phone.local" }
       : null;
@@ -1266,9 +1274,9 @@ Deno.serve(async (req: Request) => {
               })),
             }),
           });
-          await response.text().catch(() => undefined);
+          const responseText = await response.text().catch(() => "");
           if (response.ok) pushed += 1;
-          else pushErrors.push(`shell http ${response.status}`);
+          else pushErrors.push(`shell http ${response.status}${responseText ? `: ${responseText.slice(0, 100)}` : ""}`);
         } catch (err) {
           pushErrors.push(`shell ${(err instanceof Error ? err.message : String(err)).slice(0, 60)}`);
         }
