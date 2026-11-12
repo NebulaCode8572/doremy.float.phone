@@ -121,7 +121,7 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
                 </div>
             </div>
             <p className="text-xs leading-relaxed text-[var(--c-text-secondary)]">
-                当前版本先完成每日消息与来电的重复排期。未接重拨、第二次未接后的原生闹钟兜底，以及重启后的本机恢复将在后续阶段接入；现在不要把它当作唯一可靠的起床闹钟。
+                每日闹钟会先发送角色消息，再发起语音来电；无人接听时自动重拨一次，第二次仍无人接听则启动本机原生闹钟，并在重启后尝试恢复。不同 Android 设备的后台限制、锁屏弹窗和精确闹钟权限可能影响实际表现；完成你的设备实测前，请保留系统闹钟作为备用。
             </p>
         </div>
     );
