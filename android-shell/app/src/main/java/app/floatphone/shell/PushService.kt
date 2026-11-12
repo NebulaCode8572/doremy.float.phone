@@ -397,6 +397,7 @@ class PushService : Service() {
             putExtra(IncomingCallActivity.EXTRA_SESSION_ID, sessionId)
             putExtra(IncomingCallActivity.EXTRA_CHARACTER_NAME, characterName)
             putExtra(IncomingCallActivity.EXTRA_CALL_TS, callTs)
+            putExtra(IncomingCallActivity.EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
         }
         val fullScreenPending = PendingIntent.getActivity(
             this, 60, fullScreen,
@@ -408,6 +409,7 @@ class PushService : Service() {
                 action = actionName
                 putExtra(CallActionReceiver.EXTRA_SESSION_ID, sessionId)
                 putExtra(CallActionReceiver.EXTRA_CALL_TS, callTs)
+                putExtra(CallActionReceiver.EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
             },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
