@@ -82,13 +82,14 @@ Implemented on `feature/ai-daily-voice-alarm`:
 - Added a separate `proactive-call-storage` keyspace; it does not replace or mutate existing delayed-message schedules.
 - Added the `稍后主动来电` internal action under the existing delayed-contact capability gate.
 - Added a dedicated server-side timed task with a stable `proactivecall:<scheduleId>` trigger key.
+- On successful server scheduling, appends a compact system event to the chat timeline with the planned time and call intent; the actual generated opening line is persisted through the normal push outbox.
 - Added an explicit `proactiveCall: true` task marker. `push-generate` now treats that marker as a call dispatch instruction, so the scheduled task does not depend on the model emitting a call marker.
 - The generation prompt asks the character for the opening line to use after the call connects.
 
 Verification still pending:
 - GitHub Actions Web Typecheck and Android APK build for this commit.
 - Confirm that the new action is exposed in both native-tool and text-action prompt modes.
-- Confirm that the schedule confirmation and the eventual call appear in the chat timeline as intended.
+- Confirm on-device that the compact schedule event and the eventual call opening line both appear in the chat timeline as intended.
 - Verify delivery and lock-screen call behavior on a real Android device.
 
 This phase does not yet implement daily recurrence, retry/fallback state transitions, or reboot restoration. No merge or deployment has occurred.
