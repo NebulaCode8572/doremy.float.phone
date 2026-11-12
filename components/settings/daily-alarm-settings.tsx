@@ -45,7 +45,7 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
             const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
             const next = nextDailyAlarmAt(Date.now(), localTime, timeZone);
             const nextConfig: DailyAlarmConfig = {
-                id: config?.id || `daily_alarm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                id: `daily_alarm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
                 enabled: true,
                 sessionId: session.id,
                 characterId,
