@@ -16,6 +16,7 @@ import {
 } from "@/lib/chat-storage";
 import { dispatchChatMessageNotice } from "@/lib/chat-notification-events";
 import { previewChatSound } from "@/lib/chat-sound";
+import { syncNativeCallRingtoneForSession } from "@/lib/call-ringtone-sync";
 import { Toggle } from "@/components/ui/form";
 import { ChatSoundSourceEditor, SOUND_ITEMS } from "./chat-sound-editor";
 
@@ -46,6 +47,7 @@ export function SessionChatSoundsSection({ session, accent, onUpdate }: {
         setSounds(current => {
             const next: ChatSoundsConfig = { ...current, [kind]: { ...current[kind], ...patch } };
             onUpdate({ sounds: next });
+            if (kind === "incomingCall") void syncNativeCallRingtoneForSession({ ...session, sounds: next });
             return next;
         });
     };
@@ -57,6 +59,7 @@ export function SessionChatSoundsSection({ session, accent, onUpdate }: {
                 const next: ChatSoundsConfig = { ...current };
                 delete next[kind];
                 onUpdate({ sounds: next });
+                if (kind === "incomingCall") void syncNativeCallRingtoneForSession({ ...session, sounds: next });
                 return next;
             });
             return;
