@@ -25,7 +25,7 @@ import {
     loadMenstrualRecords,
 } from "./menstrual-storage";
 import { loadTimedWakeSchedules, removeTimedWakeSchedule, type TimedWakeSchedule } from "./timed-wake-storage";
-import type { ProactiveCallSchedule } from "./proactive-call-storage";
+import { loadProactiveCallSchedules, type ProactiveCallSchedule } from "./proactive-call-storage";
 import {
     IDLE_RECONNECT_MAX_CONSECUTIVE,
     loadIdleReconnectRules,
@@ -748,6 +748,14 @@ export async function refreshScheduledBailouts(): Promise<void> {
     }
     refreshingScheduled = true;
     try {
+        for (const schedule of loadProactiveCallSchedules()) {
+            // 已经过期的本地记录不再重挂，避免完成过的来电在后续巡检中被重新排队。
+            if (schedule.fireAt <= Date.now()) continue;
+            const result = await armProactiveCallBailout(schedule);
+            console.warn(result.ok
+                ? `[PushBailout] 稍后主动来电已挂上：${schedule.id}`
+                : `[PushBailout] 稍后主动来电未挂上：${schedule.id} — ${result.reason}`);
+        }
         for (const schedule of loadTimedWakeSchedules()) {
             // 失败原因过去被直接丢弃，导致「push_jobs 一条记录都没有」完全无法定位：
             // 是没走到、被安静时段拦了、找不到会话、还是 POST 被拒，全都看不见。
