@@ -60,14 +60,23 @@ object DailyAlarmCallScheduler {
     }
 
     @Synchronized
-    fun cancel(context: Context) {
+    fun cancel(context: Context, expectedInstanceId: String = "") {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_PENDING, "").orEmpty()
         val pendingItem = runCatching { JSONObject(raw) }.getOrNull()
+        val currentInstanceId = pendingItem?.optString(EXTRA_ALARM_INSTANCE_ID).orEmpty()
+        if (expectedInstanceId.isNotBlank() && currentInstanceId.isNotBlank() && currentInstanceId != expectedInstanceId) {
+            prefs.edit().putString(KEY_TERMINAL_INSTANCE, expectedInstanceId).commit()
+            return
+        }
+        if (expectedInstanceId.isNotBlank() && currentInstanceId.isBlank()) {
+            prefs.edit().putString(KEY_TERMINAL_INSTANCE, expectedInstanceId).commit()
+            return
+        }
         val token = pendingItem?.optString("token").orEmpty()
-        val instanceId = pendingItem?.optString(EXTRA_ALARM_INSTANCE_ID).orEmpty()
+        val terminalId = expectedInstanceId.ifBlank { currentInstanceId }
         val edit = prefs.edit().remove(KEY_PENDING)
-        if (instanceId.isNotBlank()) edit.putString(KEY_TERMINAL_INSTANCE, instanceId)
+        if (terminalId.isNotBlank()) edit.putString(KEY_TERMINAL_INSTANCE, terminalId)
         edit.commit()
         runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pendingIntent(context, token)) }
     }
