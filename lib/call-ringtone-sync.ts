@@ -13,6 +13,8 @@ type NativeRingtoneBridge = {
     deleteCallRingtone: (key: string) => boolean;
     scheduleDailyAlarmWatchdog?: (id: string, sessionId: string, characterName: string, localTime: string, timeZone: string) => boolean;
     cancelDailyAlarmWatchdog?: () => boolean;
+    canScheduleExactAlarms?: () => boolean;
+    requestExactAlarmPermission?: () => boolean;
 };
 
 declare global {
@@ -145,6 +147,21 @@ export async function syncNativeCallRingtoneById(sessionId: string): Promise<voi
     if (session) await syncNativeCallRingtoneForSession(session);
 }
 
+/** Read Android's exact-alarm special-access state. Null means unavailable outside the shell. */
+export function getNativeExactAlarmPermission(): boolean | null {
+    if (typeof window === "undefined" || !isShellEnvironment()) return null;
+    const native = window.AndroidShell;
+    if (typeof native?.canScheduleExactAlarms !== "function") return null;
+    try { return native.canScheduleExactAlarms(); } catch { return false; }
+}
+
+/** Open Android's Alarms & reminders settings when exact-alarm access is missing. */
+export function requestNativeExactAlarmPermission(): boolean | null {
+    if (typeof window === "undefined" || !isShellEnvironment()) return null;
+    const native = window.AndroidShell;
+    if (typeof native?.requestExactAlarmPermission !== "function") return false;
+    try { return native.requestExactAlarmPermission(); } catch { return false; }
+}
 /** Arm the Android-only local watchdog. Null means this is not the native shell. */
 export function scheduleNativeDailyAlarmWatchdog(
     config: { id: string; sessionId: string; localTime: string; timeZone: string },
