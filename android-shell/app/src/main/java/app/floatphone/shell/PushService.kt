@@ -106,6 +106,11 @@ class PushService : Service() {
             val attempt = intent.getIntExtra(DailyAlarmCallScheduler.EXTRA_ATTEMPT, 2)
             runCatching { showIncomingCallNotification(name, sessionId, callTs, alarmInstanceId, attempt) }
                 .onFailure { DailyAlarmCallScheduler.onDeliveryFailure(this, sessionId, name, alarmInstanceId, attempt) }
+            if (attempt >= 2) DailyAlarmCallScheduler.clearRetryDispatch(this, alarmInstanceId)
+        } else {
+            // A sticky service restart or a normal push can resume a retry that was persisted
+            // just before the process died.
+            DailyAlarmCallScheduler.restoreRetryDispatch(this)
         }
         return START_STICKY
     }
