@@ -104,6 +104,11 @@ async function synthesizeMinimax(text: string, config: VoiceApiConfig, emotion?:
         voiceSetting.emotion = normalizedEmotion;
     }
 
+    // Remove the optional [语音条: ...] wrapper before sending text to MiniMax.
+    const cleanText = typeof text === "string"
+        ? text.replace(/^\\[语音条[:：]\\s*/, "").replace(/\\]$/, "").trim()
+        : text;
+
     const response = await fetchWithTimeout(`${baseUrl}/t2a_v2`, {
         method: "POST",
         headers: {
@@ -112,7 +117,7 @@ async function synthesizeMinimax(text: string, config: VoiceApiConfig, emotion?:
         },
         body: JSON.stringify({
             model: config.model || "speech-01-turbo",
-            text,
+            text: cleanText,
             stream: false,
             ...(config.languageBoost ? { language_boost: config.languageBoost } : {}),
             voice_setting: voiceSetting,
