@@ -1395,6 +1395,39 @@ class MainActivity : AppCompatActivity() {
         "wav" -> "audio/wav"
         "mp4" -> "video/mp4"
         else -> "application/octet-stream"
+        // ── 来电铃声同步桥 ─────────────────────────────────────
+        // 网页端按 sessionId（或保留键 "global"）分块同步 incomingCall 音频。
+        // 单块限制由原生存储层校验；不接受任意文件路径或非音频 MIME。
+
+        @JavascriptInterface
+        fun beginCallRingtoneUpload(key: String, mimeType: String, expectedBytes: Int): Boolean =
+            runCatching { CallRingtoneStore.beginUpload(this@MainActivity, key, mimeType, expectedBytes) }
+                .getOrDefault(false)
+
+        @JavascriptInterface
+        fun appendCallRingtoneUploadChunk(key: String, base64Chunk: String): Boolean =
+            runCatching { CallRingtoneStore.appendChunk(this@MainActivity, key, base64Chunk) }
+                .getOrDefault(false)
+
+        @JavascriptInterface
+        fun finishCallRingtoneUpload(key: String): Boolean =
+            runCatching { CallRingtoneStore.finishUpload(this@MainActivity, key) }
+                .getOrDefault(false)
+
+        @JavascriptInterface
+        fun setCallRingtoneMuted(key: String, muted: Boolean): Boolean = runCatching {
+            require(key.isNotBlank() && key.length <= 256)
+            CallRingtoneStore.setMuted(this@MainActivity, key, muted)
+            true
+        }.getOrDefault(false)
+
+        @JavascriptInterface
+        fun deleteCallRingtone(key: String): Boolean = runCatching {
+            require(key.isNotBlank() && key.length <= 256)
+            CallRingtoneStore.delete(this@MainActivity, key)
+            true
+        }.getOrDefault(false)
+
     }
 
     /**
