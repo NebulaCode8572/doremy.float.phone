@@ -82,6 +82,15 @@ object DailyAlarmCallScheduler {
     }
 
     @Synchronized
+    fun cancelForConfig(context: Context, configId: String) {
+        if (configId.isBlank()) return
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_PENDING, "").orEmpty()
+        val item = runCatching { JSONObject(raw) }.getOrNull() ?: return
+        val instanceId = item.optString(EXTRA_ALARM_INSTANCE_ID)
+        if (instanceId.startsWith("$configId:")) cancel(context, instanceId)
+    }
+
+    @Synchronized
     fun hasPendingInstance(context: Context, alarmInstanceId: String): Boolean {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_PENDING, "").orEmpty()
         val item = runCatching { JSONObject(raw) }.getOrNull() ?: return false
@@ -215,6 +224,15 @@ object DailyAlarmFallbackScheduler {
             if (Build.VERSION.SDK_INT >= 23) manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, dueAt, pending)
             else manager.setExact(AlarmManager.RTC_WAKEUP, dueAt, pending)
         }.onFailure { manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, dueAt, pending) }
+    }
+
+    fun cancelForConfig(context: Context, configId: String) {
+        if (configId.isBlank()) return
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_PENDING, "").orEmpty()
+        val item = runCatching { JSONObject(raw) }.getOrNull() ?: return
+        if (item.optString(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID).startsWith("$configId:")) {
+            cancel(context)
+        }
     }
 
     fun cancel(context: Context) {
