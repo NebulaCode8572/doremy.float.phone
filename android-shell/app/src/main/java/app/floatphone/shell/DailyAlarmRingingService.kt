@@ -37,6 +37,12 @@ class DailyAlarmRingingService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
+        if (!DailyAlarmFallbackScheduler.isPendingValid(this, raw)) {
+            DailyAlarmCallScheduler.markTerminal(this, item.optString(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID))
+            DailyAlarmFallbackScheduler.cancel(this)
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         val sessionId = item.optString(DailyAlarmCallScheduler.EXTRA_SESSION_ID)
         val name = item.optString(DailyAlarmCallScheduler.EXTRA_CHARACTER_NAME).ifBlank { "角色" }
 
