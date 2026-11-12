@@ -10,6 +10,7 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.os.PowerManager
 
 /**
  * 来电提示的共享状态：角色铃声循环 + 振动循环 + 超时未接。
@@ -73,6 +74,9 @@ object CallAlert {
         runCatching {
             MediaPlayer().also { player ->
                 ringtonePlayer = player
+                // Keep the audio pipeline alive while the screen is off, especially for
+                // the persistent native alarm fallback running under a foreground service.
+                player.setWakeMode(context, PowerManager.PARTIAL_WAKE_LOCK)
                 player.setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
