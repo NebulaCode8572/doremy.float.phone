@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import org.json.JSONObject
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -34,6 +35,7 @@ object DailyAlarmWatchdogScheduler {
         val oldConfig = runCatching { JSONObject(prefs.getString(KEY_CONFIG, "").orEmpty()) }.getOrNull()
         val oldId = oldConfig?.optString("id").orEmpty()
         if (oldId.isNotBlank() && oldId != id) {
+            markConfigOccurrencesTerminal(context, oldConfig ?: JSONObject())
             runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pendingIntent(context, oldId)) }
             DailyAlarmCallScheduler.cancelForConfig(context, oldId)
             DailyAlarmFallbackScheduler.cancelForConfig(context, oldId)
@@ -60,6 +62,7 @@ object DailyAlarmWatchdogScheduler {
         val config = runCatching { JSONObject(prefs.getString(KEY_CONFIG, "").orEmpty()) }.getOrNull()
         val id = config?.optString("id").orEmpty()
         if (id.isNotBlank()) {
+            markConfigOccurrencesTerminal(context, config ?: JSONObject())
             runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pendingIntent(context, id)) }
             DailyAlarmCallScheduler.cancelForConfig(context, id)
             DailyAlarmFallbackScheduler.cancelForConfig(context, id)
@@ -105,6 +108,19 @@ object DailyAlarmWatchdogScheduler {
         if (!started) DailyAlarmCallScheduler.onDeliveryFailure(context, sessionId, name, instanceId, 1)
     }
 
+    private fun markConfigOccurrencesTerminal(context: Context, config: JSONObject) {
+        val id = config.optString("id")
+        if (id.isBlank()) return
+        val zone = runCatching { ZoneId.of(config.optString("time_zone")) }.getOrNull()
+        if (zone != null) {
+            val today = LocalDate.now(zone).format(DateTimeFormatter.ISO_LOCAL_DATE)
+            DailyAlarmCallScheduler.markTerminal(context, "$id:$today")
+        }
+        val pendingRaw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_PENDING, "").orEmpty()
+        val pending = runCatching { JSONObject(pendingRaw) }.getOrNull()
+        val pendingInstance = pending?.optString("instance_id").orEmpty()
+        if (pendingInstance.startsWith("$id:")) DailyAlarmCallScheduler.markTerminal(context, pendingInstance)
+    }
     private fun scheduleNext(context: Context, config: JSONObject): Boolean {
         val id = config.optString("id")
         val zone = runCatching { ZoneId.of(config.optString("time_zone")) }.getOrNull() ?: return false
