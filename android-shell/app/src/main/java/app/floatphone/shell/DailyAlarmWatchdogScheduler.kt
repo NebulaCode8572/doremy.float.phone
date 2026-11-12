@@ -23,8 +23,10 @@ object DailyAlarmWatchdogScheduler {
     private const val PREFS = "daily_alarm_watchdog"
     private const val KEY_CONFIG = "config"
     private const val KEY_PENDING = "pending"
+    private const val KEY_DISABLED = "disabled"
     private const val REQUEST_CODE = 4205
     private const val DELIVERY_GRACE_MS = 45_000L
+    private const val MAX_DELIVERY_LATENESS_MS = 10 * 60_000L
 
     @Synchronized
     fun schedule(context: Context, id: String, sessionId: String, characterName: String, localTime: String, timeZone: String): Boolean {
@@ -47,7 +49,7 @@ object DailyAlarmWatchdogScheduler {
             .put("local_time", time.toString())
             .put("time_zone", zone.id)
             .toString()
-        if (!prefs.edit().putString(KEY_CONFIG, config).commit()) return false
+        if (!prefs.edit().putString(KEY_CONFIG, config).putBoolean(KEY_DISABLED, false).commit()) return false
         val existing = runCatching { JSONObject(prefs.getString(KEY_PENDING, "").orEmpty()) }.getOrNull()
         val existingFireAt = existing?.optLong("fire_at", 0L) ?: 0L
         if (existing?.optString("config_id") == id && existingFireAt > System.currentTimeMillis()) {
@@ -67,7 +69,7 @@ object DailyAlarmWatchdogScheduler {
             DailyAlarmCallScheduler.cancelForConfig(context, id)
             DailyAlarmFallbackScheduler.cancelForConfig(context, id)
         }
-        prefs.edit().remove(KEY_CONFIG).remove(KEY_PENDING).commit()
+        prefs.edit().remove(KEY_CONFIG).remove(KEY_PENDING).putBoolean(KEY_DISABLED, true).commit()
     }
 
     @Synchronized
@@ -76,12 +78,15 @@ object DailyAlarmWatchdogScheduler {
         val config = runCatching { JSONObject(prefs.getString(KEY_CONFIG, "").orEmpty()) }.getOrNull() ?: return
         val pending = runCatching { JSONObject(prefs.getString(KEY_PENDING, "").orEmpty()) }.getOrNull()
         if (pending == null || pending.optString("config_id") != config.optString("id")) {
+            pending?.optString("instance_id")?.takeIf { it.isNotBlank() }?.let { DailyAlarmCallScheduler.markTerminal(context, it) }
             scheduleNext(context, config)
             return
         }
         val fireAt = pending.optLong("fire_at", 0L)
         if (fireAt <= System.currentTimeMillis()) {
-            // Do not ring a stale occurrence after a long shutdown; restore the next future day.
+            // Do not ring a stale occurrence after a long shutdown. Keep a tombstone so a
+            // delayed server push for the skipped occurrence cannot resurrect the call.
+            pending.optString("instance_id").takeIf { it.isNotBlank() }?.let { DailyAlarmCallScheduler.markTerminal(context, it) }
             scheduleNext(context, config)
             return
         }
@@ -98,16 +103,36 @@ object DailyAlarmWatchdogScheduler {
         val firedId = intent?.data?.lastPathSegment.orEmpty()
         if (firedId.isNotBlank() && firedId != id) return
         val instanceId = pending.optString("instance_id")
-        // Arm the next local day first; today's attempt must not block recurrence.
+        // Arm the next local day first; the current attempt must not block recurrence.
         scheduleNext(context, config)
         if (instanceId.isBlank() || DailyAlarmCallScheduler.hasPendingInstance(context, instanceId)
             || DailyAlarmCallScheduler.isTerminalInstance(context, instanceId)) return
+        if (!isOccurrenceActive(context, instanceId)) {
+            DailyAlarmCallScheduler.markTerminal(context, instanceId)
+            return
+        }
         val sessionId = config.optString("session_id")
         val name = config.optString("character_name").ifBlank { "角色" }
         val started = PushService.startDailyAlarmCall(context, sessionId, name, instanceId, 1)
         if (!started) DailyAlarmCallScheduler.onDeliveryFailure(context, sessionId, name, instanceId, 1)
     }
 
+    /** Reject delayed server calls for disabled, replaced, or stale daily occurrences. */
+    fun isOccurrenceActive(context: Context, alarmInstanceId: String): Boolean {
+        if (alarmInstanceId.isBlank()) return false
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val config = runCatching { JSONObject(prefs.getString(KEY_CONFIG, "").orEmpty()) }.getOrNull()
+            ?: return !prefs.getBoolean(KEY_DISABLED, false)
+        val configId = config.optString("id")
+        if (configId.isBlank() || !alarmInstanceId.startsWith("$configId:")) return false
+        val dateKey = alarmInstanceId.substringAfterLast(":")
+        val date = runCatching { LocalDate.parse(dateKey) }.getOrNull() ?: return false
+        val zone = runCatching { ZoneId.of(config.optString("time_zone")) }.getOrNull() ?: return false
+        val time = runCatching { LocalTime.parse(config.optString("local_time")) }.getOrNull() ?: return false
+        val scheduledAt = date.atTime(time).atZone(zone).toInstant().toEpochMilli()
+        val now = System.currentTimeMillis()
+        return now >= scheduledAt - 2 * 60_000L && now - scheduledAt <= MAX_DELIVERY_LATENESS_MS
+    }
     private fun markConfigOccurrencesTerminal(context: Context, config: JSONObject) {
         val id = config.optString("id")
         if (id.isBlank()) return
