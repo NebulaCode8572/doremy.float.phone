@@ -110,3 +110,18 @@ Not yet implemented in this phase:
 - On-device verification of actual daily delivery and timezone behavior.
 
 Release remains blocked on CI and real-device verification. No merge or deployment has occurred.
+
+### Phase 3C — native missed-call retry and fallback (implementation added)
+
+- Daily alarm identity and date-scoped instance ID are now attached to the native shell incoming-call broadcast.
+- Android persists a 55-second timeout for each daily-alarm call attempt using AlarmManager, rather than relying only on an in-process timer.
+- If attempt 1 times out without user action, Android stops the first ring and presents attempt 2. The morning message is not regenerated or resent.
+- If attempt 2 times out, Android schedules an immediate native alarm notification and plays the selected character's cached ringtone with looping vibration.
+- The native fallback remains persisted until the user presses Stop alarm; BootReceiver restores pending retry/fallback timers after a reboot.
+- Answer and explicit decline both cancel the pending retry. Explicit decline is treated as a deliberate user action, not as an unanswered timeout; only no-answer timeout triggers retry.
+
+Verification still required:
+- GitHub Actions Web TypeScript/production build and Android APK build for the latest commit.
+- Real-device tests for full-screen intent, exact-alarm permission behavior, audio focus, notification permission, Do Not Disturb, OEM background restrictions, reboot restoration, and stop-action behavior.
+- This implementation is Android-shell specific; browser-only web push does not have the native retry/fallback state machine.
+- No merge or Netlify deployment has occurred.
