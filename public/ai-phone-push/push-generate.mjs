@@ -1280,7 +1280,7 @@ Deno.serve(async (req: Request) => {
           pushErrors.push(`shell ${(err instanceof Error ? err.message : String(err)).slice(0, 60)}`);
         }
       }
-      await progress(`pushed ${index + 1}/${parts.length}${pushErrors.length ? `, errors: ${pushErrors[0]}` : ""}`);
+      await progress(`pushed ${index + 1}/${parts.length}, shell targets=${shellTopics.length}${pushErrors.length ? `, errors: ${pushErrors[0]}` : ""}`);
     }
 
     // 第一轮正文已经落库并完成推送后，再发“运行快捷指令”通知。用户看到的
