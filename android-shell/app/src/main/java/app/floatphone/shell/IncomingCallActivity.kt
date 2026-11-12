@@ -104,7 +104,7 @@ class IncomingCallActivity : AppCompatActivity() {
                 textSize = 35f
                 setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER
-                rotation = rotation
+                this.rotation = rotation
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
                     setColor(color)
