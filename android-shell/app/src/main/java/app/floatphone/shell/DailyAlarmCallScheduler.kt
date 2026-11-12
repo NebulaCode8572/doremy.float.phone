@@ -13,6 +13,7 @@ import java.util.UUID
 object DailyAlarmCallScheduler {
     private const val PREFS = "daily_alarm_call_retry"
     private const val KEY_PENDING = "pending"
+    private const val KEY_TERMINAL_INSTANCE = "terminal_instance"
     private const val REQUEST_CODE = 4201
     const val EXTRA_ALARM_INSTANCE_ID = "daily_alarm_instance_id"
     const val EXTRA_ATTEMPT = "daily_alarm_attempt"
@@ -21,8 +22,10 @@ object DailyAlarmCallScheduler {
     const val EXTRA_CALL_TS = "daily_alarm_call_ts"
 
     @Synchronized
-    fun schedule(context: Context, sessionId: String, characterName: String, callTs: Long, alarmInstanceId: String, attempt: Int) {
-        if (alarmInstanceId.isBlank() || attempt !in 1..2) return
+    fun schedule(context: Context, sessionId: String, characterName: String, callTs: Long, alarmInstanceId: String, attempt: Int): Boolean {
+        if (alarmInstanceId.isBlank() || attempt !in 1..2) return false
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getString(KEY_TERMINAL_INSTANCE, "") == alarmInstanceId) return false
         val dueAt = System.currentTimeMillis() + CallAlert.TIMEOUT_MS
         val value = JSONObject()
             .put(EXTRA_SESSION_ID, sessionId)
@@ -33,7 +36,6 @@ object DailyAlarmCallScheduler {
             .put("token", UUID.randomUUID().toString())
             .put("due_at", dueAt)
             .toString()
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         // Cancel the previous attempt's distinct PendingIntent before replacing its token.
         val previousRaw = prefs.getString(KEY_PENDING, "").orEmpty()
         val previousToken = runCatching { JSONObject(previousRaw).optString("token") }.getOrDefault("")
@@ -50,20 +52,42 @@ object DailyAlarmCallScheduler {
             if (Build.VERSION.SDK_INT >= 23) manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, dueAt, pending)
             else manager.setExact(AlarmManager.RTC_WAKEUP, dueAt, pending)
         }.onFailure { manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, dueAt, pending) }
+        return true
     }
 
     @Synchronized
     fun cancel(context: Context) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_PENDING, "").orEmpty()
-        val token = runCatching { JSONObject(raw).optString("token") }.getOrDefault("")
-        prefs.edit().remove(KEY_PENDING).commit()
+        val pendingItem = runCatching { JSONObject(raw) }.getOrNull()
+        val token = pendingItem?.optString("token").orEmpty()
+        val instanceId = pendingItem?.optString(EXTRA_ALARM_INSTANCE_ID).orEmpty()
+        val edit = prefs.edit().remove(KEY_PENDING)
+        if (instanceId.isNotBlank()) edit.putString(KEY_TERMINAL_INSTANCE, instanceId)
+        edit.commit()
         runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pendingIntent(context, token)) }
     }
 
+    @Synchronized
+    fun hasPendingInstance(context: Context, alarmInstanceId: String): Boolean {
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_PENDING, "").orEmpty()
+        val item = runCatching { JSONObject(raw) }.getOrNull() ?: return false
+        return item.optString(EXTRA_ALARM_INSTANCE_ID) == alarmInstanceId
+    }
+
+    @Synchronized
+    fun isTerminalInstance(context: Context, alarmInstanceId: String): Boolean =
+        alarmInstanceId.isNotBlank() && context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_TERMINAL_INSTANCE, "") == alarmInstanceId
+
+    @Synchronized
+    fun markTerminal(context: Context, alarmInstanceId: String) {
+        if (alarmInstanceId.isNotBlank()) context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_TERMINAL_INSTANCE, alarmInstanceId).commit()
+    }
     /** Retry once when Android cannot present the first incoming-call notification. */
     internal fun onDeliveryFailure(context: Context, sessionId: String, characterName: String, alarmInstanceId: String, attempt: Int) {
-        if (alarmInstanceId.isBlank()) return
+        if (alarmInstanceId.isBlank() || isTerminalInstance(context, alarmInstanceId)) return
         if (attempt <= 1) {
             val retry = Intent(context, PushService::class.java)
                 .setAction(PushService.ACTION_DAILY_ALARM_RETRY)
@@ -163,12 +187,14 @@ object DailyAlarmFallbackScheduler {
     const val NOTIFICATION_ID = 4202
 
     fun schedule(context: Context, sessionId: String, characterName: String, alarmInstanceId: String) {
+        DailyAlarmCallScheduler.cancel(context)
+        DailyAlarmCallScheduler.markTerminal(context, alarmInstanceId)
         val value = JSONObject()
             .put(DailyAlarmCallScheduler.EXTRA_SESSION_ID, sessionId)
             .put(DailyAlarmCallScheduler.EXTRA_CHARACTER_NAME, characterName)
             .put(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
             .toString()
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_PENDING, value).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_PENDING, value).commit()
         val pending = fallbackPendingIntent(context)
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val dueAt = System.currentTimeMillis() + 1_000L
