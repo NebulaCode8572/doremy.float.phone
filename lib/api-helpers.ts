@@ -385,10 +385,8 @@ export function extractLLMContent(data: Record<string, unknown>, provider?: stri
     // Fallback: try choices[0].text (older completions API)
     if (!raw) { const legacy = d?.choices?.[0]?.text; if (legacy) raw = String(legacy).trim(); }
 
-    // Last resort: reasoning models (DeepSeek-R1 / v4-pro) put their output in
-    // reasoning_content and may leave content empty when max_tokens is exhausted
-    // mid-thought. Surface the reasoning rather than reporting an empty response.
-    if (!raw) { const reasoning = d?.choices?.[0]?.message?.reasoning_content; if (reasoning) raw = String(reasoning).trim(); }
+    // Never promote private reasoning/thinking fields into user-facing output.
+    // If message.content is empty, report no visible answer instead.
 
     if (!raw) return null;
 
