@@ -233,7 +233,9 @@ object DailyAlarmFallbackScheduler {
         if (configId.isBlank()) return
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_PENDING, "").orEmpty()
         val item = runCatching { JSONObject(raw) }.getOrNull() ?: return
-        if (item.optString(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID).startsWith("$configId:")) {
+        val instanceId = item.optString(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID)
+        if (instanceId.startsWith("$configId:")) {
+            DailyAlarmCallScheduler.markTerminal(context, instanceId)
             cancel(context)
         }
     }
