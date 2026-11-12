@@ -277,12 +277,17 @@ object DailyAlarmFallbackScheduler {
     const val NOTIFICATION_ID = 4202
 
     fun schedule(context: Context, sessionId: String, characterName: String, alarmInstanceId: String) {
+        if (!DailyAlarmWatchdogScheduler.isOccurrenceActive(context, alarmInstanceId)) {
+            DailyAlarmCallScheduler.markTerminal(context, alarmInstanceId)
+            return
+        }
         DailyAlarmCallScheduler.cancel(context)
         DailyAlarmCallScheduler.markTerminal(context, alarmInstanceId)
         val value = JSONObject()
             .put(DailyAlarmCallScheduler.EXTRA_SESSION_ID, sessionId)
             .put(DailyAlarmCallScheduler.EXTRA_CHARACTER_NAME, characterName)
             .put(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
+            .put("created_at", System.currentTimeMillis())
             .toString()
         if (!context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_PENDING, value).commit()) {
             runCatching { fireDirect(context, value) }
@@ -319,6 +324,12 @@ object DailyAlarmFallbackScheduler {
     fun restore(context: Context) {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_PENDING, "").orEmpty()
         if (raw.isBlank()) return
+        if (!isPendingValid(context, raw)) {
+            val instanceId = runCatching { JSONObject(raw).optString(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID) }.getOrDefault("")
+            DailyAlarmCallScheduler.markTerminal(context, instanceId)
+            cancel(context)
+            return
+        }
         val pending = fallbackPendingIntent(context)
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val dueAt = System.currentTimeMillis() + 1_000L
@@ -331,6 +342,12 @@ object DailyAlarmFallbackScheduler {
     internal fun fire(context: Context) {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_PENDING, "").orEmpty()
         if (raw.isBlank()) return
+        if (!isPendingValid(context, raw)) {
+            val instanceId = runCatching { JSONObject(raw).optString(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID) }.getOrDefault("")
+            DailyAlarmCallScheduler.markTerminal(context, instanceId)
+            cancel(context)
+            return
+        }
         val service = Intent(context, DailyAlarmRingingService::class.java).setAction(DailyAlarmRingingService.ACTION_START)
         runCatching {
             if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(service) else context.startService(service)
@@ -340,6 +357,13 @@ object DailyAlarmFallbackScheduler {
         }
     }
 
+    internal fun isPendingValid(context: Context, raw: String): Boolean {
+        val item = runCatching { JSONObject(raw) }.getOrNull() ?: return false
+        val instanceId = item.optString(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID)
+        if (!DailyAlarmWatchdogScheduler.isOccurrenceActive(context, instanceId)) return false
+        val createdAt = item.optLong("created_at", 0L)
+        return createdAt <= 0L || System.currentTimeMillis() - createdAt <= DailyAlarmWatchdogScheduler.MAX_DELIVERY_LATENESS_MS
+    }
     /** Best-effort fallback used only if the foreground ringing service cannot be started. */
     private fun fireDirect(context: Context, raw: String) {
         val item = runCatching { JSONObject(raw) }.getOrNull() ?: return
