@@ -246,6 +246,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
+    override fun onResume() {
+        super.onResume()
+        // Re-arm exact local timers after the user returns from Android's Alarms & reminders settings.
+        runCatching { DailyAlarmWatchdogScheduler.restore(this, allowRecentLate = true) }
+        runCatching { DailyAlarmCallScheduler.restoreRetryDispatch(this) }
+        runCatching { DailyAlarmCallScheduler.restore(this) }
+        runCatching { webView.evaluateJavascript("window.dispatchEvent(new Event('native-alarm-permissions-changed'))", null) }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (intent?.action == CheckInAlarmScheduler.ACTION_OPEN_REMINDER) {
@@ -1323,6 +1331,100 @@ class MainActivity : AppCompatActivity() {
             )
             true
         }.getOrDefault(false)
+        // ── 每日 AI 闹钟本机看门狗 ──────────────────────────────
+        @JavascriptInterface
+        fun canScheduleExactAlarms(): Boolean = runCatching {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                (this@MainActivity.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager).canScheduleExactAlarms()
+        }.getOrDefault(false)
+
+        @JavascriptInterface
+        fun requestExactAlarmPermission(): Boolean = runCatching {
+            val exactAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                (this@MainActivity.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager).canScheduleExactAlarms()
+            if (exactAllowed) return@runCatching true
+            this@MainActivity.startActivity(
+                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${this@MainActivity.packageName}"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            true
+        }.getOrDefault(false)
+
+        @JavascriptInterface
+        fun canUseFullScreenIntent(): Boolean = runCatching {
+            Build.VERSION.SDK_INT < 34 || this@MainActivity.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+        }.getOrDefault(false)
+
+        @JavascriptInterface
+        fun requestFullScreenIntentPermission(): Boolean = runCatching {
+            val allowed = Build.VERSION.SDK_INT < 34 || this@MainActivity.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+            if (allowed) return@runCatching true
+            this@MainActivity.startActivity(
+                Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${this@MainActivity.packageName}"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            true
+        }.getOrDefault(false)
+
+        @JavascriptInterface
+        fun hasPostNotificationsPermission(): Boolean = Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+        @JavascriptInterface
+        fun requestPostNotificationsPermission(): Boolean = runCatching {
+            if (Build.VERSION.SDK_INT >= 33 &&
+                ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                this@MainActivity.runOnUiThread {
+                    this@MainActivity.notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+            true
+        }.getOrDefault(false)
+        @JavascriptInterface
+        fun scheduleDailyAlarmWatchdog(id: String, sessionId: String, characterName: String, localTime: String, timeZone: String): Boolean =
+            runCatching { DailyAlarmWatchdogScheduler.schedule(this@MainActivity, id, sessionId, characterName, localTime, timeZone) }
+                .getOrDefault(false)
+
+        @JavascriptInterface
+        fun cancelDailyAlarmWatchdog(): Boolean = runCatching {
+            DailyAlarmWatchdogScheduler.cancel(this@MainActivity)
+            true
+        }.getOrDefault(false)
+
+        // ── 来电铃声同步桥 ─────────────────────────────────────
+        // 网页端按 sessionId（或保留键 "global"）分块同步 incomingCall 音频。
+        // 单块限制由原生存储层校验；不接受任意文件路径或非音频 MIME。
+
+        @JavascriptInterface
+        fun beginCallRingtoneUpload(key: String, mimeType: String, expectedBytes: Int): Boolean =
+            runCatching { CallRingtoneStore.beginUpload(this@MainActivity, key, mimeType, expectedBytes) }
+                .getOrDefault(false)
+
+        @JavascriptInterface
+        fun appendCallRingtoneUploadChunk(key: String, base64Chunk: String): Boolean =
+            runCatching { CallRingtoneStore.appendChunk(this@MainActivity, key, base64Chunk) }
+                .getOrDefault(false)
+
+        @JavascriptInterface
+        fun finishCallRingtoneUpload(key: String): Boolean =
+            runCatching { CallRingtoneStore.finishUpload(this@MainActivity, key) }
+                .getOrDefault(false)
+
+        @JavascriptInterface
+        fun setCallRingtoneMuted(key: String, muted: Boolean): Boolean = runCatching {
+            require(key.isNotBlank() && key.length <= 256)
+            CallRingtoneStore.setMuted(this@MainActivity, key, muted)
+            true
+        }.getOrDefault(false)
+
+        @JavascriptInterface
+        fun deleteCallRingtone(key: String): Boolean = runCatching {
+            require(key.isNotBlank() && key.length <= 256)
+            CallRingtoneStore.delete(this@MainActivity, key)
+            true
+        }.getOrDefault(false)
+
     }
 
     /**

@@ -5093,8 +5093,9 @@
   background: transparent;
 }
 .call-overlay[data-has-image] {
-  background: rgba(0,0,0,0.55);
-  backdrop-filter: blur(8px);
+  /* 保留轻微暗化保证白字可读，不再把用户壁纸压暗并模糊掉。 */
+  background: rgba(0,0,0,0.2);
+  backdrop-filter: none;
 }
 
 /* ── Video call series ── */

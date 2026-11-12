@@ -91,6 +91,6 @@ export function CallLayer() {
     };
 
     return call.kind === "voice"
-        ? <VoiceCallScreen {...sharedProps} />
+        ? <VoiceCallScreen {...sharedProps} initiallyAccepted={call.accepted} />
         : <VideoCallScreen {...sharedProps} />;
 }

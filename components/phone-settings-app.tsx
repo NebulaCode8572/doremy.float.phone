@@ -27,6 +27,7 @@ import { DeviceActionSettings } from "./device-action/device-action-settings";
 import { SystemCalendarSettings } from "./system-calendar/system-calendar-settings";
 import { ScreenshotSettings } from "./screenshot/screenshot-settings";
 import { WidgetSettings } from "./widget/widget-settings";
+import { DailyAlarmSettings } from "./settings/daily-alarm-settings";
 import { fetchIsAdmin } from "@/lib/moderation-client";
 import { PageShell } from "./ui/page-shell";
 import { CardGrid, FeaturedCard, type CardItem, type FeaturedCardItem } from "./ui/card-grid";
@@ -69,6 +70,7 @@ type SubPage =
     | "systemCalendar"
     | "screenshot"
     | "widget"
+    | "dailyAlarm"
     | "about";
 
 const SETTINGS_MENU = [
@@ -89,6 +91,7 @@ const SETTINGS_MENU = [
     { id: "systemCalendar", icon: CalendarDays, label: "系统日历", desc: "让角色知道你的日程、记下纪念日", iconColor: BINDING_ACCENTS.memory , glass: "" },
     { id: "screenshot", icon: Camera, label: "截屏", desc: "让角色看一眼你现在的屏幕", iconColor: BINDING_ACCENTS.voice , glass: "" },
     { id: "widget", icon: LayoutTemplate, label: "桌面小组件", desc: "角色留在桌面上的话", iconColor: BINDING_ACCENTS.memory , glass: "" },
+    { id: "dailyAlarm", icon: Clock, label: "每日 AI 闹钟", desc: "早安消息与语音来电", iconColor: BINDING_ACCENTS.voice , glass: "" },
     { id: "agentComputer", icon: Laptop, label: "角色电脑", desc: "云端小电脑（自部署）", iconColor: BINDING_ACCENTS.memory , glass: "agent-computer" },
     { id: "identity", icon: UserCircle, label: "用户身份", desc: "个人信息", iconColor: BINDING_ACCENTS.identity , glass: "identity" },
     { id: "about", icon: Info, label: "关于与声明", desc: "版本与协议", iconColor: BINDING_ACCENTS.memory , glass: "about" },
@@ -350,6 +353,8 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                 return <ScreenshotSettings onNotice={onNotice} />;
             case "widget":
                 return <WidgetSettings onNotice={onNotice} />;
+            case "dailyAlarm":
+                return <DailyAlarmSettings onNotice={onNotice} />;
             case "agentComputer":
                 return <AgentComputerSettings onNotice={onNotice} />;
             case "moderation":
@@ -528,6 +533,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                         </div>
                         <div className="settings-realtime-section">
                             <h3 className="settings-menu-section-title">Runtime</h3>
+                            <CardGrid items={SETTINGS_MENU.filter(item => item.id === "dailyAlarm").map(makeCardItem)} />
                             <div className="app-card card-featured settings-toggle-card">
                                 <span className="card-icon card-icon-glass">
                                     <GlassIcon name="time-aware" />
