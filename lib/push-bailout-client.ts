@@ -26,6 +26,7 @@ import {
 } from "./menstrual-storage";
 import { loadTimedWakeSchedules, removeTimedWakeSchedule, type TimedWakeSchedule } from "./timed-wake-storage";
 import { loadProactiveCallSchedules, type ProactiveCallSchedule } from "./proactive-call-storage";
+import { loadDailyAlarmConfig, nextDailyAlarmAt, type DailyAlarmConfig } from "./daily-alarm-storage";
 import {
     IDLE_RECONNECT_MAX_CONSECUTIVE,
     loadIdleReconnectRules,
@@ -669,6 +670,61 @@ export async function armProactiveCallBailout(schedule: ProactiveCallSchedule): 
     }
 }
 
+/** 每日 AI 闹钟：每个本地日期一条独立任务，消息与来电在同一生成实例中完成。 */
+export async function armDailyAlarmBailout(
+    config: DailyAlarmConfig,
+    options: { force?: boolean } = {},
+): Promise<BailoutArmResult> {
+    if (!config.enabled) return { ok: false, reason: "每日闹钟未启用" };
+    if (!bailoutEnabled()) return { ok: false, reason: "当前环境不支持服务端离线预约" };
+    try {
+        if (!(await hasAccountPushSubscription())) return { ok: false, reason: "当前账号没有可用的离线推送订阅" };
+        const next = nextDailyAlarmAt(Date.now(), config.localTime, config.timeZone);
+        if (!options.force && next.fireAt <= Date.now() + 5 * 60_000) return { ok: true };
+        const session = loadChatSessions().find(item => item.id === config.sessionId);
+        if (!session || session.isGroup || session.contactId !== config.characterId) {
+            return { ok: false, reason: "找不到每日闹钟对应的单聊会话" };
+        }
+        const history = loadChatMessages(session.id);
+        const { llmMessages, character, config: providerConfig, preset, regexes, userIdentity } =
+            await buildChatPromptMessages(session, history, { appTags: ["chat", "text", "daily_alarm"] });
+        llmMessages.push({
+            role: "system",
+            content: [
+                "这是用户明确设置的每日 AI 闹钟任务。",
+                "请先在聊天里发送一条自然、简短、有角色个性的早安消息；随后发起语音来电。",
+                "来电已由系统确定，不需要输出任何通话标记，也不要把它改成普通消息。",
+                "来电接通后的第一句话应自然承接早安消息，不要重复整段早安内容。",
+            ].join("\\n"),
+        });
+        const request = buildProviderRequest(providerConfig, preset, toLlmRequestMessages(llmMessages));
+        const triggerKey = "dailyalarm:" + config.id + ":" + next.dateKey;
+        const posted = await postBailoutJob({
+            triggerKey,
+            kind: "timed_task",
+            executeAtMs: next.fireAt + 15_000,
+            request,
+            notifyTitle: character.name,
+            merge: {
+                sessionId: session.id,
+                prevCount: 0,
+                regexes,
+                characterName: character.name,
+                userName: userIdentity?.name ?? "用户",
+                appId: "chat",
+                appTags: ["chat", "text", "daily_alarm"],
+                armAt: new Date(next.fireAt).toISOString(),
+                proactiveCall: true,
+                dailyAlarm: { id: config.id, dateKey: next.dateKey, localTime: config.localTime, timeZone: config.timeZone },
+                alarmInstanceId: config.id + ":" + next.dateKey,
+            },
+        });
+        return posted ? { ok: true } : { ok: false, reason: "服务端没有确认每日闹钟预约" };
+    } catch (err) {
+        console.warn("[PushBailout] daily alarm arm failed:", err);
+        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+}
 /** 经期关怀兜底：预测未来 7 天内的关怀日，为选中的角色各挂一单（每周期幂等）。 */
 export async function armPeriodCareBailouts(): Promise<void> {
     if (!bailoutEnabled()) return;
@@ -748,6 +804,13 @@ export async function refreshScheduledBailouts(): Promise<void> {
     }
     refreshingScheduled = true;
     try {
+        const dailyAlarm = loadDailyAlarmConfig();
+        if (dailyAlarm?.enabled) {
+            const result = await armDailyAlarmBailout(dailyAlarm);
+            console.warn(result.ok
+                ? "[PushBailout] 每日 AI 闹钟已挂载：" + dailyAlarm.id
+                : "[PushBailout] 每日 AI 闹钟未挂载：" + dailyAlarm.id + " — " + result.reason);
+        }
         for (const schedule of loadProactiveCallSchedules()) {
             // 已经过期的本地记录不再重挂，避免完成过的来电在后续巡检中被重新排队。
             if (schedule.fireAt <= Date.now()) continue;
