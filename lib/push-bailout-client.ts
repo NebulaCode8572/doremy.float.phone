@@ -25,6 +25,7 @@ import {
     loadMenstrualRecords,
 } from "./menstrual-storage";
 import { loadTimedWakeSchedules, removeTimedWakeSchedule, type TimedWakeSchedule } from "./timed-wake-storage";
+import type { ProactiveCallSchedule } from "./proactive-call-storage";
 import {
     IDLE_RECONNECT_MAX_CONSECUTIVE,
     loadIdleReconnectRules,
@@ -616,6 +617,54 @@ export async function armTimedWakeBailout(schedule: TimedWakeSchedule): Promise<
         return posted ? { ok: true } : { ok: false, reason: "服务端预约接口没有确认成功" };
     } catch (err) {
         console.warn("[PushBailout] timed wake arm failed:", err);
+        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+}
+
+/** 独立的稍后主动来电预约：服务端任务携带确定的 call 类型，到点不再依赖模型输出通话标记。 */
+export async function armProactiveCallBailout(schedule: ProactiveCallSchedule): Promise<BailoutArmResult> {
+    if (!bailoutEnabled()) return { ok: false, reason: "当前环境不支持服务端离线预约" };
+    try {
+        if (!(await hasAccountPushSubscription())) return { ok: false, reason: "当前账号没有可用的离线推送订阅" };
+        if (isWithinPushQuietHours(schedule.fireAt)) return { ok: false, reason: "触发时间落在推送安静时段内" };
+        const session = loadChatSessions().find(s => s.id === schedule.sessionId);
+        if (!session || session.isGroup || session.contactId !== schedule.characterId) {
+            return { ok: false, reason: "找不到对应的单聊会话" };
+        }
+
+        const history = loadChatMessages(session.id);
+        const { llmMessages, character, config, preset, regexes, userIdentity } = await buildChatPromptMessages(
+            session,
+            history,
+            { appTags: ["chat", "text", "proactive_call"] },
+        );
+        llmMessages.push({
+            role: "system",
+            content: "这是一次已经确定的主动语音来电任务。请生成接通后自然、简短的第一段开场台词，围绕以下约定展开；不要输出通话标记，不要改成普通消息。来电主题：" + schedule.intent,
+        });
+        const request = buildProviderRequest(config, preset, toLlmRequestMessages(llmMessages));
+        const posted = await postBailoutJob({
+            triggerKey: `proactivecall:${schedule.id}`,
+            kind: "timed_task",
+            executeAtMs: schedule.fireAt + 15_000,
+            request,
+            notifyTitle: character.name,
+            merge: {
+                sessionId: session.id,
+                prevCount: 0,
+                regexes,
+                characterName: character.name,
+                userName: userIdentity?.name ?? "用户",
+                appId: "chat",
+                appTags: ["chat", "text", "proactive_call"],
+                armAt: new Date(schedule.fireAt).toISOString(),
+                proactiveCall: true,
+                proactiveCallId: schedule.id,
+            },
+        });
+        return posted ? { ok: true } : { ok: false, reason: "服务端预约接口没有确认成功" };
+    } catch (err) {
+        console.warn("[PushBailout] proactive call arm failed:", err);
         return { ok: false, reason: err instanceof Error ? err.message : String(err) };
     }
 }
