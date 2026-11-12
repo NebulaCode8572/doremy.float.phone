@@ -84,8 +84,15 @@ object DailyAlarmWatchdogScheduler {
         }
         val fireAt = pending.optLong("fire_at", 0L)
         if (fireAt <= System.currentTimeMillis()) {
-            // Do not ring a stale occurrence after a long shutdown. Keep a tombstone so a
-            // delayed server push for the skipped occurrence cannot resurrect the call.
+            val lateBy = System.currentTimeMillis() - fireAt
+            if (lateBy <= 60_000L) {
+                // The app may resume just after the watchdog deadline, before AlarmManager
+                // has delivered it. Run this occurrence now instead of silently skipping it.
+                onFire(context, Intent().setData(Uri.parse("floatshell://daily-alarm-watchdog/${Uri.encode(config.optString("id"))}")))
+                return
+            }
+            // A long shutdown must not cause a stale wake-up. Keep a tombstone so a delayed
+            // server push for the skipped occurrence cannot resurrect the call.
             pending.optString("instance_id").takeIf { it.isNotBlank() }?.let { DailyAlarmCallScheduler.markTerminal(context, it) }
             scheduleNext(context, config)
             return
