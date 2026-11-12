@@ -275,7 +275,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                         }
                     }
                     clearTimedWakeIfHandled(entry.trigger_key);
-                        clearProactiveCallIfHandled(entry.trigger_key);
+                    clearProactiveCallIfHandled(entry.trigger_key);
                     consumedIds.push(entry.id);
                     if (entry.trigger_key) handledTriggerKeys.add(entry.trigger_key);
                 } catch (err) {
