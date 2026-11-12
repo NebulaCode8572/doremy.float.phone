@@ -389,6 +389,8 @@ class PushService : Service() {
         // Persist the timeout before exposing the notification. Duplicate deliveries for an
         // existing instance/attempt are ignored; attempt 2 replaces attempt 1.
         if (alarmInstanceId.isNotBlank()) {
+            // A disabled/replaced or substantially delayed occurrence must not resurrect a call.
+            if (!DailyAlarmWatchdogScheduler.isOccurrenceActive(this, alarmInstanceId)) return
             val accepted = DailyAlarmCallScheduler.schedule(this, sessionId, characterName, callTs, alarmInstanceId, alarmAttempt)
             if (!accepted) return
         }
