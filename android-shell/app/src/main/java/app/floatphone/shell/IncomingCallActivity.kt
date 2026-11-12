@@ -11,16 +11,12 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 
-/**
- * Native incoming-call screen.
- *
- * This file owns presentation only. Delivery, notification construction, and
- * ringtone/vibration lifecycle remain in PushService and CallAlert unchanged.
- */
+/** 微信风格的原生全屏来电页；接听/拒接仍走原有来电状态机。 */
 class IncomingCallActivity : AppCompatActivity() {
 
     companion object {
@@ -38,75 +34,63 @@ class IncomingCallActivity : AppCompatActivity() {
         val characterName = intent.getStringExtra(EXTRA_CHARACTER_NAME).orEmpty().ifEmpty { "对方" }
         val callTs = intent.getLongExtra(EXTRA_CALL_TS, 0L)
         val alarmInstanceId = intent.getStringExtra(EXTRA_ALARM_INSTANCE_ID).orEmpty()
-
         val density = resources.displayMetrics.density
-        fun dp(value: Int): Int = (value * density).toInt()
+        fun dp(value: Int) = (value * density).toInt()
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(28), dp(36), dp(28), dp(28))
+            setPadding(dp(28), dp(26), dp(28), dp(22))
             background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.rgb(24, 31, 48), Color.rgb(12, 16, 26)),
+                intArrayOf(Color.rgb(34, 34, 35), Color.rgb(57, 57, 58), Color.rgb(45, 45, 46)),
             )
         }
 
-        // Top status
-        root.addView(TextView(this).apply {
-            text = "来 电"
-            textSize = 12f
-            letterSpacing = 0.34f
-            setTextColor(Color.rgb(160, 174, 198))
-            gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(-1, dp(28)))
-
-        // Flexible space keeps the caller identity centered on different screens.
+        // 保留系统状态栏，整体观感接近微信原生来电页。
+        root.addView(View(this), LinearLayout.LayoutParams(1, dp(18)))
         root.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
 
-        val avatar = TextView(this).apply {
-            text = characterName.take(1)
-            textSize = 42f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
+        val identity = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.rgb(104, 133, 190), Color.rgb(76, 91, 151)),
-            ).apply {
-                shape = GradientDrawable.OVAL
-                setStroke(dp(2), Color.argb(90, 255, 255, 255))
-            }
-            elevation = dp(8).toFloat()
         }
-        root.addView(avatar, LinearLayout.LayoutParams(dp(112), dp(112)))
-
-        root.addView(TextView(this).apply {
+        val avatar = ImageView(this).apply {
+            setImageResource(android.R.drawable.ic_menu_myplaces)
+            setColorFilter(Color.rgb(185, 185, 185))
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(245, 245, 245))
+                cornerRadius = dp(12).toFloat()
+            }
+        }
+        identity.addView(avatar, LinearLayout.LayoutParams(dp(116), dp(116)))
+        identity.addView(TextView(this).apply {
             text = characterName
-            textSize = 29f
-            typeface = Typeface.DEFAULT_BOLD
+            textSize = 25f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             maxLines = 2
             setPadding(0, dp(24), 0, 0)
         }, LinearLayout.LayoutParams(-1, -2))
+        root.addView(identity, LinearLayout.LayoutParams(-1, -2))
 
+        root.addView(View(this), LinearLayout.LayoutParams(1, 0, 0.72f))
         root.addView(TextView(this).apply {
-            text = "邀请你进行语音通话"
-            textSize = 15f
-            setTextColor(Color.rgb(166, 178, 199))
+            text = "邀请你语音通话..."
+            textSize = 16f
+            setTextColor(Color.rgb(190, 190, 190))
             gravity = Gravity.CENTER
-            setPadding(0, dp(10), 0, 0)
         }, LinearLayout.LayoutParams(-1, -2))
-
         root.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
 
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-
-        fun action(label: String, symbol: String, color: Int, description: String, onClick: () -> Unit): View {
+        fun action(label: String, symbol: String, color: Int, rotation: Float, description: String, onClick: () -> Unit): View {
             val column = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
@@ -117,21 +101,21 @@ class IncomingCallActivity : AppCompatActivity() {
             }
             val circle = TextView(this).apply {
                 text = symbol
-                textSize = 29f
-                typeface = Typeface.DEFAULT
+                textSize = 35f
                 setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER
+                rotation = rotation
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
                     setColor(color)
                 }
-                elevation = dp(5).toFloat()
+                elevation = dp(3).toFloat()
             }
-            column.addView(circle, LinearLayout.LayoutParams(dp(72), dp(72)))
+            column.addView(circle, LinearLayout.LayoutParams(dp(78), dp(78)))
             column.addView(TextView(this).apply {
                 text = label
-                textSize = 14f
-                setTextColor(Color.rgb(224, 230, 240))
+                textSize = 15f
+                setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER
                 setPadding(0, dp(12), 0, 0)
             }, LinearLayout.LayoutParams(-1, -2))
@@ -139,20 +123,19 @@ class IncomingCallActivity : AppCompatActivity() {
         }
 
         actions.addView(
-            action("拒接", "×", Color.rgb(220, 73, 82), "拒绝语音来电") {
+            action("拒绝", "☎", Color.rgb(250, 76, 86), 135f, "拒绝语音来电") {
                 finishCall(alarmInstanceId)
             },
-            LinearLayout.LayoutParams(dp(112), -2).apply { marginEnd = dp(36) },
+            LinearLayout.LayoutParams(dp(116), -2).apply { marginEnd = dp(28) },
         )
         actions.addView(
-            action("接听", "✓", Color.rgb(42, 166, 112), "接听语音来电") {
+            action("接听", "☎", Color.rgb(7, 190, 96), 0f, "接听语音来电") {
                 answer(sessionId, callTs, alarmInstanceId)
             },
-            LinearLayout.LayoutParams(dp(112), -2).apply { marginStart = dp(36) },
+            LinearLayout.LayoutParams(dp(116), -2).apply { marginStart = dp(28) },
         )
         root.addView(actions, LinearLayout.LayoutParams(-1, -2))
-        root.addView(View(this), LinearLayout.LayoutParams(1, dp(28)))
-
+        root.addView(View(this), LinearLayout.LayoutParams(1, dp(36)))
         setContentView(root)
     }
 
@@ -168,16 +151,9 @@ class IncomingCallActivity : AppCompatActivity() {
             )
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
-        window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            )
+        window.statusBarColor = Color.rgb(34, 34, 35)
+        window.navigationBarColor = Color.rgb(34, 34, 35)
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
     @Deprecated("Use the visible decline action; retained so system Back also counts as an explicit decline.")
