@@ -27,6 +27,7 @@ class IncomingCallActivity : AppCompatActivity() {
         const val EXTRA_SESSION_ID = "session_id"
         const val EXTRA_CHARACTER_NAME = "character_name"
         const val EXTRA_CALL_TS = "call_ts"
+        const val EXTRA_ALARM_INSTANCE_ID = "daily_alarm_instance_id"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,6 +46,7 @@ class IncomingCallActivity : AppCompatActivity() {
         val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
         val characterName = intent.getStringExtra(EXTRA_CHARACTER_NAME).orEmpty().ifEmpty { "对方" }
         val callTs = intent.getLongExtra(EXTRA_CALL_TS, 0L)
+        val alarmInstanceId = intent.getStringExtra(EXTRA_ALARM_INSTANCE_ID).orEmpty()
 
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
@@ -95,8 +97,8 @@ class IncomingCallActivity : AppCompatActivity() {
                 }
                 setOnClickListener { onClick() }
             }
-        buttons.addView(roundButton("拒接", Color.parseColor("#E5484D")) { finishCall() })
-        buttons.addView(roundButton("接听", Color.parseColor("#30A46C")) { answer(sessionId, callTs) })
+        buttons.addView(roundButton("拒接", Color.parseColor("#E5484D")) { finishCall(alarmInstanceId) })
+        buttons.addView(roundButton("接听", Color.parseColor("#30A46C")) { answer(sessionId, callTs, alarmInstanceId) })
         root.addView(buttons)
 
         setContentView(root)
@@ -120,7 +122,7 @@ class IncomingCallActivity : AppCompatActivity() {
             val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
             if (keyguard.isKeyguardLocked) {
                 keyguard.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
-                    override fun onDismissSucceeded() { launchAcceptedCall(launch) }
+                    override fun onDismissSucceeded() { launchAcceptedCall(launch, alarmInstanceId) }
                     override fun onDismissCancelled() { /* Keep ringing; the unanswered timeout remains armed. */ }
                 })
                 return
@@ -136,7 +138,7 @@ class IncomingCallActivity : AppCompatActivity() {
         finish()
     }
 
-    private fun finishCall() {
+    private fun finishCall(alarmInstanceId: String) {
         // 用户在锁屏来电页主动拒接/关闭时，视为明确拒绝，不应触发第二次重拨或原生兜底。
         DailyAlarmCallScheduler.cancel(this)
         CallAlert.stop(this)
