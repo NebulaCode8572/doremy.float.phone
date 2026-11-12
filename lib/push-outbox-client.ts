@@ -11,6 +11,7 @@ import { loadChatMessages, loadChatSessions, reindexSessionMessageOrdersByTime }
 import { hasAccountPushSubscription, isShellEnvironment } from "./push-client";
 import { isPersonalPushCloudActive, loadPersonalPushCloudState, personalPushFetch } from "./personal-push-cloud";
 import { removeTimedWakeSchedule } from "./timed-wake-storage";
+import { removeProactiveCallSchedule } from "./proactive-call-storage";
 import { appendBridgeFeed } from "./reality-bridge/storage";
 import { loadScreenChatSettings, saveScreenChatAck } from "./reality-bridge/storage";
 
@@ -53,6 +54,12 @@ function getTimedWakeIdFromTriggerKey(triggerKey: string | null): string | null 
 function clearTimedWakeIfHandled(triggerKey: string | null): void {
     const timedWakeId = getTimedWakeIdFromTriggerKey(triggerKey);
     if (timedWakeId) removeTimedWakeSchedule(timedWakeId);
+}
+
+function clearProactiveCallIfHandled(triggerKey: string | null): void {
+    if (!triggerKey?.startsWith("proactivecall:")) return;
+    const scheduleId = triggerKey.slice("proactivecall:".length).trim();
+    if (scheduleId) removeProactiveCallSchedule(scheduleId);
 }
 
 export async function consumeServerOutbox(options?: { silent?: boolean; force?: boolean }): Promise<void> {
@@ -195,6 +202,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                     const existingMessages = loadChatMessages(sessionId);
                     if (followUpIndex && existingMessages.some(m => m.role === "assistant" && m.followUpIndex === followUpIndex)) {
                         clearTimedWakeIfHandled(entry.trigger_key);
+                        clearProactiveCallIfHandled(entry.trigger_key);
                         consumedIds.push(entry.id);
                         if (entry.trigger_key) handledTriggerKeys.add(entry.trigger_key);
                         continue;
@@ -207,6 +215,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                         return createdMs > armAtMs && createdMs < passStartMs;
                     })) {
                         clearTimedWakeIfHandled(entry.trigger_key);
+                        clearProactiveCallIfHandled(entry.trigger_key);
                         consumedIds.push(entry.id);
                         if (entry.trigger_key) handledTriggerKeys.add(entry.trigger_key);
                         continue;
@@ -244,6 +253,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                     );
                     if (hasVisible && newCount < 10) scheduleFollowUp(sessionId, newCount, stateValues);
                     clearTimedWakeIfHandled(entry.trigger_key);
+                        clearProactiveCallIfHandled(entry.trigger_key);
                     consumedIds.push(entry.id);
                     if (entry.trigger_key) handledTriggerKeys.add(entry.trigger_key);
                 } catch (err) {
