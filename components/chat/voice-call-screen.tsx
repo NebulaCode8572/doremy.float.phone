@@ -120,6 +120,8 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
     const keyboardOffsetStyle = useCallKeyboardOffsetStyle();
     const [callState, setCallState] = useState<CallState>("CONNECTING");
     const hasConnectedRef = useRef(false);
+    // 来电接通后只主动开口一次；避免状态往返 IDLE 时重复生成第一句话。
+    const initialIncomingGreetingStartedRef = useRef(false);
     const [callDuration, setCallDuration] = useState(0);
     const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
     const [interimText, setInterimText] = useState("");
@@ -475,7 +477,10 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
 
     // ── Full conversation turn ──────────────────────
 
-    const runConversationTurn = useCallback(async (userText?: string) => {
+    const runConversationTurn = useCallback(async (
+        userText?: string,
+        turnOptions?: { ephemeralSystemNote?: string },
+    ) => {
         // 用户开口：自动搭话重新计数（上限按「你开口后」重新算）
         if (userText) {
             autoTurnsRef.current = 0;
@@ -510,6 +515,7 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
             // 3. Generate AI response
             const aiResponseText = flattenCompletionResult(await generateChatCompletion(session, messagesRef.current, {
                 appTags: ["chat", "voice"],
+                ephemeralSystemNote: turnOptions?.ephemeralSystemNote,
             }));
 
             // Bail if call ended during generation
@@ -595,6 +601,20 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
         }
     }, [session, processAIResponse, playCallAudio, scheduleNextAutoChat]);
 
+    // 角色来电被用户接听后，立即由角色先说第一句话。
+    // 这次生成走正常消息入库 + TTS 流程，但用一次性系统提示明确「主动开口」，
+    // 不依赖自动搭话开关，也不会把提示写进聊天记录。
+    useEffect(() => {
+        if (initiator !== "character" || callState !== "IDLE" || initialIncomingGreetingStartedRef.current) return;
+        initialIncomingGreetingStartedRef.current = true;
+        void runConversationTurn(undefined, {
+            ephemeralSystemNote: [
+                "你刚刚主动拨打了用户的语音电话，用户已经接听。现在请由你主动说出通话的第一句话，不要等待用户先开口。",
+                "请结合你的人设和最近的聊天上下文，自然、简短地开始这次通话；如果上下文表明这是早安或叫醒电话，就自然地向用户道早安并温和叫醒用户。",
+                "直接说你要对用户说的话，不要提及系统提示、任务或生成过程。"
+            ].join("\\n"),
+        });
+    }, [initiator, callState, runConversationTurn]);
     // ── 安卓壳原生浮窗 ──────────────────────────────
     //
     // 原实现在这里手写接线，有两个坑：
