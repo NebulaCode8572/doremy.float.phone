@@ -165,6 +165,7 @@
             android:exported="false" />
 
         <receiver android:name=".DailyAlarmCallTimeoutReceiver" android:exported="false" />
+        <receiver android:name=".DailyAlarmWatchdogReceiver" android:exported="false" />
         <receiver android:name=".DailyAlarmFallbackReceiver" android:exported="false" />
 
         <service
