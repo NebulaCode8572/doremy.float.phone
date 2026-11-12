@@ -153,7 +153,8 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
                                 前往开启精确闹钟权限
                             </button>
                         </div>
-                    ) : null}                    {fullScreenIntentPermission === false ? (
+                    ) : null}
+                    {fullScreenIntentPermission === false ? (
                         <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
                             <p className="text-xs leading-relaxed text-[var(--c-text-secondary)]">
                                 Android 未允许本应用使用全屏通知。锁屏时可能只显示普通通知，无法自动弹出接听界面。
