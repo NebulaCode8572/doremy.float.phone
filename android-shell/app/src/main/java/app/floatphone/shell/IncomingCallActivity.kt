@@ -9,17 +9,17 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 
 /**
- * 锁屏全屏来电页（full-screen intent 的落地页）：
- * 纯代码构建 UI（省掉布局资源），角色名 + "语音来电…" + 拒接/接听。
- * 接听 → 收掉振动通知，拉起 MainActivity 带 #incoming-call 深链进通话；
- * 拒接/返回 → 只收场，正文消息照常躺在聊天里。
+ * Native incoming-call screen.
+ *
+ * This file owns presentation only. Delivery, notification construction, and
+ * ringtone/vibration lifecycle remain in PushService and CallAlert unchanged.
  */
 class IncomingCallActivity : AppCompatActivity() {
 
@@ -32,16 +32,7 @@ class IncomingCallActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (Build.VERSION.SDK_INT >= 27) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
-            )
-        }
+        prepareCallWindow()
 
         val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
         val characterName = intent.getStringExtra(EXTRA_CHARACTER_NAME).orEmpty().ifEmpty { "对方" }
@@ -54,54 +45,139 @@ class IncomingCallActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setBackgroundColor(Color.parseColor("#161A22"))
-            setPadding(dp(32), dp(96), dp(32), dp(56))
+            setPadding(dp(28), dp(36), dp(28), dp(28))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.rgb(24, 31, 48), Color.rgb(12, 16, 26)),
+            )
         }
+
+        // Top status
+        root.addView(TextView(this).apply {
+            text = "来 电"
+            textSize = 12f
+            letterSpacing = 0.34f
+            setTextColor(Color.rgb(160, 174, 198))
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(-1, dp(28)))
+
+        // Flexible space keeps the caller identity centered on different screens.
+        root.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
+
+        val avatar = TextView(this).apply {
+            text = characterName.take(1)
+            textSize = 42f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(104, 133, 190), Color.rgb(76, 91, 151)),
+            ).apply {
+                shape = GradientDrawable.OVAL
+                setStroke(dp(2), Color.argb(90, 255, 255, 255))
+            }
+            elevation = dp(8).toFloat()
+        }
+        root.addView(avatar, LinearLayout.LayoutParams(dp(112), dp(112)))
 
         root.addView(TextView(this).apply {
             text = characterName
-            textSize = 34f
-            setTextColor(Color.WHITE)
+            textSize = 29f
             typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-        })
+            maxLines = 2
+            setPadding(0, dp(24), 0, 0)
+        }, LinearLayout.LayoutParams(-1, -2))
+
         root.addView(TextView(this).apply {
-            text = "语音来电…"
+            text = "邀请你进行语音通话"
             textSize = 15f
-            setTextColor(Color.parseColor("#9AA3B2"))
+            setTextColor(Color.rgb(166, 178, 199))
             gravity = Gravity.CENTER
             setPadding(0, dp(10), 0, 0)
-        })
+        }, LinearLayout.LayoutParams(-1, -2))
 
-        // 撑开中部，把按钮压到底部
-        root.addView(TextView(this), LinearLayout.LayoutParams(0, 0, 1f).apply {
-            width = LinearLayout.LayoutParams.MATCH_PARENT
-        })
+        root.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
 
-        val buttons = LinearLayout(this).apply {
+        val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-        fun roundButton(label: String, color: Int, onClick: () -> Unit): Button =
-            Button(this).apply {
-                text = label
-                textSize = 15f
+
+        fun action(label: String, symbol: String, color: Int, description: String, onClick: () -> Unit): View {
+            val column = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                isClickable = true
+                isFocusable = true
+                contentDescription = description
+                setOnClickListener { onClick() }
+            }
+            val circle = TextView(this).apply {
+                text = symbol
+                textSize = 29f
+                typeface = Typeface.DEFAULT
                 setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
                     setColor(color)
                 }
-                layoutParams = LinearLayout.LayoutParams(dp(78), dp(78)).apply {
-                    marginStart = dp(34)
-                    marginEnd = dp(34)
-                }
-                setOnClickListener { onClick() }
+                elevation = dp(5).toFloat()
             }
-        buttons.addView(roundButton("拒接", Color.parseColor("#E5484D")) { finishCall(alarmInstanceId) })
-        buttons.addView(roundButton("接听", Color.parseColor("#30A46C")) { answer(sessionId, callTs, alarmInstanceId) })
-        root.addView(buttons)
+            column.addView(circle, LinearLayout.LayoutParams(dp(72), dp(72)))
+            column.addView(TextView(this).apply {
+                text = label
+                textSize = 14f
+                setTextColor(Color.rgb(224, 230, 240))
+                gravity = Gravity.CENTER
+                setPadding(0, dp(12), 0, 0)
+            }, LinearLayout.LayoutParams(-1, -2))
+            return column
+        }
+
+        actions.addView(
+            action("拒接", "×", Color.rgb(220, 73, 82), "拒绝语音来电") {
+                finishCall(alarmInstanceId)
+            },
+            LinearLayout.LayoutParams(dp(112), -2).apply { marginEnd = dp(36) },
+        )
+        actions.addView(
+            action("接听", "✓", Color.rgb(42, 166, 112), "接听语音来电") {
+                answer(sessionId, callTs, alarmInstanceId)
+            },
+            LinearLayout.LayoutParams(dp(112), -2).apply { marginStart = dp(36) },
+        )
+        root.addView(actions, LinearLayout.LayoutParams(-1, -2))
+        root.addView(View(this), LinearLayout.LayoutParams(1, dp(28)))
 
         setContentView(root)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun prepareCallWindow() {
+        if (Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
+            )
+        }
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            )
     }
 
     @Deprecated("Use the visible decline action; retained so system Back also counts as an explicit decline.")
@@ -116,14 +192,12 @@ class IncomingCallActivity : AppCompatActivity() {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             putExtra(MainActivity.EXTRA_OPEN_URL, target)
         }
-        // 只有系统确认解锁成功、主界面即将接管通话时，才取消无人接听重试。
-        // 用户取消解锁时保持来电和超时计时，不能把一次未完成的接听误判为已接通。
         if (Build.VERSION.SDK_INT >= 26) {
             val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
             if (keyguard.isKeyguardLocked) {
                 keyguard.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
                     override fun onDismissSucceeded() { launchAcceptedCall(launch, alarmInstanceId) }
-                    override fun onDismissCancelled() { /* Keep ringing; the unanswered timeout remains armed. */ }
+                    override fun onDismissCancelled() { /* Keep ringing; unanswered timeout remains armed. */ }
                 })
                 return
             }
@@ -139,7 +213,6 @@ class IncomingCallActivity : AppCompatActivity() {
     }
 
     private fun finishCall(alarmInstanceId: String) {
-        // 用户在锁屏来电页主动拒接/关闭时，视为明确拒绝，不应触发第二次重拨或原生兜底。
         if (alarmInstanceId.isNotBlank()) DailyAlarmCallScheduler.cancel(this, alarmInstanceId)
         CallAlert.stop(this)
         finish()
