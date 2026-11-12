@@ -103,6 +103,7 @@ class IncomingCallActivity : AppCompatActivity() {
     }
 
     private fun answer(sessionId: String, callTs: Long) {
+        DailyAlarmCallScheduler.cancel(this)
         CallAlert.stop(this)
         val ts = if (callTs > 0) callTs else System.currentTimeMillis()
         val target = "${MainActivity.SITE_URL}/#incoming-call=${android.net.Uri.encode(sessionId)}&rt=$ts&answered=1"
