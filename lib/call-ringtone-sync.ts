@@ -11,6 +11,8 @@ type NativeRingtoneBridge = {
     finishCallRingtoneUpload: (key: string) => boolean;
     setCallRingtoneMuted: (key: string, muted: boolean) => boolean;
     deleteCallRingtone: (key: string) => boolean;
+    scheduleDailyAlarmWatchdog?: (id: string, sessionId: string, characterName: string, localTime: string, timeZone: string) => boolean;
+    cancelDailyAlarmWatchdog?: () => boolean;
 };
 
 declare global {
@@ -141,4 +143,22 @@ export async function syncNativeCallRingtones(): Promise<void> {
 export async function syncNativeCallRingtoneById(sessionId: string): Promise<void> {
     const session = findChatSessionById(sessionId);
     if (session) await syncNativeCallRingtoneForSession(session);
+}
+
+/** Arm the Android-only local watchdog. Null means this is not the native shell. */
+export function scheduleNativeDailyAlarmWatchdog(
+    config: { id: string; sessionId: string; localTime: string; timeZone: string },
+    characterName: string,
+): boolean | null {
+    if (typeof window === "undefined" || !isShellEnvironment()) return null;
+    const native = window.AndroidShell;
+    if (typeof native?.scheduleDailyAlarmWatchdog !== "function") return false;
+    return native.scheduleDailyAlarmWatchdog(config.id, config.sessionId, characterName, config.localTime, config.timeZone);
+}
+
+export function cancelNativeDailyAlarmWatchdog(): boolean | null {
+    if (typeof window === "undefined" || !isShellEnvironment()) return null;
+    const native = window.AndroidShell;
+    if (typeof native?.cancelDailyAlarmWatchdog !== "function") return false;
+    return native.cancelDailyAlarmWatchdog();
 }
