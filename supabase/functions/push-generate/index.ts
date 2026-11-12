@@ -662,7 +662,7 @@ Deno.serve(async (req: Request) => {
       /【我发起了语音通话】/,
       /【拨打电话】/,
     ];
-    let deliverAsCall = false;
+    let deliverAsCall = payload.merge?.proactiveCall === true;
     {
       const head = rawText.slice(0, 200);
       const matched = callMarkers
