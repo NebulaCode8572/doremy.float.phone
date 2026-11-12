@@ -108,31 +108,30 @@ class IncomingCallActivity : AppCompatActivity() {
     }
 
     private fun answer(sessionId: String, callTs: Long) {
-        DailyAlarmCallScheduler.cancel(this)
-        CallAlert.stop(this)
         val ts = if (callTs > 0) callTs else System.currentTimeMillis()
         val target = "${MainActivity.SITE_URL}/#incoming-call=${android.net.Uri.encode(sessionId)}&rt=$ts&answered=1"
         val launch = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             putExtra(MainActivity.EXTRA_OPEN_URL, target)
         }
-        // 锁屏接听：请求解锁后再进主界面（用户取消解锁则停在锁屏，通话不开始）
+        // 只有系统确认解锁成功、主界面即将接管通话时，才取消无人接听重试。
+        // 用户取消解锁时保持来电和超时计时，不能把一次未完成的接听误判为已接通。
         if (Build.VERSION.SDK_INT >= 26) {
             val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
             if (keyguard.isKeyguardLocked) {
                 keyguard.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
-                    override fun onDismissSucceeded() {
-                        runCatching { startActivity(launch) }
-                        finish()
-                    }
-
-                    override fun onDismissCancelled() {
-                        finish()
-                    }
+                    override fun onDismissSucceeded() { launchAcceptedCall(launch) }
+                    override fun onDismissCancelled() { /* Keep ringing; the unanswered timeout remains armed. */ }
                 })
                 return
             }
         }
+        launchAcceptedCall(launch)
+    }
+
+    private fun launchAcceptedCall(launch: Intent) {
+        DailyAlarmCallScheduler.cancel(this)
+        CallAlert.stop(this)
         runCatching { startActivity(launch) }
         finish()
     }

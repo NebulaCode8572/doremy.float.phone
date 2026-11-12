@@ -254,16 +254,28 @@ class PushService : Service() {
                     val text2 = body.optString("body").ifEmpty { "有新消息" }
                     // 来电：全屏来电通知（任何一步失败回落普通通知，主路不受影响）
                     if (body.optString("kind") == "call") {
+                        val characterName = body.optString("characterName").ifEmpty { title }
+                        val sessionId = body.optString("sessionId")
+                        val alarmInstanceId = body.optString("alarmInstanceId")
+                        val alarmAttempt = body.optInt("alarmAttempt", 1)
                         val shown = runCatching {
                             showIncomingCallNotification(
-                                body.optString("characterName").ifEmpty { title },
-                                body.optString("sessionId"),
+                                characterName,
+                                sessionId,
                                 body.optLong("callTs", System.currentTimeMillis()),
-                                body.optString("alarmInstanceId"),
-                                body.optInt("alarmAttempt", 1),
+                                alarmInstanceId,
+                                alarmAttempt,
                             )
                         }.isSuccess
                         if (shown) return
+                        if (alarmInstanceId.isNotBlank()) {
+                            // A failed native notification is a failed call delivery: retry once,
+                            // then use the native alarm if the second presentation also fails.
+                            DailyAlarmCallScheduler.onDeliveryFailure(
+                                this@PushService, sessionId, characterName, alarmInstanceId, alarmAttempt,
+                            )
+                            return
+                        }
                     }
                     showMessageNotification(title, text2, body.optString("sessionId"), body.optString("avatar"))
                 }

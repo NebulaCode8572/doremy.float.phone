@@ -20,6 +20,7 @@ object DailyAlarmCallScheduler {
     const val EXTRA_CHARACTER_NAME = "daily_alarm_character_name"
     const val EXTRA_CALL_TS = "daily_alarm_call_ts"
 
+    @Synchronized
     fun schedule(context: Context, sessionId: String, characterName: String, callTs: Long, alarmInstanceId: String, attempt: Int) {
         if (alarmInstanceId.isBlank() || attempt !in 1..2) return
         val dueAt = System.currentTimeMillis() + CallAlert.TIMEOUT_MS
@@ -42,7 +43,7 @@ object DailyAlarmCallScheduler {
                     .cancel(pendingIntent(context, previousToken))
             }
         }
-        prefs.edit().putString(KEY_PENDING, value).apply()
+        if (!prefs.edit().putString(KEY_PENDING, value).commit()) return
         val pending = pendingIntent(context, JSONObject(value).optString("token"))
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         runCatching {
@@ -51,14 +52,35 @@ object DailyAlarmCallScheduler {
         }.onFailure { manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, dueAt, pending) }
     }
 
+    @Synchronized
     fun cancel(context: Context) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_PENDING, "").orEmpty()
         val token = runCatching { JSONObject(raw).optString("token") }.getOrDefault("")
-        prefs.edit().remove(KEY_PENDING).apply()
+        prefs.edit().remove(KEY_PENDING).commit()
         runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pendingIntent(context, token)) }
     }
 
+    /** Retry once when Android cannot present the first incoming-call notification. */
+    internal fun onDeliveryFailure(context: Context, sessionId: String, characterName: String, alarmInstanceId: String, attempt: Int) {
+        if (alarmInstanceId.isBlank()) return
+        if (attempt <= 1) {
+            val retry = Intent(context, PushService::class.java)
+                .setAction(PushService.ACTION_DAILY_ALARM_RETRY)
+                .putExtra(EXTRA_SESSION_ID, sessionId)
+                .putExtra(EXTRA_CHARACTER_NAME, characterName)
+                .putExtra(EXTRA_CALL_TS, System.currentTimeMillis())
+                .putExtra(EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
+                .putExtra(EXTRA_ATTEMPT, 2)
+            val started = runCatching {
+                if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(retry) else context.startService(retry)
+            }.isSuccess
+            if (started) return
+        }
+        DailyAlarmFallbackScheduler.schedule(context, sessionId, characterName, alarmInstanceId)
+    }
+
+    @Synchronized
     internal fun onTimeout(context: Context, intent: Intent?) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_PENDING, "").orEmpty()
@@ -68,7 +90,7 @@ object DailyAlarmCallScheduler {
         val firedToken = intent?.data?.lastPathSegment.orEmpty().takeUnless { it == "legacy" }.orEmpty()
         // Ignore a stale timeout that was already delivered while a newer call replaced it.
         if (savedToken.isNotBlank() && savedToken != firedToken) return
-        prefs.edit().remove(KEY_PENDING).apply()
+        prefs.edit().remove(KEY_PENDING).commit()
         CallAlert.stop(context)
         val attempt = item.optInt(EXTRA_ATTEMPT, 1)
         if (attempt == 1) {
@@ -100,6 +122,7 @@ object DailyAlarmCallScheduler {
         }
     }
 
+    @Synchronized
     fun restore(context: Context) {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_PENDING, "").orEmpty()
         if (raw.isBlank()) return
