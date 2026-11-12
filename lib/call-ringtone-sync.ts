@@ -15,6 +15,10 @@ type NativeRingtoneBridge = {
     cancelDailyAlarmWatchdog?: () => boolean;
     canScheduleExactAlarms?: () => boolean;
     requestExactAlarmPermission?: () => boolean;
+    canUseFullScreenIntent?: () => boolean;
+    requestFullScreenIntentPermission?: () => boolean;
+    hasPostNotificationsPermission?: () => boolean;
+    requestPostNotificationsPermission?: () => boolean;
 };
 
 declare global {
@@ -161,6 +165,35 @@ export function requestNativeExactAlarmPermission(): boolean | null {
     const native = window.AndroidShell;
     if (typeof native?.requestExactAlarmPermission !== "function") return false;
     try { return native.requestExactAlarmPermission(); } catch { return false; }
+}
+/** Read Android's full-screen call/alarms notification access state. */
+export function getNativeFullScreenIntentPermission(): boolean | null {
+    if (typeof window === "undefined" || !isShellEnvironment()) return null;
+    const native = window.AndroidShell;
+    if (typeof native?.canUseFullScreenIntent !== "function") return null;
+    try { return native.canUseFullScreenIntent(); } catch { return false; }
+}
+
+export function requestNativeFullScreenIntentPermission(): boolean | null {
+    if (typeof window === "undefined" || !isShellEnvironment()) return null;
+    const native = window.AndroidShell;
+    if (typeof native?.requestFullScreenIntentPermission !== "function") return false;
+    try { return native.requestFullScreenIntentPermission(); } catch { return false; }
+}
+
+/** Read/request the Android notification runtime permission used by incoming-call alerts. */
+export function getNativePostNotificationsPermission(): boolean | null {
+    if (typeof window === "undefined" || !isShellEnvironment()) return null;
+    const native = window.AndroidShell;
+    if (typeof native?.hasPostNotificationsPermission !== "function") return null;
+    try { return native.hasPostNotificationsPermission(); } catch { return false; }
+}
+
+export function requestNativePostNotificationsPermission(): boolean | null {
+    if (typeof window === "undefined" || !isShellEnvironment()) return null;
+    const native = window.AndroidShell;
+    if (typeof native?.requestPostNotificationsPermission !== "function") return false;
+    try { return native.requestPostNotificationsPermission(); } catch { return false; }
 }
 /** Arm the Android-only local watchdog. Null means this is not the native shell. */
 export function scheduleNativeDailyAlarmWatchdog(
