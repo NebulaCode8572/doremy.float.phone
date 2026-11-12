@@ -149,3 +149,14 @@ Verification still required:
 - The persistent fallback state remains in SharedPreferences; boot restoration re-arms the fallback receiver, which starts the foreground ringing service again. Dismissal clears the persisted state, stops the service, stops ringtone/vibration, and removes the notification.
 - If Android rejects the foreground-service start synchronously, the previous direct-notification/ringtone path remains as a best-effort fallback. Device-specific background-start and notification/full-screen-intent behavior still requires physical-device testing.
 - `CallAlert` configures the ringtone `MediaPlayer` with a partial wake lock so playback can continue reliably while the screen is off. Playback releases the wake lock when the player is stopped/released.
+### Native local delivery watchdog
+
+- The Android shell now persists the daily alarm identity, session, character, local wall-clock time, and IANA timezone independently of the server job.
+- It pre-arms a local AlarmManager watchdog for 45 seconds after the configured local alarm time. This gives the server-generated call push a short delivery window.
+- If no incoming-call attempt for that occurrence has been persisted by the watchdog deadline, the shell starts attempt 1 locally. The normal unanswered-call timeout then retries once and proceeds to the native ringing fallback.
+- Incoming push and local watchdog delivery share the same date-scoped `alarmInstanceId`; duplicate attempts are ignored, and answered, explicitly declined, or fallback-completed instances are terminal.
+- The next local watchdog is armed before processing the current occurrence. Startup waits for the IndexedDB-backed alarm config to hydrate before syncing it to Android, and `BOOT_COMPLETED` restores the persisted watchdog.
+- If the device was powered off past the watchdog deadline, the expired occurrence is skipped on reboot rather than ringing unexpectedly late; the next future occurrence is restored.
+- If Android denies exact-alarm scheduling, the shell attempts the inexact idle-allowed fallback. OEM power management and notification/full-screen-intent policy can still delay or suppress presentation.
+
+Still requires physical-device verification: exact-alarm permission state, server push versus local watchdog race, duplicate suppression, offline delivery, reboot, locked-screen answer/unlock cancellation, retry, fallback audio, and stop action. CI builds are not a substitute for those tests.
