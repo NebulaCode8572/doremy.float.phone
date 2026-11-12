@@ -1323,6 +1323,18 @@ class MainActivity : AppCompatActivity() {
             )
             true
         }.getOrDefault(false)
+        // ── 每日 AI 闹钟本机看门狗 ──────────────────────────────
+        @JavascriptInterface
+        fun scheduleDailyAlarmWatchdog(id: String, sessionId: String, characterName: String, localTime: String, timeZone: String): Boolean =
+            runCatching { DailyAlarmWatchdogScheduler.schedule(this@MainActivity, id, sessionId, characterName, localTime, timeZone) }
+                .getOrDefault(false)
+
+        @JavascriptInterface
+        fun cancelDailyAlarmWatchdog(): Boolean = runCatching {
+            DailyAlarmWatchdogScheduler.cancel(this@MainActivity)
+            true
+        }.getOrDefault(false)
+
         // ── 来电铃声同步桥 ─────────────────────────────────────
         // 网页端按 sessionId（或保留键 "global"）分块同步 incomingCall 音频。
         // 单块限制由原生存储层校验；不接受任意文件路径或非音频 MIME。
