@@ -236,7 +236,7 @@ object DailyAlarmFallbackScheduler {
     }
 
     fun cancel(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_PENDING).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_PENDING).commit()
         runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(fallbackPendingIntent(context)) }
         runCatching { context.getSystemService(android.app.NotificationManager::class.java).cancel(NOTIFICATION_ID) }
         runCatching { context.stopService(Intent(context, DailyAlarmRingingService::class.java)) }
