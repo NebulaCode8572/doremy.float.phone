@@ -106,10 +106,10 @@ class IncomingCallActivity : AppCompatActivity() {
 
     @Deprecated("Use the visible decline action; retained so system Back also counts as an explicit decline.")
     override fun onBackPressed() {
-        finishCall()
+        finishCall(intent.getStringExtra(EXTRA_ALARM_INSTANCE_ID).orEmpty())
     }
 
-    private fun answer(sessionId: String, callTs: Long) {
+    private fun answer(sessionId: String, callTs: Long, alarmInstanceId: String) {
         val ts = if (callTs > 0) callTs else System.currentTimeMillis()
         val target = "${MainActivity.SITE_URL}/#incoming-call=${android.net.Uri.encode(sessionId)}&rt=$ts&answered=1"
         val launch = Intent(this, MainActivity::class.java).apply {
@@ -128,11 +128,11 @@ class IncomingCallActivity : AppCompatActivity() {
                 return
             }
         }
-        launchAcceptedCall(launch)
+        launchAcceptedCall(launch, alarmInstanceId)
     }
 
-    private fun launchAcceptedCall(launch: Intent) {
-        DailyAlarmCallScheduler.cancel(this)
+    private fun launchAcceptedCall(launch: Intent, alarmInstanceId: String) {
+        if (alarmInstanceId.isNotBlank()) DailyAlarmCallScheduler.cancel(this, alarmInstanceId)
         CallAlert.stop(this)
         runCatching { startActivity(launch) }
         finish()
@@ -140,7 +140,7 @@ class IncomingCallActivity : AppCompatActivity() {
 
     private fun finishCall(alarmInstanceId: String) {
         // 用户在锁屏来电页主动拒接/关闭时，视为明确拒绝，不应触发第二次重拨或原生兜底。
-        DailyAlarmCallScheduler.cancel(this)
+        if (alarmInstanceId.isNotBlank()) DailyAlarmCallScheduler.cancel(this, alarmInstanceId)
         CallAlert.stop(this)
         finish()
     }
