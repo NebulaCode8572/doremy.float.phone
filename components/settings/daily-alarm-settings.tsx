@@ -12,6 +12,7 @@ import {
     type DailyAlarmConfig,
 } from "@/lib/daily-alarm-storage";
 import { armDailyAlarmBailout } from "@/lib/push-bailout-client";
+import { scheduleNativeDailyAlarmWatchdog, cancelNativeDailyAlarmWatchdog } from "@/lib/call-ringtone-sync";
 
 export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) => void }) {
     const characters = useMemo(() => loadCharacters(), []);
@@ -60,13 +61,18 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
             }
             saveDailyAlarmConfig(nextConfig);
             setConfig(nextConfig);
-            onNotice(`AI 闹钟已开启，每天 ${localTime} 提醒`);
+            const characterName = characters.find(character => character.id === characterId)?.name || "角色";
+            const nativeWatchdog = scheduleNativeDailyAlarmWatchdog(nextConfig, characterName);
+            onNotice(nativeWatchdog === false
+                ? "AI 闹钟已开启，但本机备用计时未能登记；请检查系统精确闹钟权限。"
+                : `AI 闹钟已开启，每天 ${localTime} 提醒`);
         } finally {
             setBusy(false);
         }
     };
 
     const disable = () => {
+        cancelNativeDailyAlarmWatchdog();
         clearDailyAlarmConfig();
         setConfig(null);
         onNotice("AI 闹钟已关闭");
