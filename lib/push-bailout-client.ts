@@ -695,7 +695,7 @@ export async function armDailyAlarmBailout(
                 "请先在聊天里发送一条自然、简短、有角色个性的早安消息；随后发起语音来电。",
                 "来电已由系统确定，不需要输出任何通话标记，也不要把它改成普通消息。",
                 "来电接通后的第一句话应自然承接早安消息，不要重复整段早安内容。",
-            ].join("\\n"),
+            ].join("\n"),
         });
         const request = buildProviderRequest(providerConfig, preset, toLlmRequestMessages(llmMessages));
         const triggerKey = "dailyalarm:" + config.id + ":" + next.dateKey;
