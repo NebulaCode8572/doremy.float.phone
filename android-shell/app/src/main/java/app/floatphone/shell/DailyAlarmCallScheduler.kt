@@ -216,7 +216,10 @@ object DailyAlarmFallbackScheduler {
             .put(DailyAlarmCallScheduler.EXTRA_CHARACTER_NAME, characterName)
             .put(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
             .toString()
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_PENDING, value).commit()
+        if (!context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_PENDING, value).commit()) {
+            runCatching { fireDirect(context, value) }
+            return
+        }
         val pending = fallbackPendingIntent(context)
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val dueAt = System.currentTimeMillis() + 1_000L
