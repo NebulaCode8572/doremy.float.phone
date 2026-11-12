@@ -161,7 +161,8 @@ object DailyAlarmCallScheduler {
     }
     /** Retry once when Android cannot present the first incoming-call notification. */
     internal fun onDeliveryFailure(context: Context, sessionId: String, characterName: String, alarmInstanceId: String, attempt: Int) {
-        if (alarmInstanceId.isBlank() || isTerminalInstance(context, alarmInstanceId)) return
+        if (alarmInstanceId.isBlank() || isTerminalInstance(context, alarmInstanceId)
+            || !DailyAlarmWatchdogScheduler.isOccurrenceActive(context, alarmInstanceId)) return
         if (attempt <= 1) {
             val retry = Intent(context, PushService::class.java)
                 .setAction(PushService.ACTION_DAILY_ALARM_RETRY)
@@ -188,6 +189,14 @@ object DailyAlarmCallScheduler {
         val firedToken = intent?.data?.lastPathSegment.orEmpty().takeUnless { it == "legacy" }.orEmpty()
         // Ignore a stale timeout that was already delivered while a newer call replaced it.
         if (savedToken.isNotBlank() && savedToken != firedToken) return
+        val alarmInstanceId = item.optString(EXTRA_ALARM_INSTANCE_ID)
+        if (alarmInstanceId.isNotBlank() && (isTerminalInstance(context, alarmInstanceId)
+                || !DailyAlarmWatchdogScheduler.isOccurrenceActive(context, alarmInstanceId))
+        ) {
+            cancel(context, alarmInstanceId)
+            CallAlert.stop(context)
+            return
+        }
         prefs.edit().remove(KEY_PENDING).commit()
         CallAlert.stop(context)
         val attempt = item.optInt(EXTRA_ATTEMPT, 1)
@@ -227,6 +236,13 @@ object DailyAlarmCallScheduler {
         val item = runCatching { JSONObject(raw) }.getOrNull() ?: return
         val attempt = item.optInt(EXTRA_ATTEMPT, 1)
         if (attempt !in 1..2) return
+        val instanceId = item.optString(EXTRA_ALARM_INSTANCE_ID)
+        if (instanceId.isNotBlank() && (isTerminalInstance(context, instanceId)
+                || !DailyAlarmWatchdogScheduler.isOccurrenceActive(context, instanceId))
+        ) {
+            cancel(context, instanceId)
+            return
+        }
         val pending = pendingIntent(context, item.optString("token"))
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         // Preserve the remaining timeout across reboot; if it already elapsed while powered off,
