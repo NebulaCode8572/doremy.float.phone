@@ -26,7 +26,7 @@ import {
 } from "./menstrual-storage";
 import { loadTimedWakeSchedules, removeTimedWakeSchedule, type TimedWakeSchedule } from "./timed-wake-storage";
 import { loadProactiveCallSchedules, type ProactiveCallSchedule } from "./proactive-call-storage";
-import { loadDailyAlarmConfig, nextDailyAlarmAt, type DailyAlarmConfig } from "./daily-alarm-storage";
+import { nextDailyAlarmAt, type DailyAlarmConfig } from "./daily-alarm-storage";
 import {
     IDLE_RECONNECT_MAX_CONSECUTIVE,
     loadIdleReconnectRules,
@@ -804,13 +804,7 @@ export async function refreshScheduledBailouts(): Promise<void> {
     }
     refreshingScheduled = true;
     try {
-        const dailyAlarm = loadDailyAlarmConfig();
-        if (dailyAlarm?.enabled) {
-            const result = await armDailyAlarmBailout(dailyAlarm);
-            console.warn(result.ok
-                ? "[PushBailout] 每日 AI 闹钟已挂载：" + dailyAlarm.id
-                : "[PushBailout] 每日 AI 闹钟未挂载：" + dailyAlarm.id + " — " + result.reason);
-        }
+
         for (const schedule of loadProactiveCallSchedules()) {
             // 已经过期的本地记录不再重挂，避免完成过的来电在后续巡检中被重新排队。
             if (schedule.fireAt <= Date.now()) continue;
