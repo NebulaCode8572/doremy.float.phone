@@ -23,7 +23,7 @@ export function loadDailyAlarmConfig(): DailyAlarmConfig | null {
         if (typeof item.id !== "string" || typeof item.sessionId !== "string"
             || typeof item.characterId !== "string" || typeof item.localTime !== "string"
             || typeof item.timeZone !== "string" || typeof item.updatedAt !== "number") return null;
-        if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(item.localTime)) return null;
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(item.localTime)) return null;
         return { ...item, enabled: item.enabled === true } as DailyAlarmConfig;
     } catch {
         return null;
