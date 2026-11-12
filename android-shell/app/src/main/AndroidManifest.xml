@@ -156,6 +156,9 @@
             android:name=".CallActionReceiver"
             android:exported="false" />
 
+        <receiver android:name=".DailyAlarmCallTimeoutReceiver" android:exported="false" />
+        <receiver android:name=".DailyAlarmFallbackReceiver" android:exported="false" />
+
         <service
             android:name=".PushService"
             android:exported="false"
