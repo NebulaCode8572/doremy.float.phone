@@ -609,10 +609,19 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
     useEffect(() => {
         if (initiator !== "character" || callState !== "IDLE" || initialIncomingGreetingStartedRef.current) return;
         initialIncomingGreetingStartedRef.current = true;
+        const recentAssistantMessage = [...messagesRef.current].reverse().find(message => {
+            if (message.role !== "assistant" || message.mediaType || !message.content?.trim()) return false;
+            if (message.content.includes("发起了语音通话")) return false;
+            const createdAt = Date.parse(message.createdAt);
+            return Number.isFinite(createdAt) && Date.now() - createdAt >= 0 && Date.now() - createdAt < 15 * 60_000;
+        });
+        const recentAssistantText = recentAssistantMessage?.content.trim().slice(0, 800);
         void runConversationTurn(undefined, {
             ephemeralSystemNote: [
                 "你刚刚主动拨打了用户的语音电话，用户已经接听。现在请由你主动说出通话的第一句话，不要等待用户先开口。",
-                "请结合你的人设和最近的聊天上下文，自然、简短地开始这次通话；如果上下文表明这是早安或叫醒电话，就自然地向用户道早安并温和叫醒用户。",
+                recentAssistantText
+                    ? "你在这次来电前已经发出的最近一条聊天消息是：「" + recentAssistantText + "」。这条消息用户已经能在聊天记录中看到。通话开场要自然承接它，不要重复问候、复述或照搬这条消息。"
+                    : "请结合你的人设和最近的聊天上下文，自然、简短地开始这次通话；如果上下文表明这是早安或叫醒电话，就自然地向用户道早安并温和叫醒用户。",
                 "直接说你要对用户说的话，不要提及系统提示、任务或生成过程。"
             ].join("\n"),
         });
