@@ -159,7 +159,7 @@ object DailyAlarmWatchdogScheduler {
         val time = runCatching { LocalTime.parse(config.optString("local_time")) }.getOrNull() ?: return false
         val now = ZonedDateTime.now(zone)
         var next = now.toLocalDate().atTime(time).atZone(zone)
-        if (!next.isAfter(now)) next = now.toLocalDate().plusDays(1).atTime(time).atZone(zone)
+        if (!next.isAfter(now.plusSeconds(5))) next = now.toLocalDate().plusDays(1).atTime(time).atZone(zone)
         val dateKey = next.toLocalDate().format(DateTimeFormatter.ISO_LOCAL_DATE)
         val instanceId = "$id:$dateKey"
         val fireAt = next.toInstant().toEpochMilli() + DELIVERY_GRACE_MS
