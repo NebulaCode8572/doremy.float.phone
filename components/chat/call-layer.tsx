@@ -84,7 +84,6 @@ export function CallLayer() {
         session,
         character,
         initiator: call.initiator,
-        initiallyAccepted: call.accepted,
         minimized: call.minimized,
         onMinimize: minimizeCall,
         onRestore: restoreCall,
@@ -92,6 +91,6 @@ export function CallLayer() {
     };
 
     return call.kind === "voice"
-        ? <VoiceCallScreen {...sharedProps} />
+        ? <VoiceCallScreen {...sharedProps} initiallyAccepted={call.accepted} />
         : <VideoCallScreen {...sharedProps} />;
 }
