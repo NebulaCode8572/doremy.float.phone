@@ -41,9 +41,12 @@ export function loadProactiveCallSchedules(): ProactiveCallSchedule[] {
 
 export function saveProactiveCallSchedule(schedule: ProactiveCallSchedule): void {
     if (typeof window === "undefined") return;
-    const schedules = loadProactiveCallSchedules().filter(item => item.id !== schedule.id);
+    const current = loadProactiveCallSchedules();
+    const replacing = current.filter(item => item.sessionId === schedule.sessionId && item.id !== schedule.id);
+    const schedules = current.filter(item => item.sessionId !== schedule.sessionId || item.id === schedule.id);
     schedules.push(schedule);
     kvSet(PROACTIVE_CALL_SCHEDULES_KEY, JSON.stringify(schedules));
+    for (const item of replacing) emitBailoutCancel({ key: "proactivecall:" + item.id });
 }
 
 export function removeProactiveCallSchedule(id: string): void {
