@@ -12,8 +12,8 @@ import android.os.Vibrator
 import android.os.VibratorManager
 
 /**
- * 来电提示的共享状态：振动循环 + 超时未接。
- * 全程不出声（App 的约定是只振动），振动尊重系统响铃模式由系统 Vibrator 自行处理。
+ * 来电提示的共享状态：角色铃声循环 + 振动循环 + 超时未接。
+ * 音频从 Android 私有缓存读取；缺失或静音时仍保留振动提醒。
  * 任何一方（接听/拒接/超时/新来电顶替）调用 stop 即全部收场。
  */
 object CallAlert {
