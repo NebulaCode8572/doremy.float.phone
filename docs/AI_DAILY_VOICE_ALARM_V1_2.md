@@ -56,3 +56,21 @@ It does not claim that the features are implemented; each checklist item must be
 - Work only on `feature/ai-daily-voice-alarm` until verified.
 - Do not merge to `main` or claim deployment without explicit release approval.
 - Do not claim Android behavior is reliable until tested on the target device and Android version.
+
+
+## Phase 2 implementation status — ringtone bridge
+
+Implemented on `feature/ai-daily-voice-alarm`:
+- Android private ringtone cache keyed by chat session ID, with a global fallback key.
+- Chunked WebView bridge transfer (48 KiB binary chunks; native per-chunk Base64 input limit).
+- Web-side synchronization for global and per-session `incomingCall` settings.
+- Startup synchronization after chat IndexedDB hydration.
+- Native looping MediaPlayer playback alongside the existing vibration pattern.
+- Explicit per-session mute takes precedence over the global ringtone; absent session override inherits global.
+- Clearing/disabling a configured ringtone removes the cached per-key file and records the mute/inherit state.
+
+Not yet verified:
+- Android Gradle compilation and TypeScript/Next.js build.
+- Real-device playback, lock-screen behavior, audio focus/volume/DND interaction, and reboot behavior.
+- Cross-origin ringtone URLs may fail browser fetch due to CORS; local uploaded audio assets are the reliable path.
+- No deployment or merge to `main` has occurred.
