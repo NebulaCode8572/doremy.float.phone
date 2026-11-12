@@ -133,6 +133,8 @@ class IncomingCallActivity : AppCompatActivity() {
     }
 
     private fun finishCall() {
+        // 用户在锁屏来电页主动拒接/关闭时，视为明确拒绝，不应触发第二次重拨或原生兜底。
+        DailyAlarmCallScheduler.cancel(this)
         CallAlert.stop(this)
         finish()
     }
