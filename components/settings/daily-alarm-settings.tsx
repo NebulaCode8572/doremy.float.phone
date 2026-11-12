@@ -104,7 +104,7 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
                         className="w-full rounded-xl border border-[var(--c-border)] bg-[var(--c-input)] px-3 py-3 text-sm"
                     />
                     <p className="text-xs leading-relaxed text-[var(--c-text-secondary)]">
-                        使用当前设备时区：{Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"}
+                        使用时区：{config?.enabled ? config.timeZone : (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC")}
                     </p>
                 </div>
                 {error ? <p className="mt-3 text-sm text-red-500">{error}</p> : null}
