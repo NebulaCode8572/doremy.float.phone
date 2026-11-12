@@ -14,6 +14,7 @@ import java.util.UUID
 object DailyAlarmCallScheduler {
     private const val PREFS = "daily_alarm_call_retry"
     private const val KEY_PENDING = "pending"
+    private const val KEY_RETRY_DISPATCH = "retry_dispatch"
     private const val KEY_TERMINAL_INSTANCE = "terminal_instance"
     private const val KEY_TERMINAL_INSTANCES = "terminal_instances"
     private const val KEY_ATTEMPT_WATERMARKS = "attempt_watermarks"
@@ -154,31 +155,88 @@ object DailyAlarmCallScheduler {
         }
         if (alarmInstanceId !in values) values.add(alarmInstanceId)
         val retained = values.takeLast(32)
-        prefs.edit()
+        val retryRaw = prefs.getString(KEY_RETRY_DISPATCH, "").orEmpty()
+        val retryId = runCatching { JSONObject(retryRaw).optString(EXTRA_ALARM_INSTANCE_ID) }.getOrDefault("")
+        val editor = prefs.edit()
             .putString(KEY_TERMINAL_INSTANCES, JSONArray(retained).toString())
             .putString(KEY_TERMINAL_INSTANCE, alarmInstanceId)
-            .commit()
+        if (retryId == alarmInstanceId) editor.remove(KEY_RETRY_DISPATCH)
+        editor.commit()
     }
     /** Retry once when Android cannot present the first incoming-call notification. */
     internal fun onDeliveryFailure(context: Context, sessionId: String, characterName: String, alarmInstanceId: String, attempt: Int) {
         if (alarmInstanceId.isBlank() || isTerminalInstance(context, alarmInstanceId)
             || !DailyAlarmWatchdogScheduler.isOccurrenceActive(context, alarmInstanceId)) return
         if (attempt <= 1) {
-            val retry = Intent(context, PushService::class.java)
-                .setAction(PushService.ACTION_DAILY_ALARM_RETRY)
-                .putExtra(EXTRA_SESSION_ID, sessionId)
-                .putExtra(EXTRA_CHARACTER_NAME, characterName)
-                .putExtra(EXTRA_CALL_TS, System.currentTimeMillis())
-                .putExtra(EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
-                .putExtra(EXTRA_ATTEMPT, 2)
-            val started = runCatching {
-                if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(retry) else context.startService(retry)
-            }.isSuccess
-            if (started) return
+            val raw = persistRetryDispatch(context, sessionId, characterName, alarmInstanceId)
+            if (raw != null) {
+                restoreRetryDispatch(context)
+                return
+            }
         }
         DailyAlarmFallbackScheduler.schedule(context, sessionId, characterName, alarmInstanceId)
     }
 
+    @Synchronized
+    private fun persistRetryDispatch(context: Context, sessionId: String, characterName: String, alarmInstanceId: String): String? {
+        if (alarmInstanceId.isBlank() || isTerminalInstance(context, alarmInstanceId)
+            || !DailyAlarmWatchdogScheduler.isOccurrenceActive(context, alarmInstanceId)) return null
+        val value = JSONObject()
+            .put(EXTRA_SESSION_ID, sessionId)
+            .put(EXTRA_CHARACTER_NAME, characterName)
+            .put(EXTRA_CALL_TS, System.currentTimeMillis())
+            .put(EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
+            .put(EXTRA_ATTEMPT, 2)
+            .put("created_at", System.currentTimeMillis())
+            .toString()
+        return if (context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString(KEY_RETRY_DISPATCH, value).commit()) value else null
+    }
+
+    @Synchronized
+    fun clearRetryDispatch(context: Context, expectedInstanceId: String = "") {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = prefs.getString(KEY_RETRY_DISPATCH, "").orEmpty()
+        if (raw.isBlank()) return
+        val currentId = runCatching { JSONObject(raw).optString(EXTRA_ALARM_INSTANCE_ID) }.getOrDefault("")
+        if (expectedInstanceId.isNotBlank() && currentId != expectedInstanceId) return
+        prefs.edit().remove(KEY_RETRY_DISPATCH).commit()
+    }
+
+    @Synchronized
+    fun restoreRetryDispatch(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = prefs.getString(KEY_RETRY_DISPATCH, "").orEmpty()
+        if (raw.isBlank()) return
+        val item = runCatching { JSONObject(raw) }.getOrNull() ?: run { clearRetryDispatch(context); return }
+        val instanceId = item.optString(EXTRA_ALARM_INSTANCE_ID)
+        if (instanceId.isBlank() || isTerminalInstance(context, instanceId)
+            || !DailyAlarmWatchdogScheduler.isOccurrenceActive(context, instanceId)) {
+            clearRetryDispatch(context, instanceId)
+            if (instanceId.isNotBlank()) markTerminal(context, instanceId)
+            return
+        }
+        if (attemptWatermark(prefs, instanceId) >= 2) {
+            clearRetryDispatch(context, instanceId)
+            return
+        }
+        val retry = Intent(context, PushService::class.java)
+            .setAction(PushService.ACTION_DAILY_ALARM_RETRY)
+            .putExtra(EXTRA_SESSION_ID, item.optString(EXTRA_SESSION_ID))
+            .putExtra(EXTRA_CHARACTER_NAME, item.optString(EXTRA_CHARACTER_NAME))
+            .putExtra(EXTRA_CALL_TS, item.optLong(EXTRA_CALL_TS, System.currentTimeMillis()))
+            .putExtra(EXTRA_ALARM_INSTANCE_ID, instanceId)
+            .putExtra(EXTRA_ATTEMPT, 2)
+        val started = runCatching {
+            if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(retry) else context.startService(retry)
+        }.isSuccess
+        if (!started) {
+            clearRetryDispatch(context, instanceId)
+            DailyAlarmFallbackScheduler.schedule(
+                context, item.optString(EXTRA_SESSION_ID), item.optString(EXTRA_CHARACTER_NAME), instanceId,
+            )
+        }
+    }
     @Synchronized
     internal fun onTimeout(context: Context, intent: Intent?) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -201,17 +259,15 @@ object DailyAlarmCallScheduler {
         CallAlert.stop(context)
         val attempt = item.optInt(EXTRA_ATTEMPT, 1)
         if (attempt == 1) {
-            val retry = Intent(context, PushService::class.java)
-                .setAction(PushService.ACTION_DAILY_ALARM_RETRY)
-                .putExtra(EXTRA_SESSION_ID, item.optString(EXTRA_SESSION_ID))
-                .putExtra(EXTRA_CHARACTER_NAME, item.optString(EXTRA_CHARACTER_NAME))
-                .putExtra(EXTRA_CALL_TS, System.currentTimeMillis())
-                .putExtra(EXTRA_ALARM_INSTANCE_ID, item.optString(EXTRA_ALARM_INSTANCE_ID))
-                .putExtra(EXTRA_ATTEMPT, 2)
-            val started = runCatching {
-                if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(retry) else context.startService(retry)
-            }.isSuccess
-            if (!started) {
+            val rawRetry = persistRetryDispatch(
+                context,
+                item.optString(EXTRA_SESSION_ID),
+                item.optString(EXTRA_CHARACTER_NAME),
+                item.optString(EXTRA_ALARM_INSTANCE_ID),
+            )
+            if (rawRetry != null) {
+                restoreRetryDispatch(context)
+            } else {
                 DailyAlarmFallbackScheduler.schedule(
                     context,
                     item.optString(EXTRA_SESSION_ID),
