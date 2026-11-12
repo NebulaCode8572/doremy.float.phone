@@ -132,6 +132,7 @@ class PushService : Service() {
     private fun connectionLoop() {
         var backoffSec = 5L
         while (!stopped) {
+            lastConfigError = null
             val config = fetchConfig()
             if (config == null) {
                 updateKeepAlive(lastConfigError ?: "未登录或站点不可达，稍后重试")
