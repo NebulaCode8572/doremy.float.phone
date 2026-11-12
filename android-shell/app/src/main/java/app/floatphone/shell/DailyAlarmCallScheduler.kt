@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import org.json.JSONObject
+import org.json.JSONArray
 import android.net.Uri
 import java.util.UUID
 
@@ -14,6 +15,7 @@ object DailyAlarmCallScheduler {
     private const val PREFS = "daily_alarm_call_retry"
     private const val KEY_PENDING = "pending"
     private const val KEY_TERMINAL_INSTANCE = "terminal_instance"
+    private const val KEY_TERMINAL_INSTANCES = "terminal_instances"
     private const val REQUEST_CODE = 4201
     const val EXTRA_ALARM_INSTANCE_ID = "daily_alarm_instance_id"
     const val EXTRA_ATTEMPT = "daily_alarm_attempt"
@@ -66,7 +68,7 @@ object DailyAlarmCallScheduler {
         val pendingItem = runCatching { JSONObject(raw) }.getOrNull()
         val currentInstanceId = pendingItem?.optString(EXTRA_ALARM_INSTANCE_ID).orEmpty()
         if (expectedInstanceId.isNotBlank() && currentInstanceId.isNotBlank() && currentInstanceId != expectedInstanceId) {
-            prefs.edit().putString(KEY_TERMINAL_INSTANCE, expectedInstanceId).commit()
+            markTerminal(context, expectedInstanceId)
             return
         }
         if (expectedInstanceId.isNotBlank() && currentInstanceId.isBlank()) {
@@ -75,9 +77,8 @@ object DailyAlarmCallScheduler {
         }
         val token = pendingItem?.optString("token").orEmpty()
         val terminalId = expectedInstanceId.ifBlank { currentInstanceId }
-        val edit = prefs.edit().remove(KEY_PENDING)
-        if (terminalId.isNotBlank()) edit.putString(KEY_TERMINAL_INSTANCE, terminalId)
-        edit.commit()
+        prefs.edit().remove(KEY_PENDING).commit()
+        if (terminalId.isNotBlank()) markTerminal(context, terminalId)
         runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pendingIntent(context, token)) }
     }
 
@@ -98,14 +99,32 @@ object DailyAlarmCallScheduler {
     }
 
     @Synchronized
-    fun isTerminalInstance(context: Context, alarmInstanceId: String): Boolean =
-        alarmInstanceId.isNotBlank() && context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_TERMINAL_INSTANCE, "") == alarmInstanceId
+    fun isTerminalInstance(context: Context, alarmInstanceId: String): Boolean {
+        if (alarmInstanceId.isBlank()) return false
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getString(KEY_TERMINAL_INSTANCE, "") == alarmInstanceId) return true
+        val raw = prefs.getString(KEY_TERMINAL_INSTANCES, "[]").orEmpty()
+        val items = runCatching { JSONArray(raw) }.getOrNull() ?: return false
+        return (0 until items.length()).any { items.optString(it) == alarmInstanceId }
+    }
 
     @Synchronized
     fun markTerminal(context: Context, alarmInstanceId: String) {
-        if (alarmInstanceId.isNotBlank()) context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_TERMINAL_INSTANCE, alarmInstanceId).commit()
+        if (alarmInstanceId.isBlank()) return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = prefs.getString(KEY_TERMINAL_INSTANCES, "[]").orEmpty()
+        val existing = runCatching { JSONArray(raw) }.getOrNull() ?: JSONArray()
+        val values = (0 until existing.length()).map { existing.optString(it) }
+            .filter { it.isNotBlank() }.toMutableList()
+        prefs.getString(KEY_TERMINAL_INSTANCE, "").orEmpty().takeIf { it.isNotBlank() }?.let {
+            if (it !in values) values.add(it)
+        }
+        if (alarmInstanceId !in values) values.add(alarmInstanceId)
+        val retained = values.takeLast(32)
+        prefs.edit()
+            .putString(KEY_TERMINAL_INSTANCES, JSONArray(retained).toString())
+            .putString(KEY_TERMINAL_INSTANCE, alarmInstanceId)
+            .commit()
     }
     /** Retry once when Android cannot present the first incoming-call notification. */
     internal fun onDeliveryFailure(context: Context, sessionId: String, characterName: String, alarmInstanceId: String, attempt: Int) {
