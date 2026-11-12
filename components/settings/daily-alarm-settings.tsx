@@ -41,7 +41,11 @@ export function DailyAlarmSettings({ onNotice }: { onNotice: (message: string) =
         const refreshPermission = () => setExactAlarmPermission(getNativeExactAlarmPermission());
         refreshPermission();
         document.addEventListener("visibilitychange", refreshPermission);
-        return () => document.removeEventListener("visibilitychange", refreshPermission);
+        window.addEventListener("native-exact-alarm-permission-changed", refreshPermission);
+        return () => {
+            document.removeEventListener("visibilitychange", refreshPermission);
+            window.removeEventListener("native-exact-alarm-permission-changed", refreshPermission);
+        };
     }, []);
 
     const enable = async () => {
