@@ -1350,6 +1350,33 @@ class MainActivity : AppCompatActivity() {
         }.getOrDefault(false)
 
         @JavascriptInterface
+        fun canUseFullScreenIntent(): Boolean = runCatching {
+            Build.VERSION.SDK_INT < 34 || getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+        }.getOrDefault(false)
+
+        @JavascriptInterface
+        fun requestFullScreenIntentPermission(): Boolean = runCatching {
+            val allowed = Build.VERSION.SDK_INT < 34 || getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+            if (allowed) return@runCatching true
+            this@MainActivity.startActivity(
+                Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${this@MainActivity.packageName}"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            true
+        }.getOrDefault(false)
+
+        @JavascriptInterface
+        fun hasPostNotificationsPermission(): Boolean = Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+        @JavascriptInterface
+        fun requestPostNotificationsPermission(): Boolean = runCatching {
+            if (Build.VERSION.SDK_INT >= 33 &&
+                ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            true
+        }.getOrDefault(false)
+        @JavascriptInterface
         fun scheduleDailyAlarmWatchdog(id: String, sessionId: String, characterName: String, localTime: String, timeZone: String): Boolean =
             runCatching { DailyAlarmWatchdogScheduler.schedule(this@MainActivity, id, sessionId, characterName, localTime, timeZone) }
                 .getOrDefault(false)
