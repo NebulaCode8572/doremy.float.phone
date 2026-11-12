@@ -58,8 +58,16 @@ object DailyAlarmCallScheduler {
                 .putExtra(EXTRA_CALL_TS, System.currentTimeMillis())
                 .putExtra(EXTRA_ALARM_INSTANCE_ID, item.optString(EXTRA_ALARM_INSTANCE_ID))
                 .putExtra(EXTRA_ATTEMPT, 2)
-            runCatching {
+            val started = runCatching {
                 if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(retry) else context.startService(retry)
+            }.isSuccess
+            if (!started) {
+                DailyAlarmFallbackScheduler.schedule(
+                    context,
+                    item.optString(EXTRA_SESSION_ID),
+                    item.optString(EXTRA_CHARACTER_NAME),
+                    item.optString(EXTRA_ALARM_INSTANCE_ID),
+                )
             }
         } else {
             DailyAlarmFallbackScheduler.schedule(
