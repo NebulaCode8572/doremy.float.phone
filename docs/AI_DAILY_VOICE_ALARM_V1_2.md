@@ -143,3 +143,8 @@ Verification still required:
 - `supabase/functions/push-generate/index.ts` and `public/ai-phone-push/push-generate.mjs` were checked and are byte-for-byte identical at the current branch revision.
 - The server outbox merge now adds an explicit assistant call-history record for deterministic proactive-call jobs (including daily alarms), even when the user does not answer. It avoids adding a duplicate if the same occurrence already has a recent call record.
 - When Android has already accepted a call from the lock screen/notification, the app attempts to merge the pending server outbox before opening the call screen. This preserves the order of the scheduled chat opener and the call record, and gives the call's first spoken turn the latest delivered message as context.
+### Native fallback process-lifetime hardening
+
+- The final native fallback now starts `DailyAlarmRingingService` as a `mediaPlayback` foreground service before starting the looping character ringtone. This keeps playback owned by a foreground service after the AlarmManager broadcast receiver returns, rather than relying only on a short-lived receiver process.
+- The persistent fallback state remains in SharedPreferences; boot restoration re-arms the fallback receiver, which starts the foreground ringing service again. Dismissal clears the persisted state, stops the service, stops ringtone/vibration, and removes the notification.
+- If Android rejects the foreground-service start synchronously, the previous direct-notification/ringtone path remains as a best-effort fallback. Device-specific background-start and notification/full-screen-intent behavior still requires physical-device testing.
