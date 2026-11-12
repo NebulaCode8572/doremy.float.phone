@@ -157,7 +157,7 @@ object DailyAlarmFallbackScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val open = PendingIntent.getActivity(
-            context, 4204, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            context, 4204, Intent(context, DailyAlarmFallbackActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = androidx.core.app.NotificationCompat.Builder(context, "shell_calls")
@@ -169,6 +169,7 @@ object DailyAlarmFallbackScheduler {
             .setOngoing(true)
             .setAutoCancel(false)
             .setContentIntent(open)
+            .setFullScreenIntent(open, true)
             .addAction(0, "停止闹钟", dismiss)
             .build()
         manager.notify(NOTIFICATION_ID, notification)
