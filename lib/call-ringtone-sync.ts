@@ -22,6 +22,7 @@ declare global {
 const MAX_BYTES = 8 * 1024 * 1024;
 const CHUNK_BYTES = 48 * 1024;
 const syncVersions = new Map<string, number>();
+const syncQueues = new Map<string, Promise<void>>();
 
 function bridge(): NativeRingtoneBridge | null {
     if (typeof window === "undefined" || !isShellEnvironment()) return null;
@@ -78,12 +79,9 @@ async function uploadRingtone(native: NativeRingtoneBridge, key: string, config:
     return native.finishCallRingtoneUpload(key);
 }
 
-async function syncKey(key: string, config: ChatSoundConfig, fallbackConfig?: ChatSoundConfig): Promise<void> {
+async function syncKeyNow(key: string, config: ChatSoundConfig, fallbackConfig: ChatSoundConfig | undefined, version: number): Promise<void> {
     const native = bridge();
     if (!native) return;
-    const version = (syncVersions.get(key) || 0) + 1;
-    syncVersions.set(key, version);
-
     if (!config.enabled || !config.value) {
         native.deleteCallRingtone(key);
         native.setCallRingtoneMuted(key, true);
@@ -104,6 +102,22 @@ async function syncKey(key: string, config: ChatSoundConfig, fallbackConfig?: Ch
         if (uploaded) native.setCallRingtoneMuted(key, false);
     } catch (error) {
         console.warn("[CallRingtoneSync] Native ringtone sync failed; keeping previous cached audio.", error);
+    }
+}
+
+/** Serialize writes per key: concurrent uploads must never interleave chunks in one temp file. */
+async function syncKey(key: string, config: ChatSoundConfig, fallbackConfig?: ChatSoundConfig): Promise<void> {
+    const version = (syncVersions.get(key) || 0) + 1;
+    syncVersions.set(key, version);
+    const previous = syncQueues.get(key) || Promise.resolve();
+    const current = previous.catch(() => undefined).then(
+        () => syncKeyNow(key, config, fallbackConfig, version),
+    );
+    syncQueues.set(key, current);
+    try {
+        await current;
+    } finally {
+        if (syncQueues.get(key) === current) syncQueues.delete(key);
     }
 }
 
