@@ -102,6 +102,11 @@ class IncomingCallActivity : AppCompatActivity() {
         setContentView(root)
     }
 
+    @Deprecated("Use the visible decline action; retained so system Back also counts as an explicit decline.")
+    override fun onBackPressed() {
+        finishCall()
+    }
+
     private fun answer(sessionId: String, callTs: Long) {
         DailyAlarmCallScheduler.cancel(this)
         CallAlert.stop(this)
