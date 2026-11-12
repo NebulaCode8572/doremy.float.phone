@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, type CSSProperties } from "react";
-import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues, updateChatMessage, deleteChatMessage } from "@/lib/chat-storage";
+import { Code, X } from "lucide-react";
+import CSSSchemeBar from "@/components/ui/css-scheme-picker";
+import { CHAT_SESSION_CSS_EXAMPLE } from "@/lib/css-examples";
+import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues, updateChatMessage, deleteChatMessage, loadChatAppSettings, saveChatAppSettings } from "@/lib/chat-storage";
 import { getStatusRegionConfig, isCustomStatusRegionActive } from "@/lib/chat-status-region";
 import type { StateValue } from "@/lib/chat-storage";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
@@ -131,6 +134,8 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
     const [inputMode, setInputMode] = useState<"voice" | "text">(() => androidTextInputOnly ? "text" : "voice");
     const [typedText, setTypedText] = useState("");
     const [bgImageResolved, setBgImageResolved] = useState<string | null>(null);
+    const [showCallCssEditor, setShowCallCssEditor] = useState(false);
+    const [callCssDraft, setCallCssDraft] = useState(() => loadChatAppSettings().globalChatCustomCSS || "");
     const [showSttWarning, setShowSttWarning] = useState(false);
     // 正在重听的字幕 id（按钮据此高亮）
     const [replayingId, setReplayingId] = useState<string | null>(null);
@@ -1098,6 +1103,64 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
             />
 
             <CallVolumeControl />
+
+            <button
+                type="button"
+                aria-label="编辑聊天气泡 CSS"
+                title="编辑聊天气泡 CSS"
+                onClick={() => {
+                    setCallCssDraft(loadChatAppSettings().globalChatCustomCSS || "");
+                    setShowCallCssEditor(true);
+                }}
+                style={{
+                    position: "absolute", top: "max(14px, env(safe-area-inset-top))", right: 14,
+                    zIndex: 55, width: 42, height: 42, borderRadius: 999,
+                    display: "grid", placeItems: "center",
+                    color: "#fff", background: "rgba(20,20,26,0.42)",
+                    border: "1px solid rgba(255,255,255,0.22)",
+                    backdropFilter: "blur(8px)",
+                }}
+            >
+                <Code size={19} />
+            </button>
+
+            {showCallCssEditor && (
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="聊天气泡 CSS 编辑器"
+                    style={{
+                        position: "absolute", inset: 0, zIndex: 90,
+                        display: "flex", flexDirection: "column",
+                        padding: "max(18px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom))",
+                        background: "rgba(12,14,20,0.96)", color: "#fff",
+                    }}
+                >
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="font-semibold">聊天气泡 CSS</div>
+                        <button type="button" onClick={() => setShowCallCssEditor(false)} aria-label="关闭 CSS 编辑器" className="p-2">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <p className="text-xs opacity-75 mb-3">这里编辑全局聊天室 CSS；单独会话样式仍会优先覆盖全局设置。</p>
+                    <textarea
+                        value={callCssDraft}
+                        onChange={event => setCallCssDraft(event.target.value)}
+                        spellCheck={false}
+                        placeholder={CHAT_SESSION_CSS_EXAMPLE}
+                        className="ui-textarea font-mono text-xs flex-1"
+                        style={{ minHeight: 0, resize: "none", background: "rgba(255,255,255,0.08)", color: "#fff" }}
+                    />
+                    <div className="flex gap-2 mt-3 items-center">
+                        <CSSSchemeBar target="chat_session" currentCSS={callCssDraft} onLoad={setCallCssDraft} />
+                        <button type="button" className="ui-btn ui-btn-outline" onClick={() => setCallCssDraft(CHAT_SESSION_CSS_EXAMPLE)}>示例</button>
+                        <button type="button" className="ui-btn ui-btn-soft-action flex-1" onClick={() => {
+                            saveChatAppSettings({ ...loadChatAppSettings(), globalChatCustomCSS: callCssDraft });
+                            setShowCallCssEditor(false);
+                        }}>应用</button>
+                    </div>
+                </div>
+            )}
 
             {/* 待发送提示：缩成小窗/全屏都看得见，避免以为消息丢了 */}
             {replyQueue.pending > 0 && (
