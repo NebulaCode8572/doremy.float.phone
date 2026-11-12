@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import org.json.JSONObject
+import android.net.Uri
+import java.util.UUID
 
 /** Persists the unanswered-call timeout so process recreation does not lose the second attempt. */
 object DailyAlarmCallScheduler {
@@ -27,10 +29,11 @@ object DailyAlarmCallScheduler {
             .put(EXTRA_CALL_TS, callTs)
             .put(EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
             .put(EXTRA_ATTEMPT, attempt)
+            .put("token", UUID.randomUUID().toString())
             .put("due_at", dueAt)
             .toString()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_PENDING, value).apply()
-        val pending = pendingIntent(context)
+        val pending = pendingIntent(context, JSONObject(value).optString("token"))
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         runCatching {
             if (Build.VERSION.SDK_INT >= 23) manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, dueAt, pending)
@@ -39,16 +42,23 @@ object DailyAlarmCallScheduler {
     }
 
     fun cancel(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_PENDING).apply()
-        runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pendingIntent(context)) }
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = prefs.getString(KEY_PENDING, "").orEmpty()
+        val token = runCatching { JSONObject(raw).optString("token") }.getOrDefault("")
+        prefs.edit().remove(KEY_PENDING).apply()
+        runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pendingIntent(context, token)) }
     }
 
-    internal fun onTimeout(context: Context) {
+    internal fun onTimeout(context: Context, intent: Intent?) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_PENDING, "").orEmpty()
         if (raw.isBlank()) return
-        prefs.edit().remove(KEY_PENDING).apply()
         val item = runCatching { JSONObject(raw) }.getOrNull() ?: return
+        val savedToken = item.optString("token")
+        val firedToken = intent?.data?.lastPathSegment.orEmpty().takeUnless { it == "legacy" }.orEmpty()
+        // Ignore a stale timeout that was already delivered while a newer call replaced it.
+        if (savedToken.isNotBlank() && savedToken != firedToken) return
+        prefs.edit().remove(KEY_PENDING).apply()
         CallAlert.stop(context)
         val attempt = item.optInt(EXTRA_ATTEMPT, 1)
         if (attempt == 1) {
@@ -86,7 +96,7 @@ object DailyAlarmCallScheduler {
         val item = runCatching { JSONObject(raw) }.getOrNull() ?: return
         val attempt = item.optInt(EXTRA_ATTEMPT, 1)
         if (attempt !in 1..2) return
-        val pending = pendingIntent(context)
+        val pending = pendingIntent(context, item.optString("token"))
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         // Preserve the remaining timeout across reboot; if it already elapsed while powered off,
         // fire immediately rather than granting another full unanswered-call window.
@@ -99,14 +109,17 @@ object DailyAlarmCallScheduler {
         }.onFailure { manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, dueAt, pending) }
     }
 
-    private fun pendingIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
-        context, REQUEST_CODE, Intent(context, DailyAlarmCallTimeoutReceiver::class.java),
+    private fun pendingIntent(context: Context, token: String): PendingIntent = PendingIntent.getBroadcast(
+        context, REQUEST_CODE,
+        Intent(context, DailyAlarmCallTimeoutReceiver::class.java).setData(
+            Uri.parse("floatshell://daily-alarm-timeout/${token.ifBlank { "legacy" }}"),
+        ),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 }
 
 class DailyAlarmCallTimeoutReceiver : android.content.BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent?) { DailyAlarmCallScheduler.onTimeout(context) }
+    override fun onReceive(context: Context, intent: Intent?) { DailyAlarmCallScheduler.onTimeout(context, intent) }
 }
 
 /** Persistent native ringing fallback after both AI call attempts go unanswered. */
