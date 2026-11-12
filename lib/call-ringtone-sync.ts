@@ -85,8 +85,8 @@ async function syncKey(key: string, config: ChatSoundConfig, fallbackConfig?: Ch
     syncVersions.set(key, version);
 
     if (!config.enabled || !config.value) {
-        native.setCallRingtoneMuted(key, true);
         native.deleteCallRingtone(key);
+        native.setCallRingtoneMuted(key, true);
         return;
     }
 
