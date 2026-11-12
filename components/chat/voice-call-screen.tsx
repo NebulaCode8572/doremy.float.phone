@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, type CSSProperties } from "react";
-import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues, updateChatMessage, deleteChatMessage } from "@/lib/chat-storage";
+import { Code, X } from "lucide-react";
+import CSSSchemeBar from "@/components/ui/css-scheme-picker";
+import { SessionCustomCSS } from "@/components/ui/session-custom-css";
+import { CALL_SCREEN_CSS_EXAMPLE } from "@/lib/css-examples";
+import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues, updateChatMessage, deleteChatMessage, loadChatAppSettings, saveChatAppSettings } from "@/lib/chat-storage";
 import { getStatusRegionConfig, isCustomStatusRegionActive } from "@/lib/chat-status-region";
 import type { StateValue } from "@/lib/chat-storage";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
@@ -127,6 +131,9 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
     const [inputMode, setInputMode] = useState<"voice" | "text">(() => androidTextInputOnly ? "text" : "voice");
     const [typedText, setTypedText] = useState("");
     const [bgImageResolved, setBgImageResolved] = useState<string | null>(null);
+    const [showCallCssEditor, setShowCallCssEditor] = useState(false);
+    const [callCssDraft, setCallCssDraft] = useState(() => loadChatAppSettings().globalCallCustomCSS || "");
+    const [callCssApplied, setCallCssApplied] = useState(() => loadChatAppSettings().globalCallCustomCSS || "");
     const [showSttWarning, setShowSttWarning] = useState(false);
     // 正在重听的字幕 id（按钮据此高亮）
     const [replayingId, setReplayingId] = useState<string | null>(null);
@@ -1060,11 +1067,71 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
             className="absolute inset-0 z-[100] flex flex-col text-white overflow-hidden call-bg-default call-keyboard-shift"
             style={bgImageResolved ? { ...keyboardOffsetStyle, background: `url(${bgImageResolved}) center/cover no-repeat` } : keyboardOffsetStyle}
         >
+            {callCssApplied && <SessionCustomCSS css={callCssApplied} scope=".voicecall-subtitle-mask" allowImports={false} />}
             {/* Dark overlay for readability */}
             <div
                 className="call-overlay absolute inset-0 z-0"
                 {...(bgImageResolved ? { "data-has-image": "" } : {})}
             />
+
+            <button
+                type="button"
+                aria-label="编辑通话字幕 CSS"
+                title="编辑通话字幕 CSS"
+                onClick={() => {
+                    setCallCssDraft(loadChatAppSettings().globalCallCustomCSS || "");
+                    setShowCallCssEditor(true);
+                }}
+                style={{
+                    position: "absolute", top: "max(14px, env(safe-area-inset-top))", right: 14,
+                    zIndex: 55, width: 42, height: 42, borderRadius: 999,
+                    display: "grid", placeItems: "center",
+                    color: "#fff", background: "rgba(20,20,26,0.42)",
+                    border: "1px solid rgba(255,255,255,0.22)",
+                    backdropFilter: "blur(8px)",
+                }}
+            >
+                <Code size={19} />
+            </button>
+
+            {showCallCssEditor && (
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="通话字幕 CSS 编辑器"
+                    style={{
+                        position: "absolute", inset: 0, zIndex: 90,
+                        display: "flex", flexDirection: "column",
+                        padding: "max(18px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom))",
+                        background: "rgba(12,12,18,0.96)",
+                    }}
+                >
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="font-semibold">通话字幕 CSS</div>
+                        <button type="button" onClick={() => setShowCallCssEditor(false)} aria-label="关闭 CSS 编辑器" className="p-2">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <p className="text-xs opacity-75 mb-3">这里只影响通话界面的角色与用户字幕气泡，不会修改聊天室样式。</p>
+                    <textarea
+                        value={callCssDraft}
+                        onChange={event => setCallCssDraft(event.target.value)}
+                        spellCheck={false}
+                        placeholder={CALL_SCREEN_CSS_EXAMPLE}
+                        className="ui-textarea font-mono text-xs flex-1"
+                        style={{ minHeight: 0, resize: "none", background: "rgba(255,255,255,0.08)", color: "#fff" }}
+                    />
+                    <div className="flex gap-2 mt-3 items-center">
+                        <CSSSchemeBar target="call_screen" currentCSS={callCssDraft} onLoad={setCallCssDraft} />
+                        <button type="button" className="ui-btn ui-btn-outline" onClick={() => setCallCssDraft(CALL_SCREEN_CSS_EXAMPLE)}>示例</button>
+                        <button type="button" className="ui-btn ui-btn-soft-action flex-1" onClick={() => {
+                            saveChatAppSettings({ ...loadChatAppSettings(), globalCallCustomCSS: callCssDraft });
+                            setCallCssApplied(callCssDraft);
+                            setShowCallCssEditor(false);
+                        }}>应用</button>
+                    </div>
+                </div>
+            )}
 
             <CallVolumeControl />
 
