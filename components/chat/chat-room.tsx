@@ -1713,6 +1713,22 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         });
     }, [activeRegexes, displayRegexMacroEngine, getRegexActiveTags]);
 
+    // Rich voice-message syntax is structural, not display text. Keep each
+    // [语音条:...] token intact while applying user display-regex rules to
+    // the surrounding text; otherwise a broad regex can erase or rewrite
+    // the marker before the display projection reparses the response.
+    const renderDisplayTextPreservingVoiceMarkers = useCallback((
+        text: string,
+        placement: 1 | 2 | 5 | 6,
+        isOffline = false,
+    ) => {
+        if (!text || activeRegexes.length === 0) return text;
+        const voiceMarker = /(\\[语音条\\s*[：:]\\s*[^\\]]+\\])/g;
+        return text.split(voiceMarker).map((segment, index) => (
+            index % 2 === 1 ? segment : renderDisplayText(segment, placement, isOffline)
+        )).join("");
+    }, [activeRegexes.length, renderDisplayText]);
+
     const getMessageDisplayContent = useCallback((message: RenderChatMessage): string => (
         message.displayProjected
             ? message.content
@@ -5363,7 +5379,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 projected.push(...batch);
                 continue;
             }
-            const displayRaw = renderDisplayText(raw, 2, false);
+            const displayRaw = renderDisplayTextPreservingVoiceMarkers(raw, 2, false);
             if (displayRaw === raw) {
                 projected.push(...batch);
                 continue;
