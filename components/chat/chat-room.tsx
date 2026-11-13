@@ -1723,7 +1723,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         isOffline = false,
     ) => {
         if (!text || activeRegexes.length === 0) return text;
-        const voiceMarker = /(\\[语音条\\s*[：:]\\s*[^\\]]+\\])/g;
+        const voiceMarker = /(\[语音条\s*[：:]\s*[^\]]+\])/g;
         return text.split(voiceMarker).map((segment, index) => (
             index % 2 === 1 ? segment : renderDisplayText(segment, placement, isOffline)
         )).join("");
