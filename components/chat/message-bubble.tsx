@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
 import { findCustomStickerByName, resolveCustomStickerUrl } from "@/lib/custom-sticker-storage";
-import { isMediaStoreRef, loadMediaObjectUrl } from "@/lib/media-cache-storage";
+import { isMediaStoreRef, loadMediaBlob, loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { ChatMessage, createOrGetSession, loadChatAppSettings, resolveMeetingInviteCardConfig, updateMessageMediaStatus, updateMessageMediaData } from "@/lib/chat-storage";
 import { resolveContactCard } from "@/lib/contact-card";
@@ -2355,9 +2355,18 @@ function VoiceMessageBubble({ msg, characterId, onUpdate, defaultTranslationExpa
     const [playing, setPlaying] = useState(false);
     const [synthesizing, setSynthesizing] = useState(false);
     const [synthFailed, setSynthFailed] = useState(false);
-    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const playbackAbortRef = useRef<(() => void) | null>(null);
+    const playbackRequestRef = useRef(0);
     const mountedRef = useRef(true);
-    useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            playbackRequestRef.current += 1;
+            playbackAbortRef.current?.();
+            playbackAbortRef.current = null;
+        };
+    }, []);
     const text = msg.mediaData?.label || "语音消息";
     const bilingual = splitBilingualText(text);
     const speechText = bilingual?.original || text;
@@ -2365,31 +2374,47 @@ function VoiceMessageBubble({ msg, characterId, onUpdate, defaultTranslationExpa
     const needsResynthesis = msg.role !== "user" && synthesizedFromText !== speechText;
     const duration = msg.mediaData?.voiceDuration || Math.max(2, Math.ceil(speechText.length / 4));
 
-    const playSrc = (src: string) => {
-        // 必须用 <audio> 元素:iOS 静音拨键会掐掉 Web Audio 的输出(表现为全线
-        // 无声),媒体元素不受影响。元素属于宿主页面,锁屏媒体卡片指向站点本身,
-        // 点了只会回到 App;播完清 src 让卡片立即撤下。
-        const audio = new Audio(src);
-        audioRef.current = audio;
+    const playSrc = async (src: string) => {
+        const requestId = ++playbackRequestRef.current;
         setPlaying(true);
-        const finalize = () => {
-            if (audioRef.current === audio) audioRef.current = null;
-            try { audio.pause(); audio.removeAttribute("src"); audio.load(); } catch { /* ignore */ }
-            setPlaying(false);
-        };
-        audio.onended = finalize;
-        audio.onerror = finalize;
-        audio.play().catch(finalize);
+        try {
+            // AI 语音通常保存为 data URL；兼容旧消息中的 media-store 引用。
+            let blob: Blob;
+            if (isMediaStoreRef(src)) {
+                const stored = await loadMediaBlob(src);
+                if (!stored) throw new Error("语音文件不存在");
+                blob = stored.blob;
+            } else {
+                const response = await fetch(src);
+                if (!response.ok) throw new Error(`语音加载失败 (${response.status})`);
+                blob = await response.blob();
+            }
+            if (requestId !== playbackRequestRef.current || !mountedRef.current) return;
+
+            // 复用项目统一播放器：优先 Web Audio 解码，失败时自动回退原生媒体元素。
+            const { playAudioBlob } = await import("@/lib/tts-service");
+            if (requestId !== playbackRequestRef.current || !mountedRef.current) return;
+            const playback = playAudioBlob(blob);
+            playbackAbortRef.current = playback.abort;
+            await playback.promise;
+        } catch (error) {
+            console.warn("[VoiceMessageBubble] playback failed:", error);
+        } finally {
+            if (requestId === playbackRequestRef.current) {
+                playbackAbortRef.current = null;
+                if (mountedRef.current) setPlaying(false);
+            }
+        }
     };
 
     // 点击才合成（不再挂载即合成）：已有音频直接播；没有就现场合成一次，
     // 合成结果已在任务内落库，之后任何时候点都是直接播放，不再消耗额度。
     const handlePlay = () => {
         if (synthesizing) return;
-        if (playing && audioRef.current) {
-            const active = audioRef.current;
-            audioRef.current = null;
-            try { active.pause(); active.removeAttribute("src"); active.load(); } catch { /* ignore */ }
+        if (playing) {
+            playbackRequestRef.current += 1;
+            playbackAbortRef.current?.();
+            playbackAbortRef.current = null;
             setPlaying(false);
             return;
         }
@@ -2417,7 +2442,7 @@ function VoiceMessageBubble({ msg, characterId, onUpdate, defaultTranslationExpa
             });
     };
 
-    useEffect(() => () => { audioRef.current?.pause(); }, []);
+
 
     // Wave bars — slightly irregular heights so the idle state already looks intentional.
     const barCount = Math.min(Math.max(4, Math.round(duration / 2)), 9);
