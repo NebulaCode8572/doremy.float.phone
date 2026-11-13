@@ -27,7 +27,7 @@ export function extractCssImports(raw: string): { imports: string[]; css: string
  * - `@keyframes` / `@font-face` blocks are passed through unchanged.
  * - Media queries are handled recursively.
  */
-export function scopeSessionCSS(raw: string, scopeSelector: string): string {
+export function scopeSessionCSS(raw: string, scopeSelector: string, boostSpecificity = false): string {
   if (!raw.trim()) return "";
 
   const result: string[] = [];
@@ -95,7 +95,7 @@ export function scopeSessionCSS(raw: string, scopeSelector: string): string {
           const prelude = raw.slice(i, braceStart + 1);
           const body = raw.slice(braceStart + 1, blockEnd);
           result.push(prelude);
-          result.push(scopeSessionCSS(body, scopeSelector));
+          result.push(scopeSessionCSS(body, scopeSelector, boostSpecificity));
           result.push("}");
           i = blockEnd + 1;
           continue;
@@ -118,7 +118,7 @@ export function scopeSessionCSS(raw: string, scopeSelector: string): string {
     // Scope each selector in comma-separated list
     const scopedSelector = selectorText
       .split(",")
-      .map((sel) => scopeSingleSelector(sel.trim(), scopeSelector))
+      .map((sel) => scopeSingleSelector(sel.trim(), scopeSelector, boostSpecificity))
       .join(", ");
 
     result.push(scopedSelector + " " + body);
@@ -128,32 +128,38 @@ export function scopeSessionCSS(raw: string, scopeSelector: string): string {
   return result.join("");
 }
 
-function scopeSingleSelector(sel: string, scope: string): string {
+function scopeSingleSelector(sel: string, scope: string, boostSpecificity = false): string {
+  // Call-screen custom CSS must outrank the built-in `.call-subtitle[data-role]`
+  // rules (same specificity as a single scoped prefix). Repeating the class in
+  // a compound selector increases specificity without requiring another DOM class.
+  const scopedRoot = boostSpecificity ? `${scope}${scope}` : scope;
   if (!sel) return sel;
   const lower = sel.toLowerCase();
   // Replace body/html/:root with the scope selector
   if (lower === "body" || lower === "html" || lower === ":root") {
-    return scope;
+    return scopedRoot;
   }
   // Selectors starting with body/html/:root — replace the element part
   if (/^(body|html|:root)\s/i.test(sel)) {
-    return scope + " " + sel.replace(/^(body|html|:root)\s*/i, "");
+    return scopedRoot + " " + sel.replace(/^(body|html|:root)\s*/i, "");
   }
   if (/^(body|html|:root)\./i.test(sel)) {
-    return scope + sel.replace(/^(body|html|:root)/i, "");
+    return scopedRoot + sel.replace(/^(body|html|:root)/i, "");
   }
   // 选择器就是 scope 本身（如用户写 .chat-app { --var: ... }）：直接返回 scope，
   // 否则会被错误地变成 ".chat-app .chat-app"，导致变量没法挂到 scope 元素上
   if (sel === scope) {
-    return scope;
+    return scopedRoot;
   }
   // 选择器以 scope 开头并跟着空格/伪类/属性（如 .chat-app .foo / .chat-app:hover / .chat-app[data-x]）：
   // 已经包含 scope 了，不要重复前缀，否则也会失效
   if (sel.startsWith(scope + " ") || sel.startsWith(scope + ":") || sel.startsWith(scope + "[") || sel.startsWith(scope + ".") || sel.startsWith(scope + ">")) {
-    return sel;
+    return boostSpecificity
+      ? scopedRoot + sel.slice(scope.length)
+      : sel;
   }
   // Normal selector — prefix with scope
-  return scope + " " + sel;
+  return scopedRoot + " " + sel;
 }
 
 function findMatchingBrace(text: string, openPos: number): number {
