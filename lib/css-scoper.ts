@@ -141,7 +141,7 @@ function scopeSingleSelector(sel: string, scope: string, boostSpecificity = fals
   }
   // Selectors starting with body/html/:root — replace the element part
   if (/^(body|html|:root)\s/i.test(sel)) {
-    return scope + " " + sel.replace(/^(body|html|:root)\s*/i, "");
+    return scopedRoot + " " + sel.replace(/^(body|html|:root)\s*/i, "");
   }
   if (/^(body|html|:root)\./i.test(sel)) {
     return scopedRoot + sel.replace(/^(body|html|:root)/i, "");
