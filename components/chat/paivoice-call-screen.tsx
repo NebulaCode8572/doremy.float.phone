@@ -423,7 +423,7 @@ export function PaiVoiceCallScreen({
         <p className="mt-3 text-sm text-white/65">{started ? formatDuration(duration) : "语音通话"}</p>
         <p className="mt-2 min-h-6 text-sm text-white/75">{PHASE_LABELS[phase]}</p>
         <p className="mt-4 max-w-xs text-center text-xs leading-5 text-white/45">
-          通话期间自动检测你的语音；停顿后自动结束本轮。看剧或处于嘈杂环境时，可随时关闭麦克风。
+          通话期间自动检测你的语音；停顿后自动结束本轮。看剧建议戴耳机，外部电视声音不一定能被回声消除过滤；也可随时静音。
         </p>
         {error && <p role="alert" className="mt-4 max-w-sm text-center text-sm text-rose-300">{error}</p>}
       </div>
