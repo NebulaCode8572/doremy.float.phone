@@ -16,7 +16,7 @@ The App issues a 120-second, single-use HMAC ticket at `POST /api/paivoice/ticke
 
 1. The user starts a one-to-one voice call from the chat page.
 2. The user taps **开始通话** in the call screen. This deliberate second tap lets the browser request microphone permission and unlock audio playback from a user gesture.
-3. PaiVoice receives microphone audio only while the user holds **按住说话**. Releasing the control ends that speech turn. The mic mute control also stops the audio track.
+3. PaiVoice keeps the microphone active during a call and uses client-side VAD to detect speech start/end automatically. Browser capture requests echo cancellation, noise suppression, and automatic gain control; the mic mute control stops the audio track.
 4. PaiVoice transcribes the turn and sends a `transcript` event to the App.
 5. The App runs its existing browser-side `generateChatCompletion` with the current chat session and message history. This preserves the App's existing character configuration, prompt assembly, and locally configured provider credentials.
 6. The App sends the generated text back over the same WebSocket as `client_reply`. PaiVoice synthesizes the reply and streams audio back.
@@ -40,7 +40,7 @@ This code has not yet been verified on a real Android device or against a deploy
 
 - App ticket issuance with a real logged-in account and matching server secret.
 - WSS connection, microphone permission, ASR, TTS, and character reply generation.
-- Holding/releasing push-to-talk, muting, speaker mute, and interruption while the character is speaking or thinking.
+- Automatic VAD turn detection, mic mute/unmute, speaker mute, and interruption while the character is speaking or thinking. Echo cancellation and noise suppression depend on browser/device support and should be tested with both headphones and speaker playback.
 - Reconnect during a network change and ensuring a fresh ticket is issued.
 - Transcript persistence after hangup and after reopening the chat.
 - Android background/lock-screen behavior. Browser/PWA background microphone and audio behavior is constrained by the operating system.
