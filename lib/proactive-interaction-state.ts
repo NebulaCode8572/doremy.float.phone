@@ -88,7 +88,7 @@ export function applyProactiveIntentFromUserText(sessionId: string, rawText: str
     }
 
     // Busy / focus expressions switch to a quieter, low-frequency companionship mode.
-    if (/(?:正在|在|得|要)?(?:学习|复习|自习|上课|写作业|工作|开会|赶作业|赶进度|专注|忙着|忙碌|处理事情)|(?:我有点忙|现在比较忙|先忙一会|暂时没空|需要专心)/.test(text)) {
+    if (/(?:正在|在|得|要)?(?:学习|复习|自习|上课|写作业|工作|开会|赶作业|赶进度|专注|忙|忙着|忙碌|处理事情)|(?:我有点忙|现在比较忙|先忙一会|暂时没空|需要专心)/.test(text)) {
         return saveState(sessionId, { mode: "study" });
     }
 
