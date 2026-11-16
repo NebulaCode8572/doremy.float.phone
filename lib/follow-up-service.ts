@@ -265,6 +265,18 @@ export async function requestBackgroundChatReply(
 }
 
 /** Cancel any pending follow-up for a session (called when user sends a message). */
+/** Stop queued ordinary proactive messages without changing the user's idle-reconnect preferences. */
+export function suspendProactiveActions(sessionId: string): void {
+    clearFollowUpSchedule(sessionId);
+    cancelFollowUpBailout(sessionId);
+    for (const rule of loadIdleReconnectRules()) {
+        if (rule.sessionId === sessionId) void cancelBailoutPrefix(`idle:${rule.id}:`);
+    }
+    if (firingSet.has(sessionId)) {
+        cancelledWhileFiring.add(sessionId);
+    }
+}
+
 export function cancelFollowUp(sessionId: string) {
     clearFollowUpSchedule(sessionId);
     cancelFollowUpBailout(sessionId);
