@@ -24,6 +24,7 @@ import {
 } from "@/lib/call-session-store";
 import { GroupCallScreen } from "./group-call-screen";
 import { VoiceCallScreen } from "./voice-call-screen";
+import { PaiVoiceCallScreen } from "./paivoice-call-screen";
 import { VideoCallScreen } from "./video-call-screen";
 
 /**
@@ -89,6 +90,10 @@ export function CallLayer() {
         onRestore: restoreCall,
         onEnd: endCall,
     };
+
+    if (call.kind === "voice" && call.engine === "paivoice") {
+        return <PaiVoiceCallScreen {...sharedProps} />;
+    }
 
     return call.kind === "voice"
         ? <VoiceCallScreen {...sharedProps} />
