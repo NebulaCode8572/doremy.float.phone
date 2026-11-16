@@ -78,17 +78,24 @@ export function applyProactiveIntentFromUserText(sessionId: string, rawText: str
     }
 
     // Sleep has higher priority than study/busy states. A scheduled wake call is handled separately.
-    if (/(?:准备睡|要睡了|先睡了|去睡了|睡觉了|睡下了|已经睡|我睡了|晚安|困得要睡|休息睡觉)/.test(text)) {
+    if (/(?:准备睡|打算睡|要睡了|先睡了|去睡了|睡觉了|睡下了|已经睡|我睡了|晚安|困得要睡|准备休息睡觉)/.test(text)) {
         return saveState(sessionId, { mode: "sleep" });
     }
 
     // End-of-task / free-time expressions restore ordinary interaction.
-    if (/(?:学完|复习完|作业写完|忙完|工作结束|下班了|下课了|结束学习|歇会|休息会|休息一下|放松一下|现在有空|有空了|不忙了|空下来了|可以聊了|先不学了)/.test(text)) {
+    if (/(?:学完|复习完|题做完|作业写完|事情做完|忙完|工作结束|下班了|下课了|结束学习|歇会|歇一会|休息会|休息一下|放松一下|现在有空|有空了|不忙了|空下来了|可以聊了|先不学了)/.test(text)) {
         return saveState(sessionId, { mode: "normal" });
     }
 
     // Busy / focus expressions switch to a quieter, low-frequency companionship mode.
-    if (/(?:正在|在|得|要)?(?:学习|复习|自习|上课|写作业|工作|开会|赶作业|赶进度|专注|忙|忙着|忙碌|处理事情)|(?:我有点忙|现在比较忙|先忙一会|暂时没空|需要专心)/.test(text)) {
+    // Require a first-person/current-state framing so questions or general discussion
+    // about studying do not accidentally change the user's interaction mode.
+    const studyOrWorkIntent =
+        /(?:我|现在|这会儿|今天).{0,8}(?:正在|在|得|要|准备|需要)?(?:学习|复习|自习|上课|做题|刷题|背书|背单词|写作业|写卷子|工作|开会|赶作业|赶进度|专心|专注)/.test(text)
+        || /(?:我|现在|这会儿)?(?:有点|比较|挺|很)?忙(?:着|一会儿|一下|呢|起来)?/.test(text)
+        || /(?:我得|我先|让我先|暂时需要|现在需要)(?:专心|学习|复习|工作|处理事情)/.test(text)
+        || /(?:我现在|我这会儿|我今天)(?:不太方便|没空|抽不开身)/.test(text);
+    if (studyOrWorkIntent) {
         return saveState(sessionId, { mode: "study" });
     }
 
