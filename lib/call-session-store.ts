@@ -26,6 +26,8 @@ export type ActiveCall = {
     initiator: "user" | "character";
     /** initiator="character" 时发起通话的角色名（群聊来电要显示具体是谁打来的）。 */
     initiatorName?: string;
+    /** 定时唤醒电话；接通后用于判断是否需要重拨。 */
+    wakeCall?: boolean;
     minimized: boolean;
     /**
      * 每次拨号都换一个新值，用作 React key：
@@ -72,6 +74,7 @@ export function startCall(input: {
     engine?: ActiveCallEngine;
     initiator: "user" | "character";
     initiatorName?: string;
+    wakeCall?: boolean;
 }): void {
     activeCall = {
         ...input,
