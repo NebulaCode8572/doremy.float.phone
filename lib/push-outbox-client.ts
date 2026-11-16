@@ -241,7 +241,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                         const retryAlreadyQueued = loadTimedWakeSchedules().some(item =>
                             item.sessionId === sessionId
                             && item.wakeCall
-                            && item.wakeAttempt === nextAttempt
+                            && (item.wakeAttempt ?? 0) >= nextAttempt
                             && item.fireAt > Date.now()
                         );
                         if (!retryAlreadyQueued) {
