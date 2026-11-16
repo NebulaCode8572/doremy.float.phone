@@ -5,6 +5,7 @@ on:
     branches:
       - feature/paivoice-realtime-call
     paths:
+      - ".github/workflows/paivoice-app-typecheck.yml"
       - "app/api/paivoice/**"
       - "components/chat/paivoice-call-screen.tsx"
       - "components/chat/call-layer.tsx"
