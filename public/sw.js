@@ -165,6 +165,7 @@ self.addEventListener("notificationclick", (event) => {
               type: "incoming_call_push",
               sessionId: notificationData.sessionId || "",
               callTs: notificationData.callTs || 0,
+              wakeCall: notificationData.wakeCall === true,
             });
             client.postMessage({ type: "push_outbox_ready" });
           }
