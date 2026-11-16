@@ -2589,8 +2589,9 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
   //「聊天页正开着时由聊天页生成」的情况，不会重复两套内容。
   useEffect(() => {
     const handler = (e: Event) => {
-      const sessionId = (e as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
-      if (!sessionId) return;
+      const detail = (e as CustomEvent<{ sessionId?: string; skipReply?: boolean }>).detail;
+      const sessionId = detail?.sessionId;
+      if (!sessionId || detail.skipReply) return;
       window.setTimeout(() => { void requestBackgroundChatReply(sessionId); }, 0);
     };
     window.addEventListener("chat-call-ended", handler);
