@@ -70,7 +70,7 @@ export function applyProactiveIntentFromUserText(sessionId: string, rawText: str
     if (!sessionId || !text) return loadProactiveInteractionState(sessionId);
 
     // Explicitly asking for quiet takes priority over ordinary study/busy wording.
-    if (/(?:别|不要|不用|先别|暂时别).{0,8}(?:提醒|打扰|主动联系|主动找我|主动搭话)|(?:安静点|让我安静|暂停主动|不要主动发消息)/.test(text)) {
+    if (/(?:别|不要|不用|先别|暂时别).{0,8}(?:提醒|打扰|主动联系|主动找我|主动搭话)|(?:安静点|让我安静|让我自己待会|想安静一会|暂停主动|不要主动发消息)/.test(text)) {
         return saveState(sessionId, { mode: "paused" });
     }
 
@@ -92,8 +92,8 @@ export function applyProactiveIntentFromUserText(sessionId: string, rawText: str
     // Require a first-person/current-state framing so questions or general discussion
     // about studying do not accidentally change the user's interaction mode.
     const studyOrWorkIntent =
-        /(?:我|现在|这会儿|今天).{0,8}(?:正在|在|得|要|准备|需要)?(?:学习|复习|自习|上课|做题|刷题|背书|背单词|写作业|写卷子|工作|开会|赶作业|赶进度|专心|专注)/.test(text)
-        || /(?:我|现在|这会儿)?(?:正在|在|有点|比较|挺|很)?忙(?:着|一会儿|一下|呢|起来)?/.test(text)
+        /(?:我|现在|这会儿|今天).{0,8}(?:正在|在|得|要|准备|需要)?(?:学习|复习|自习|上课|做题|刷题|背书|背单词|备考|准备考试|写论文|写作业|写卷子|刷卷子|工作|开会|赶作业|赶进度|专心|专注)/.test(text)
+        || /(?:我|现在|这会儿)?(?:正在|在|得先|先得|得|要|先|有点|比较|挺|很)?忙(?:着|一会儿|一下|呢|起来)?/.test(text)
         || /(?:我得|我先|让我先|暂时需要|现在需要)(?:专心|学习|复习|工作|处理事情)/.test(text)
         || /(?:我现在|我这会儿|我今天)(?:不太方便|没空|抽不开身)/.test(text);
     if (studyOrWorkIntent) {
