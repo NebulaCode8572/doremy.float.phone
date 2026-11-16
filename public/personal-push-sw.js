@@ -29,6 +29,7 @@ self.addEventListener("push", (event) => {
             type: "incoming_call_push",
             sessionId: meta.sessionId || "",
             callTs: meta.callTs || 0,
+            wakeCall: meta.wakeCall === true,
           }));
         }
         visible.forEach(client => client.postMessage({ type: "push_outbox_ready" }));
@@ -45,6 +46,7 @@ self.addEventListener("push", (event) => {
         type: meta.type || "",
         sessionId: meta.sessionId || "",
         callTs: meta.callTs || 0,
+        wakeCall: meta.wakeCall === true,
       },
     });
   })());
@@ -71,6 +73,7 @@ self.addEventListener("notificationclick", (event) => {
           type: "incoming_call_push",
           sessionId: data.sessionId || "",
           callTs: data.callTs || 0,
+          wakeCall: data.wakeCall === true,
         });
       }
       client.postMessage({ type: "push_outbox_ready" });
