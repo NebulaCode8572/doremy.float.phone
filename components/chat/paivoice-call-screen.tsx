@@ -314,7 +314,7 @@ export function PaiVoiceCallScreen({
       // start() is called directly from this button's click handler so the
       // browser can grant microphone access and unlock audio in the gesture.
       await call.start();
-      if (!mountedRef.current) {
+      if (!mountedRef.current || callRef.current !== call) {
         call.hangup();
         return;
       }
