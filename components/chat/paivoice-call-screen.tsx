@@ -319,7 +319,7 @@ export function PaiVoiceCallScreen({
                 {
                   appTags: ["chat", "voice"],
                   signal: controller.signal,
-                  ephemeralSystemNote: "你现在正在实时语音通话。你可以像真人一样决定何时自然结束通话；只有当你确实想结束本次通话时，先用正常语言向对方告别，再在回复末尾单独输出控制标记 [结束通话]。不要向用户解释这个标记；不想挂断时绝对不要输出它。用户打断你时，取消本次挂断意图。",
+                  ephemeralSystemNote: "你现在正在实时语音通话。你可以像真人一样决定何时自然结束通话；当用户明确让你挂断，或你确实想结束本次通话时，先用正常语言向对方告别，再在回复末尾单独输出控制标记 [结束通话]。不要向用户解释这个标记；不想挂断时绝对不要输出它。用户打断你时，取消本次挂断意图。",
                 },
               );
               if (controller.signal.aborted || callRef.current !== call) {
