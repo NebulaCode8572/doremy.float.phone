@@ -101,14 +101,14 @@ export function restoreCall(): void {
  * 通话界面已提升到 desktop-shell，聊天室不再是它的父级，收不了挂断回调；
  * 原来挂在聊天室里的收尾（刷新通话留痕 + 让角色回应一次）改由这条事件触发。
  */
-export function endCall(): void {
+export function endCall(options?: { skipReply?: boolean }): void {
     const ended = activeCall;
     if (!ended) return;
     activeCall = null;
     emit();
     if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("chat-call-ended", {
-            detail: { sessionId: ended.sessionId },
+            detail: { sessionId: ended.sessionId, skipReply: options?.skipReply === true },
         }));
     }
 }
