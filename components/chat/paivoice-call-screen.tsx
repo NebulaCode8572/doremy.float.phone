@@ -78,6 +78,7 @@ export function PaiVoiceCallScreen({
   const [duration, setDuration] = useState(0);
   const [micMuted, setMicMuted] = useState(false);
   const [speakerMuted, setSpeakerMuted] = useState(() => !loadProactiveInteractionState(session.id).enabled);
+  const recitationModeRef = useRef(false);
   const [error, setError] = useState("");
   const isIncoming = initiator === "character" && phase === "incoming";
 
@@ -329,6 +330,30 @@ export function PaiVoiceCallScreen({
           saveTranscript("user", userText);
           if (!turnId || !userText) return;
 
+          const startsRecitation = /(?:开始复述|开始背书|开始学习复述|我开始复述了)/.test(userText);
+          const endsRecitation = /(?:我复述完了|我背完了|复述结束|结束复述|我讲完了)/.test(userText);
+          let recitationCompletion = false;
+
+          if (startsRecitation) {
+            recitationModeRef.current = true;
+            call.setRecitationMode(true);
+            savedAssistantTurnIdsRef.current.add(turnId);
+            call.sendReply("嗯，开始吧。", turnId);
+            return;
+          }
+
+          if (recitationModeRef.current && endsRecitation) {
+            recitationModeRef.current = false;
+            call.setRecitationMode(false);
+            recitationCompletion = true;
+          } else if (recitationModeRef.current) {
+            // A long retrieval pause ends the audio turn, but not the recitation session.
+            // Use a fixed, minimal backchannel instead of invoking the tutor-like chat path.
+            savedAssistantTurnIdsRef.current.add(turnId);
+            call.sendReply("嗯，继续。", turnId);
+            return;
+          }
+
           const controller = new AbortController();
           let timedOut = false;
           cancelledGenerationTurnIdsRef.current.delete(turnId);
@@ -353,7 +378,12 @@ export function PaiVoiceCallScreen({
                 {
                   appTags: ["chat", "voice"],
                   signal: controller.signal,
-                  ephemeralSystemNote: "你现在正在实时语音通话。你可以像真人一样决定何时自然结束通话；当用户明确让你挂断，或你确实想结束本次通话时，先用正常语言向对方告别，再在回复末尾单独输出控制标记 [结束通话]。不要向用户解释这个标记；不想挂断时绝对不要输出它。用户打断你时，取消本次挂断意图。",
+                  ephemeralSystemNote: [
+                    "你现在正在实时语音通话。你可以像真人一样决定何时自然结束通话；当用户明确让你挂断，或你确实想结束本次通话时，先用正常语言向对方告别，再在回复末尾单独输出控制标记 [结束通话]。不要向用户解释这个标记；不想挂断时绝对不要输出它。用户打断你时，取消本次挂断意图。",
+                    recitationCompletion
+                      ? "用户刚结束了一段学习复述。你是熟悉用户的聊天对象，不是老师或阅卷者。不要判断学科知识、术语、公式或事实是否正确；语音转写可能把专业词和公式识别错。只根据用户实际表达，简短自然地回应表达是否连贯、有没有明显遗漏或前后矛盾；不要补充标准答案、讲课或主动纠错。保持角色原本的性格，不要像评估报告一样总结。"
+                      : "",
+                  ].filter(Boolean).join("\n"),
                 },
               );
               if (controller.signal.aborted || callRef.current !== call) {
