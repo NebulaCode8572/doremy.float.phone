@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowDown, LoaderCircle, Mic, MicOff, PhoneOff, Volume2, VolumeX } from "lucide-react";
+import { ArrowDown, LoaderCircle, Mic, MicOff, PhoneOff, Volume2, VolumeX, PictureInPicture2, Plus } from "lucide-react";
 
 import type { Character } from "@/lib/character-types";
 import type { ChatSession } from "@/lib/chat-storage";
@@ -716,113 +716,107 @@ export function PaiVoiceCallScreen({
     );
   }
 
-  return (
-    <div className="fixed inset-0 z-[110] flex flex-col items-center justify-between overflow-hidden bg-[radial-gradient(ellipse_at_top,_#334155_0%,_#111827_42%,_#030712_100%)] px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))] text-white">
-      <div className="flex w-full items-center justify-between">
-        <span className="text-xs tracking-[0.18em] text-white/50">PAIVOICE</span>
-        {onMinimize && (
-          <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10">
-            <ArrowDown size={19} />
-          </button>
-        )}
-      </div>
-
-      <div className="flex w-full flex-1 flex-col items-center justify-center">
-        {character.avatar ? (
-          <img src={character.avatar} alt={character.name} className="mb-7 h-32 w-32 rounded-full border border-white/20 object-cover shadow-2xl" />
-        ) : (
-          <div className="mb-7 flex h-32 w-32 items-center justify-center rounded-full border border-white/20 bg-white/10 text-5xl shadow-2xl">
-            {character.name.slice(0, 1)}
-          </div>
-        )}
-        <h1 className="text-2xl font-semibold">{character.name}</h1>
-        <p className="mt-3 text-sm text-white/65">{started ? formatDuration(duration) : "语音通话"}</p>
-        <p className="mt-2 min-h-6 text-sm text-white/75">{PHASE_LABELS[phase]}</p>
-        <p className="mt-4 max-w-xs text-center text-xs leading-5 text-white/45">
-          通话期间自动检测你的语音；停顿后自动结束本轮。看剧建议戴耳机，外部电视声音不一定能被回声消除过滤；也可随时静音。
-        </p>
-        {error && <p role="alert" className="mt-4 max-w-sm text-center text-sm text-rose-300">{error}</p>}
-      </div>
-
-      <div className="flex w-full max-w-sm flex-col items-center gap-7">
-        {started ? (
-          <div className="flex h-24 w-24 flex-col items-center justify-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-500/15 text-emerald-100">
-            <Mic size={30} />
-            <span className="text-xs">自动聆听</span>
-          </div>
-        ) : phase === "incoming" ? (
-          <div className="flex items-center justify-center gap-10">
-            <button
-              type="button"
-              onClick={() => {
-                if (wakeCall) clearTimedWakeSchedule(session.id);
-                saveTranscript("user", "[我拒绝了语音通话]");
-                onEnd();
-              }}
-              className="flex h-16 w-16 items-center justify-center rounded-full bg-red-600 shadow-lg"
-              aria-label="拒接"
-            >
-              <PhoneOff size={24} />
+  if (started) {
+    return (
+      <div className="fixed inset-0 z-[110] flex flex-col items-center justify-between overflow-hidden bg-[radial-gradient(ellipse_at_48%_45%,_#555_0%,_#292929_43%,_#080808_100%)] px-7 pb-[max(48px,env(safe-area-inset-bottom))] pt-[max(30px,env(safe-area-inset-top))] text-white">
+        <div className="relative flex w-full items-center justify-between">
+          {onMinimize ? (
+            <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-12 w-12 items-center justify-center text-white">
+              <PictureInPicture2 size={34} strokeWidth={1.8} />
             </button>
-            <button
-              type="button"
-              onClick={startCall}
-              className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-600 shadow-lg"
-              aria-label="接听"
-            >
-              <Mic size={24} />
-            </button>
-          </div>
-        ) : (
+          ) : <span className="h-12 w-12" />}
+          <span className="absolute left-1/2 -translate-x-1/2 text-[28px] font-normal tabular-nums">
+            {formatDuration(duration)}
+          </span>
           <button
             type="button"
-            onClick={startCall}
-            disabled={phase === "connecting"}
-            className="flex min-h-14 min-w-48 items-center justify-center gap-2 rounded-full bg-emerald-600 px-8 text-base font-semibold shadow-lg disabled:opacity-60"
+            aria-label="添加通话成员"
+            onClick={() => setError("多人通话暂未开放。")}
+            className="flex h-12 w-12 items-center justify-center text-white"
           >
-            {phase === "connecting" && <LoaderCircle size={18} className="animate-spin" />}
-            {phase === "connecting" ? "正在连接…" : "开始通话"}
+            <Plus size={42} strokeWidth={1.7} />
           </button>
-        )}
-        {started && <span className="text-xs text-white/55">{micMuted ? "麦克风已静音" : "自动收音已开启"}</span>}
-        {phase === "incoming" && <span className="text-xs text-white/60">语音来电</span>}
-        <div className="flex items-center justify-center gap-8">
+        </div>
+
+        <div className="flex flex-1 flex-col items-center justify-center">
+          {character.avatar ? (
+            <img src={character.avatar} alt={character.name} className="mb-5 h-24 w-24 rounded-2xl object-cover" />
+          ) : (
+            <div className="mb-5 flex h-24 w-24 items-center justify-center rounded-2xl bg-white/15 text-4xl">
+              {character.name.slice(0, 1)}
+            </div>
+          )}
+          <h1 className="text-[28px] font-normal">{character.name}</h1>
+          {error && <p role="alert" className="mt-5 max-w-xs text-center text-sm text-rose-200">{error}</p>}
+        </div>
+
+        <div className="flex w-full max-w-[540px] items-center justify-between px-1">
           <button
             type="button"
-            disabled={!started}
             onClick={toggleMic}
             aria-label={micMuted ? "取消麦克风静音" : "麦克风静音"}
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-white/12 disabled:opacity-35"
+            className={`flex h-28 w-28 items-center justify-center rounded-full shadow-lg ${micMuted ? "bg-neutral-800 text-white" : "bg-white text-black"}`}
           >
-            {micMuted ? <MicOff size={22} /> : <Mic size={22} />}
-          </button>
-          <button
-            type="button"
-            disabled={!started}
-            onClick={toggleSpeaker}
-            aria-label={speakerMuted ? "开启主动语音" : "关闭主动语音"}
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-white/12 disabled:opacity-35"
-          >
-            {speakerMuted ? <VolumeX size={22} /> : <Volume2 size={22} />}
+            {micMuted ? <MicOff size={43} strokeWidth={2.4} /> : <Mic size={43} strokeWidth={2.4} />}
           </button>
           <button
             type="button"
             onClick={endCall}
             aria-label="挂断"
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-red-600 shadow-lg"
+            className="flex h-28 w-28 items-center justify-center rounded-full bg-[#e34850] text-white shadow-lg"
           >
-            <PhoneOff size={22} />
+            <PhoneOff size={43} fill="currentColor" strokeWidth={1.8} />
+          </button>
+          <button
+            type="button"
+            onClick={toggleSpeaker}
+            aria-label={speakerMuted ? "开启主动语音" : "关闭主动语音"}
+            className={`flex h-28 w-28 items-center justify-center rounded-full shadow-lg ${speakerMuted ? "bg-[#171719] text-white" : "bg-white text-black"}`}
+          >
+            {speakerMuted ? <VolumeX size={43} strokeWidth={2.2} /> : <Volume2 size={43} strokeWidth={2.2} />}
           </button>
         </div>
-        <a
-          href="https://github.com/NebulaCode8572/pai-voice/tree/feature/vps-deployment-hardening"
-          target="_blank"
-          rel="noreferrer"
-          className="text-[11px] text-white/35 underline underline-offset-2"
-        >
-          PaiVoice 开源组件 · 查看对应源码
-        </a>
       </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[110] flex flex-col items-center justify-between overflow-hidden bg-[radial-gradient(ellipse_at_48%_45%,_#555_0%,_#292929_43%,_#080808_100%)] px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))] text-white">
+      <div className="flex w-full items-center justify-between">
+        {onMinimize ? (
+          <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-10 w-10 items-center justify-center">
+            <PictureInPicture2 size={28} />
+          </button>
+        ) : <span />}
+        <span className="text-lg tabular-nums">{PHASE_LABELS[phase]}</span>
+        <button type="button" aria-label="添加通话成员" onClick={() => setError("多人通话暂未开放。")} className="flex h-10 w-10 items-center justify-center">
+          <Plus size={32} />
+        </button>
+      </div>
+      <div className="flex flex-1 flex-col items-center justify-center">
+        {character.avatar ? (
+          <img src={character.avatar} alt={character.name} className="mb-5 h-24 w-24 rounded-2xl object-cover" />
+        ) : (
+          <div className="mb-5 flex h-24 w-24 items-center justify-center rounded-2xl bg-white/15 text-4xl">{character.name.slice(0, 1)}</div>
+        )}
+        <h1 className="text-2xl font-normal">{character.name}</h1>
+        {error && <p role="alert" className="mt-4 text-center text-sm text-rose-200">{error}</p>}
+      </div>
+      {phase === "incoming" ? (
+        <div className="flex items-center justify-center gap-12">
+          <button type="button" onClick={() => { if (wakeCall) clearTimedWakeSchedule(session.id); saveTranscript("user", "[我拒绝了语音通话]"); onEnd(); }} className="flex h-20 w-20 items-center justify-center rounded-full bg-[#e34850]" aria-label="拒接">
+            <PhoneOff size={30} />
+          </button>
+          <button type="button" onClick={startCall} className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-600" aria-label="接听">
+            <Mic size={30} />
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={startCall} disabled={phase === "connecting"} className="flex min-h-14 min-w-48 items-center justify-center gap-2 rounded-full bg-emerald-600 px-8 text-base font-semibold disabled:opacity-60">
+          {phase === "connecting" && <LoaderCircle size={18} className="animate-spin" />}
+          {phase === "connecting" ? "正在连接…" : "开始通话"}
+        </button>
+      )}
     </div>
   );
 }
