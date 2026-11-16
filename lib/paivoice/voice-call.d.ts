@@ -30,6 +30,7 @@ export class VoiceCall {
   start(): Promise<void>;
   hangup(): void;
   setMuted(muted: boolean): Promise<void>;
+  setRecitationMode(enabled: boolean): boolean;
   setPushToTalk(pressed: boolean): void;
   setSpeakerMuted(muted: boolean): void;
   sendReply(text: string, turnId: string): boolean;
