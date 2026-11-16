@@ -236,18 +236,6 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                             name: rawMarker.name,
                         }
                         : undefined;
-                    const { hasVisible, newCount, stateValues } = await parseAndSaveResponse(
-                        text,
-                        sessionId,
-                        meta.prevCount ?? 0,
-                        followUpIndex,
-                        existingMessages,
-                        {
-                            silent: options?.silent !== false,
-                            ...(shortcutMarker ? { shortcutMarker } : {}),
-                            wakeCall: meta.wakeCall === true,
-                        },
-                    );
                     if (meta.wakeCall === true) {
                         scheduleNextWakeCallRetry({
                             id: getTimedWakeIdFromTriggerKey(entry.trigger_key) || entry.id,
@@ -261,6 +249,18 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                             wakeAttempt: meta.wakeAttempt ?? 0,
                         });
                     }
+                    const { hasVisible, newCount, stateValues } = await parseAndSaveResponse(
+                        text,
+                        sessionId,
+                        meta.prevCount ?? 0,
+                        followUpIndex,
+                        existingMessages,
+                        {
+                            silent: options?.silent !== false,
+                            ...(shortcutMarker ? { shortcutMarker } : {}),
+                            wakeCall: meta.wakeCall === true,
+                        },
+                    );
                     if (hasVisible && newCount < 10) scheduleFollowUp(sessionId, newCount, stateValues);
                     clearTimedWakeIfHandled(entry.trigger_key);
                     consumedIds.push(entry.id);
