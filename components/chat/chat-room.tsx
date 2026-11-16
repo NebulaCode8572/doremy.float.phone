@@ -2207,6 +2207,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                         ? "paivoice"
                         : "legacy",
                     initiator: "character",
+                    wakeCall: detail.wakeCall === true,
                     ...(typeof detail.characterName === "string" ? { initiatorName: detail.characterName } : {}),
                 });
                 // Dismiss the global incoming-call bar (if showing)
