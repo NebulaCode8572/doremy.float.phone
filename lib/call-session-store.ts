@@ -15,12 +15,14 @@
 "use client";
 
 export type ActiveCallKind = "voice" | "video";
+export type ActiveCallEngine = "legacy" | "paivoice";
 
 export type ActiveCall = {
     sessionId: string;
     /** 单聊：角色 id。群聊通话没有单一角色，用群会话本身承载（留空字符串）。 */
     characterId: string;
     kind: ActiveCallKind;
+    engine?: ActiveCallEngine;
     initiator: "user" | "character";
     /** initiator="character" 时发起通话的角色名（群聊来电要显示具体是谁打来的）。 */
     initiatorName?: string;
@@ -67,6 +69,7 @@ export function startCall(input: {
     sessionId: string;
     characterId: string;
     kind: ActiveCallKind;
+    engine?: ActiveCallEngine;
     initiator: "user" | "character";
     initiatorName?: string;
 }): void {
