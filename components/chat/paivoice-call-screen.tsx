@@ -338,6 +338,15 @@ export function PaiVoiceCallScreen({
         nothingHeard: () => {
           if (mountedRef.current) setPhase("listening");
         },
+        replyTimeout: (message) => {
+          const turnId = typeof message?.turn_id === "string" ? message.turn_id : "";
+          const controller = turnId ? generationControllersRef.current.get(turnId) : undefined;
+          if (controller) {
+            cancelledGenerationTurnIdsRef.current.add(turnId);
+            controller.abort();
+          }
+          if (mountedRef.current) setError("本轮回复超时，已停止等待。");
+        },
       },
     });
 
