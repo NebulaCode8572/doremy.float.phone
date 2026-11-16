@@ -175,6 +175,8 @@ export function PaiVoiceCallScreen({
     setError("");
     setPhase("connecting");
 
+    let finishCharacterHangup = () => {};
+    let armCharacterHangupFallback = () => {};
     const call = new VoiceCall({
       url,
       video: false,
@@ -266,7 +268,8 @@ export function PaiVoiceCallScreen({
                 detail: { sessionId: session.id },
               }));
               savedAssistantTurnIdsRef.current.add(turnId);
-              call.sendReply(speechText || (wakeCall ? "早上好，该起床啦。" : "我想先和你说句话。"), turnId);
+              const sent = call.sendReply(speechText || (wakeCall ? "早上好，该起床啦。" : "我想先和你说句话。"), turnId);
+              if (shouldHangupAfterReply && sent) armCharacterHangupFallback();
             } catch (cause) {
               if (controller.signal.aborted) return;
               const fallback = wakeCall ? "早上好，该起床啦。" : "我想先和你说句话。";
@@ -375,7 +378,8 @@ export function PaiVoiceCallScreen({
                 detail: { sessionId: session.id },
               }));
               savedAssistantTurnIdsRef.current.add(turnId);
-              call.sendReply(speechText || "我这轮没有可朗读的内容。", turnId);
+              const sent = call.sendReply(speechText || "我这轮没有可朗读的内容。", turnId);
+              if (shouldHangupAfterReply && sent) armCharacterHangupFallback();
             } catch (cause) {
               if (controller.signal.aborted) {
                 if (timedOut) sendTimeoutFallback();
@@ -453,23 +457,12 @@ export function PaiVoiceCallScreen({
           }
           if (pendingHangupAfterPlaybackRef.current && callRef.current === call) {
             pendingHangupAfterPlaybackRef.current = false;
+            if (hangupAfterPlaybackTimerRef.current !== null) {
+              window.clearTimeout(hangupAfterPlaybackTimerRef.current);
+            }
             hangupAfterPlaybackTimerRef.current = window.setTimeout(() => {
               hangupAfterPlaybackTimerRef.current = null;
-              if (!mountedRef.current || callRef.current !== call) return;
-              if (wakeCall && !wakeCallUserRespondedRef.current) postponeWakeCallRetry(session.id);
-              pushChatMessage({
-                sessionId: session.id,
-                role: "assistant",
-                content: "[我挂断了语音通话]",
-                origin: "call",
-              });
-              window.dispatchEvent(new CustomEvent("chat-messages-updated", {
-                detail: { sessionId: session.id },
-              }));
-              call.hangup();
-              callRef.current = null;
-              startedAtRef.current = null;
-              onEnd();
+              finishCharacterHangup();
             }, 450);
           }
         },
@@ -513,6 +506,42 @@ export function PaiVoiceCallScreen({
         },
       },
     });
+
+    finishCharacterHangup = () => {
+      if (!mountedRef.current || callRef.current !== call) return;
+      if (wakeCall && !wakeCallUserRespondedRef.current) postponeWakeCallRetry(session.id);
+      pushChatMessage({
+        sessionId: session.id,
+        role: "assistant",
+        content: "[我挂断了语音通话]",
+        origin: "call",
+      });
+      window.dispatchEvent(new CustomEvent("chat-messages-updated", {
+        detail: { sessionId: session.id },
+      }));
+      if (wakeCallTimerRef.current !== null) {
+        window.clearTimeout(wakeCallTimerRef.current);
+        wakeCallTimerRef.current = null;
+      }
+      call.hangup();
+      callRef.current = null;
+      startedAtRef.current = null;
+      setStarted(false);
+      setPhase("ended");
+      onEnd();
+    };
+    armCharacterHangupFallback = () => {
+      if (!pendingHangupAfterPlaybackRef.current) return;
+      if (hangupAfterPlaybackTimerRef.current !== null) {
+        window.clearTimeout(hangupAfterPlaybackTimerRef.current);
+      }
+      hangupAfterPlaybackTimerRef.current = window.setTimeout(() => {
+        hangupAfterPlaybackTimerRef.current = null;
+        if (!pendingHangupAfterPlaybackRef.current) return;
+        pendingHangupAfterPlaybackRef.current = false;
+        finishCharacterHangup();
+      }, 45_000);
+    };
 
     callRef.current = call;
     if (initiator === "character") wakeCallUserRespondedRef.current = false;
