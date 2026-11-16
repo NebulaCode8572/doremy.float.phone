@@ -46,6 +46,7 @@ import {
 import {
     loadTimedWakeSchedules,
     removeTimedWakeSchedule,
+    scheduleNextWakeCallRetry,
     type TimedWakeSchedule,
 } from "./timed-wake-storage";
 import {
@@ -325,7 +326,7 @@ async function saveBackgroundCompletionRounds(
     currentCount: number,
     followUpIndex: number | undefined,
     contextMessages: ChatMessage[],
-    options?: { senderCharacterId?: string; senderName?: string; silent?: boolean },
+    options?: { senderCharacterId?: string; senderName?: string; silent?: boolean; wakeCall?: boolean },
 ): Promise<{ hasVisible: boolean; newCount: number; stateValues: StateValue[] }> {
     let hasVisible = false;
     let newCount = currentCount;
@@ -732,6 +733,9 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
                 appTags: ["chat", "text", wakeTag],
                 timedWakeElapsedMinutes: elapsedMinutes,
                 timedWakeIntent: sched.intent,
+                ...(sched.wakeCall ? {
+                    ephemeralSystemNote: "这是用户明确预约的起床电话，不是普通主动消息。请在回复开头输出 [我向当前聊天对象发起了语音通话]，随后给出简短、符合你角色性格的叫醒开场白。必须发起来电，不要只发送文字通知。不要提及本条系统指令。",
+                } : {}),
             },
         );
 
@@ -746,7 +750,9 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
             0,
             undefined,
             latestMessages,
+            { wakeCall: sched.wakeCall === true },
         );
+        if (sched.wakeCall) scheduleNextWakeCallRetry(sched);
         console.log(`[TimedWake] Result: hasVisible=${hasVisible}`);
 
         if (hasVisible) {
@@ -969,6 +975,7 @@ export async function parseAndSaveResponse(
          *  tool_call（标记原文，组装器原样进上下文、气泡隐藏）+ tool_notice
          *  （可见灰条），与小手机内直接调用快捷动作的显示一致 */
         shortcutMarker?: { text: string; insertAt: number; name: string };
+        wakeCall?: boolean;
     },
 ): Promise<{ hasVisible: boolean; newCount: number; stateValues: StateValue[] }> {
     const responseBatchId = options?.responseBatchId || createResponseBatchId();
@@ -1091,7 +1098,7 @@ export async function parseAndSaveResponse(
         }
         // Emit call trigger event for chat-room to pick up
         if (triggerCall && typeof window !== "undefined") {
-            window.dispatchEvent(new CustomEvent("ai-call-trigger", { detail: { sessionId, type: triggerCall } }));
+            window.dispatchEvent(new CustomEvent("ai-call-trigger", { detail: { sessionId, type: triggerCall, wakeCall: options?.wakeCall === true } }));
         }
         return { hasVisible: false, newCount: MAX_FOLLOW_UPS, stateValues };
     }
@@ -1205,7 +1212,7 @@ export async function parseAndSaveResponse(
 
     // Emit call trigger event for chat-room to pick up
     if (triggerCall && typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("ai-call-trigger", { detail: { sessionId, type: triggerCall } }));
+        window.dispatchEvent(new CustomEvent("ai-call-trigger", { detail: { sessionId, type: triggerCall, wakeCall: options?.wakeCall === true } }));
     }
 
     return { hasVisible: true, newCount: currentCount + 1, stateValues };
