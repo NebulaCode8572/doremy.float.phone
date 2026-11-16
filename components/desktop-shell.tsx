@@ -5,6 +5,7 @@ import { Component, memo, useCallback, useEffect, useInsertionEffect, useLayoutE
 import { updateStatusBarTone } from "@/lib/bg-tone";
 import { startDiaryEntryTimerService, stopDiaryEntryTimerService } from "@/lib/diary-entry-timer-service";
 import { startFollowUpService, stopFollowUpService } from "@/lib/follow-up-service";
+import { clearTimedWakeSchedule } from "@/lib/timed-wake-storage";
 import { startMomentsService, stopMomentsService } from "@/lib/moments-engine";
 import { bgTimerCleanup } from "@/lib/bg-timer";
 import { PhoneThemeApp } from "@/components/phone-theme-app";
@@ -2051,6 +2052,13 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     };
     try { navigator.serviceWorker?.addEventListener("message", onSwMessage); } catch { /* 无 SW 环境 */ }
     const consumeCallHash = () => {
+      const declinedMatch = window.location.hash.match(/wake-call-declined=([^&]+)/);
+      if (declinedMatch) {
+        const url = new URL(window.location.href);
+        window.history.replaceState(null, "", url.pathname + url.search);
+        clearTimedWakeSchedule(decodeURIComponent(declinedMatch[1]));
+        return;
+      }
       const hashMatch = window.location.hash.match(/incoming-call=([^&]+)(?:&rt=(\d+))?(?:&answered=(1))?(?:&wake=(1))?/);
       if (!hashMatch) return;
       const url = new URL(window.location.href);
@@ -4519,6 +4527,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                       className="incoming-call-bar-btn incoming-call-bar-decline"
                       onClick={() => {
                         const call = incomingCall;
+                        if (call.wakeCall) clearTimedWakeSchedule(call.sessionId);
                         const callLabel = call.type === "voice" ? "语音通话" : "视频通话";
                         playChatSoundOnce("hangup", findChatSessionById(call.sessionId)); // 拒接也是结束通话：播挂断音
                         pushChatMessage({
