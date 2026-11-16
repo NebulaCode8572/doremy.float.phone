@@ -451,6 +451,14 @@ export function PaiVoiceCallScreen({
             <PhoneOff size={22} />
           </button>
         </div>
+        <a
+          href="https://github.com/NebulaCode8572/pai-voice/tree/feature/vps-deployment-hardening"
+          target="_blank"
+          rel="noreferrer"
+          className="text-[11px] text-white/35 underline underline-offset-2"
+        >
+          PaiVoice 开源组件 · 查看对应源码
+        </a>
       </div>
     </div>
   );
