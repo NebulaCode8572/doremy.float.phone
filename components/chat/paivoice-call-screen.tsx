@@ -12,21 +12,25 @@ import { cancelFollowUp } from "@/lib/follow-up-service";
 import { suspendBailoutsForCall } from "@/lib/push-bailout-client";
 import { setCallAudioSessionActive } from "@/lib/tts-service";
 import { suspendKeepAliveForCall, resumeKeepAliveAfterCall } from "@/lib/use-weixin-bridge";
+import { useCallScreenSounds } from "@/lib/chat-sound";
+import { startIncomingCallVibration } from "@/lib/call-vibration";
 import { VoiceCall } from "@/lib/paivoice/voice-call.js";
 
 type PaiVoiceCallScreenProps = {
   session: ChatSession;
   character: Character;
   onEnd: () => void;
+  initiator?: "user" | "character";
   minimized?: boolean;
   onMinimize?: () => void;
   onRestore?: () => void;
 };
 
-type CallPhase = "ready" | "connecting" | "listening" | "thinking" | "speaking" | "reconnecting" | "ended";
+type CallPhase = "ready" | "incoming" | "connecting" | "listening" | "thinking" | "speaking" | "reconnecting" | "ended";
 
 const PHASE_LABELS: Record<CallPhase, string> = {
   ready: "准备通话",
+  incoming: "来电…",
   connecting: "正在连接",
   listening: "正在聆听",
   thinking: "正在思考",
@@ -45,6 +49,7 @@ export function PaiVoiceCallScreen({
   session,
   character,
   onEnd,
+  initiator = "user",
   minimized = false,
   onMinimize,
   onRestore,
@@ -55,12 +60,26 @@ export function PaiVoiceCallScreen({
   const cancelledGenerationTurnIdsRef = useRef(new Set<string>());
   const startedAtRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
-  const [phase, setPhase] = useState<CallPhase>("ready");
+  const [phase, setPhase] = useState<CallPhase>(initiator === "character" ? "incoming" : "ready");
+  const pendingHangupAfterPlaybackRef = useRef(false);
+  const hangupAfterPlaybackTimerRef = useRef<number | null>(null);
   const [started, setStarted] = useState(false);
   const [duration, setDuration] = useState(0);
   const [micMuted, setMicMuted] = useState(false);
   const [speakerMuted, setSpeakerMuted] = useState(false);
   const [error, setError] = useState("");
+  const isIncoming = initiator === "character" && phase === "incoming";
+
+  useCallScreenSounds({
+    initiator,
+    callState: isIncoming ? "CONNECTING" : started ? "IDLE" : "IDLE",
+    session,
+  });
+
+  useEffect(() => {
+    if (!isIncoming) return;
+    return startIncomingCallVibration();
+  }, [isIncoming]);
 
   const saveTranscript = useCallback((role: "user" | "assistant", rawText: unknown) => {
     const content = typeof rawText === "string" ? rawText.trim() : "";
@@ -80,6 +99,10 @@ export function PaiVoiceCallScreen({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (hangupAfterPlaybackTimerRef.current !== null) {
+        window.clearTimeout(hangupAfterPlaybackTimerRef.current);
+        hangupAfterPlaybackTimerRef.current = null;
+      }
       for (const [turnId, controller] of generationControllersRef.current) {
         cancelledGenerationTurnIdsRef.current.add(turnId);
         controller.abort();
@@ -89,6 +112,13 @@ export function PaiVoiceCallScreen({
       callRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (initiator !== "character") return;
+    const latest = loadChatMessages(session.id).at(-1);
+    if (latest?.content.includes("发起了语音通话")) return;
+    saveTranscript("assistant", "[我向你发起了语音通话]");
+  }, [initiator, saveTranscript, session.id]);
 
   useEffect(() => {
     cancelFollowUp(session.id);
@@ -188,7 +218,11 @@ export function PaiVoiceCallScreen({
               const result = await generateChatCompletion(
                 session,
                 loadChatMessages(session.id),
-                { appTags: ["chat", "voice"], signal: controller.signal },
+                {
+                  appTags: ["chat", "voice"],
+                  signal: controller.signal,
+                  ephemeralSystemNote: "你现在正在实时语音通话。你可以像真人一样决定何时自然结束通话；只有当你确实想结束本次通话时，先用正常语言向对方告别，再在回复末尾单独输出控制标记 [结束通话]。不要向用户解释这个标记；不想挂断时绝对不要输出它。用户打断你时，取消本次挂断意图。",
+                },
               );
               if (controller.signal.aborted || callRef.current !== call) {
                 if (timedOut) sendTimeoutFallback();
@@ -197,8 +231,11 @@ export function PaiVoiceCallScreen({
 
               const rawText = flattenCompletionResult(result).trim();
               if (!rawText) throw new Error("角色没有生成可用回复。");
+              const shouldHangupAfterReply = /\[(?:结束通话|挂断电话)\]/.test(rawText);
+              const cleanRawText = rawText.replace(/\[(?:结束通话|挂断电话)\]/g, "").trim();
+              if (shouldHangupAfterReply) pendingHangupAfterPlaybackRef.current = true;
 
-              const parsed = parseAIResponse(rawText, getLatestCharacterStateValues(session.contactId));
+              const parsed = parseAIResponse(cleanRawText, getLatestCharacterStateValues(session.contactId));
               const chatParts = parsed.parts.filter(part =>
                 !part.mediaType || !["voice_call", "video_call", "poke", "accept_red_packet", "decline_red_packet", "accept_transfer", "decline_transfer", "accept_payment_request", "decline_payment_request"].includes(part.mediaType)
               );
@@ -271,6 +308,11 @@ export function PaiVoiceCallScreen({
         speech: (speaking) => {
           if (!mountedRef.current) return;
           if (speaking) {
+            pendingHangupAfterPlaybackRef.current = false;
+            if (hangupAfterPlaybackTimerRef.current !== null) {
+              window.clearTimeout(hangupAfterPlaybackTimerRef.current);
+              hangupAfterPlaybackTimerRef.current = null;
+            }
             if (call.mode === "thinking") {
               for (const [turnId, controller] of generationControllersRef.current) {
                 cancelledGenerationTurnIdsRef.current.add(turnId);
@@ -282,7 +324,30 @@ export function PaiVoiceCallScreen({
         },
         playing: (playing) => {
           if (!mountedRef.current) return;
-          if (playing) setPhase("speaking");
+          if (playing) {
+            setPhase("speaking");
+            return;
+          }
+          if (pendingHangupAfterPlaybackRef.current && callRef.current === call) {
+            pendingHangupAfterPlaybackRef.current = false;
+            hangupAfterPlaybackTimerRef.current = window.setTimeout(() => {
+              hangupAfterPlaybackTimerRef.current = null;
+              if (!mountedRef.current || callRef.current !== call) return;
+              pushChatMessage({
+                sessionId: session.id,
+                role: "assistant",
+                content: "[我挂断了语音通话]",
+                origin: "call",
+              });
+              window.dispatchEvent(new CustomEvent("chat-messages-updated", {
+                detail: { sessionId: session.id },
+              }));
+              call.hangup();
+              callRef.current = null;
+              startedAtRef.current = null;
+              onEnd();
+            }, 450);
+          }
         },
         reconnecting: () => {
           if (mountedRef.current) setPhase("reconnecting");
@@ -305,7 +370,6 @@ export function PaiVoiceCallScreen({
           setDuration(0);
           setPhase("ended");
           setStarted(false);
-          setHoldingToTalk(false);
           setError("通话连接已关闭。");
         },
         error: (message) => {
@@ -342,10 +406,10 @@ export function PaiVoiceCallScreen({
       call.hangup();
       if (callRef.current === call) callRef.current = null;
       if (!mountedRef.current) return;
-      setPhase("ready");
+      setPhase(initiator === "character" ? "incoming" : "ready");
       setError(cause instanceof Error ? cause.message : "通话启动失败。");
     }
-  }, [saveTranscript, started, session]);
+  }, [onEnd, saveTranscript, started, session]);
 
   const toggleMic = useCallback(async () => {
     const call = callRef.current;
@@ -434,6 +498,28 @@ export function PaiVoiceCallScreen({
             <Mic size={30} />
             <span className="text-xs">自动聆听</span>
           </div>
+        ) : phase === "incoming" ? (
+          <div className="flex items-center justify-center gap-10">
+            <button
+              type="button"
+              onClick={() => {
+                saveTranscript("user", "[我拒绝了语音通话]");
+                onEnd();
+              }}
+              className="flex h-16 w-16 items-center justify-center rounded-full bg-red-600 shadow-lg"
+              aria-label="拒接"
+            >
+              <PhoneOff size={24} />
+            </button>
+            <button
+              type="button"
+              onClick={startCall}
+              className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-600 shadow-lg"
+              aria-label="接听"
+            >
+              <Mic size={24} />
+            </button>
+          </div>
         ) : (
           <button
             type="button"
@@ -446,6 +532,7 @@ export function PaiVoiceCallScreen({
           </button>
         )}
         {started && <span className="text-xs text-white/55">{micMuted ? "麦克风已静音" : "自动收音已开启"}</span>}
+        {phase === "incoming" && <span className="text-xs text-white/60">语音来电</span>}
         <div className="flex items-center justify-center gap-8">
           <button
             type="button"
