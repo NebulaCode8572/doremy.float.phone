@@ -8,6 +8,7 @@ export type PaiVoiceOptions = {
   on?: {
     state?: (mode: string) => void;
     transcript?: PaiVoiceEvent;
+    proactiveTurn?: PaiVoiceEvent;
     reply?: PaiVoiceEvent;
     playing?: (playing: boolean) => void;
     speech?: (speaking: boolean) => void;
@@ -31,4 +32,5 @@ export class VoiceCall {
   setPushToTalk(pressed: boolean): void;
   setSpeakerMuted(muted: boolean): void;
   sendReply(text: string, turnId: string): boolean;
+  startProactiveTurn(): boolean;
 }
