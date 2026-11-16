@@ -107,6 +107,10 @@ export function PaiVoiceCallScreen({
   }, []);
 
   useEffect(() => {
+    if (minimized) releaseTalkButton();
+  }, [minimized, releaseTalkButton]);
+
+  useEffect(() => {
     if (!started || !startedAtRef.current) return;
     const timer = window.setInterval(() => {
       const start = startedAtRef.current;
@@ -424,6 +428,7 @@ export function PaiVoiceCallScreen({
             onPointerDown={beginTalk}
             onPointerUp={releaseTalkButton}
             onPointerCancel={releaseTalkButton}
+            onPointerLeave={releaseTalkButton}
             onLostPointerCapture={releaseTalkButton}
             onContextMenu={(event) => event.preventDefault()}
             className={`flex h-24 w-24 select-none touch-none items-center justify-center rounded-full border border-white/20 shadow-xl transition ${holdingToTalk ? "scale-95 bg-sky-500" : "bg-white/15"} disabled:opacity-40`}
