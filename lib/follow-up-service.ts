@@ -579,6 +579,7 @@ function pollIdleReconnect(now: number) {
     lastIdleReconnectPollAt = now;
 
     for (const rule of loadIdleReconnectRules()) {
+        if (!isProactiveInteractionAllowed(rule.sessionId)) continue;
         if (idleReconnectFiringSet.has(rule.id)) continue;
         if (firingSet.has(rule.sessionId)) continue;
         // 追问链正在管这个会话时不叠加打扰
@@ -650,6 +651,7 @@ async function awaitServerGenerated(
 async function fireIdleReconnect(rule: IdleReconnectRule, lastUserAt: number) {
     idleReconnectFiringSet.add(rule.id);
     try {
+        if (!isProactiveInteractionAllowed(rule.sessionId)) return;
         const session = loadChatSessions().find(s => s.id === rule.sessionId);
         if (!session || session.isGroup || session.contactId !== rule.characterId) return;
 
@@ -806,6 +808,7 @@ async function fireMenstrualPeriodCare(input: {
         const sessions = loadChatSessions();
         const session = sessions.find(s => s.id === input.sessionId);
         if (!session || session.isGroup || session.contactId !== input.characterId) return;
+        if (!isProactiveInteractionAllowed(session.id)) return;
         if (hasMenstrualPeriodCareTriggered(input.characterId, input.event.cycleKey)) return;
 
         const latestMessages = loadChatMessages(session.id);
