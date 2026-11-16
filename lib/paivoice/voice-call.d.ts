@@ -7,6 +7,7 @@ export type PaiVoiceOptions = {
   getAuthTicket: () => Promise<string>;
   on?: {
     state?: (mode: string) => void;
+    vadStatus?: (mode: 'silero' | 'rms-fallback') => void;
     transcript?: PaiVoiceEvent;
     proactiveTurn?: PaiVoiceEvent;
     reply?: PaiVoiceEvent;
