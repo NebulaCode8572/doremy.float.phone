@@ -364,8 +364,12 @@ export function PaiVoiceCallScreen({
 
   const endCall = useCallback(() => {
     releaseTalkButton();
+    for (const controller of generationControllersRef.current.values()) controller.abort();
+    generationControllersRef.current.clear();
+    savedAssistantTurnIdsRef.current.clear();
     callRef.current?.hangup();
     callRef.current = null;
+    startedAtRef.current = null;
     onEnd();
   }, [onEnd, releaseTalkButton]);
 
