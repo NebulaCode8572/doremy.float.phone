@@ -92,7 +92,7 @@ export function applyProactiveIntentFromUserText(sessionId: string, rawText: str
     // about studying do not accidentally change the user's interaction mode.
     const studyOrWorkIntent =
         /(?:我|现在|这会儿|今天).{0,8}(?:正在|在|得|要|准备|需要)?(?:学习|复习|自习|上课|做题|刷题|背书|背单词|写作业|写卷子|工作|开会|赶作业|赶进度|专心|专注)/.test(text)
-        || /(?:我|现在|这会儿)?(?:有点|比较|挺|很)?忙(?:着|一会儿|一下|呢|起来)?/.test(text)
+        || /(?:我|现在|这会儿)?(?:正在|在|有点|比较|挺|很)?忙(?:着|一会儿|一下|呢|起来)?/.test(text)
         || /(?:我得|我先|让我先|暂时需要|现在需要)(?:专心|学习|复习|工作|处理事情)/.test(text)
         || /(?:我现在|我这会儿|我今天)(?:不太方便|没空|抽不开身)/.test(text);
     if (studyOrWorkIntent) {
