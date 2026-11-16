@@ -15,6 +15,7 @@ class CallActionReceiver : BroadcastReceiver() {
         const val ACTION_DECLINE = "app.floatphone.shell.CALL_DECLINE"
         const val EXTRA_SESSION_ID = "session_id"
         const val EXTRA_CALL_TS = "call_ts"
+        const val EXTRA_WAKE_CALL = "wake_call"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -22,7 +23,8 @@ class CallActionReceiver : BroadcastReceiver() {
         if (intent.action != ACTION_ANSWER) return
         val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
         val callTs = intent.getLongExtra(EXTRA_CALL_TS, 0L).takeIf { it > 0 } ?: System.currentTimeMillis()
-        val target = "${MainActivity.SITE_URL}/#incoming-call=${android.net.Uri.encode(sessionId)}&rt=$callTs&answered=1"
+        val wakeCall = intent.getBooleanExtra(EXTRA_WAKE_CALL, false)
+        val target = "${MainActivity.SITE_URL}/#incoming-call=${android.net.Uri.encode(sessionId)}&rt=$callTs&answered=1${if (wakeCall) "&wake=1" else ""}"
         runCatching {
             context.startActivity(
                 Intent(context, MainActivity::class.java).apply {
