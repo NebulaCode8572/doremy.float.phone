@@ -64,6 +64,7 @@ export function PaiVoiceCallScreen({
   const cancelledGenerationTurnIdsRef = useRef(new Set<string>());
   const proactiveGenerationTurnIdsRef = useRef(new Set<string>());
   const proactiveTurnRequestedRef = useRef(false);
+  const initialCharacterGreetingPendingRef = useRef(initiator === "character");
   const lastCallActivityAtRef = useRef(0);
   const startedAtRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
@@ -211,6 +212,8 @@ export function PaiVoiceCallScreen({
           const turnId = typeof message?.turn_id === "string" ? message.turn_id : "";
           if (!turnId || !isProactiveInteractionAllowed(session.id, { allowScheduledWake: wakeCall })) return;
           proactiveTurnRequestedRef.current = true;
+          const isInitialCharacterGreeting = initiator === "character" && initialCharacterGreetingPendingRef.current;
+          initialCharacterGreetingPendingRef.current = false;
           const controller = new AbortController();
           proactiveGenerationTurnIdsRef.current.add(turnId);
           generationControllersRef.current.set(turnId, controller);
@@ -226,7 +229,7 @@ export function PaiVoiceCallScreen({
                   ephemeralSystemNote: [
                     wakeCall
                       ? "你刚刚拨通了用户预约的起床电话。接通后由你先开口，简短自然地问候并叫醒对方，可以结合你们平时的相处方式。不要等用户先说话，不要说自己是 AI 或解释系统任务。说完后停下来等用户回应；除非用户明确要求结束，否则不要在叫醒开场白里主动挂断。"
-                      : initiator === "character"
+                      : isInitialCharacterGreeting
                         ? "这是你主动发起的一对一语音电话。接通后由你先开口，结合你们最近的聊天自然地打招呼、说明来意或开启话题，然后停下来等用户回应。不要等待用户先说话。如果你确实想自然结束通话，先正常告别，再在回复末尾输出 [结束通话]。"
                         : "这是实时语音通话中的自然空闲时段。你可以结合当前对话和最近的共同话题，偶尔自然地开启一段简短交流；不要重复刚说过的话，也不要为了填补沉默而频繁说话。",
                     loadProactiveInteractionState(session.id).mode === "study"
@@ -430,6 +433,8 @@ export function PaiVoiceCallScreen({
           })();
         },
         reply: (message) => {
+          proactiveTurnRequestedRef.current = false;
+          lastCallActivityAtRef.current = Date.now();
           const turnId = typeof message?.turn_id === "string" ? message.turn_id : "";
           if (turnId && savedAssistantTurnIdsRef.current.has(turnId)) {
             savedAssistantTurnIdsRef.current.delete(turnId);
