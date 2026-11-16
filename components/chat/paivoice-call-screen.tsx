@@ -730,9 +730,9 @@ export function PaiVoiceCallScreen({
           </span>
           <button
             type="button"
-            aria-label="添加通话成员"
-            onClick={() => setError("多人通话暂未开放。")}
-            className="flex h-12 w-12 items-center justify-center text-white"
+            aria-label="添加通话成员（暂不可用）"
+            disabled
+            className="flex h-12 w-12 cursor-not-allowed items-center justify-center text-white/55"
           >
             <Plus size={42} strokeWidth={1.7} />
           </button>
@@ -789,7 +789,7 @@ export function PaiVoiceCallScreen({
           </button>
         ) : <span />}
         <span className="text-lg tabular-nums">{PHASE_LABELS[phase]}</span>
-        <button type="button" aria-label="添加通话成员" onClick={() => setError("多人通话暂未开放。")} className="flex h-10 w-10 items-center justify-center">
+        <button type="button" aria-label="添加通话成员（暂不可用）" disabled className="flex h-10 w-10 cursor-not-allowed items-center justify-center text-white/55">
           <Plus size={32} />
         </button>
       </div>
