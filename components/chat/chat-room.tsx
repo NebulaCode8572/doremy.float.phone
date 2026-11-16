@@ -49,6 +49,7 @@ import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseG
 import { appendChatOfflineTurn, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, extractThinkingTag, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp, cancelBackgroundGeneration, isBackgroundReplyGenerating } from "@/lib/follow-up-service";
+import { applyProactiveIntentFromUserText } from "@/lib/proactive-interaction-state";
 import { useKeyboardDismissAutoSend } from "@/components/chat/use-keyboard-dismiss-auto-send";
 import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
@@ -4136,6 +4137,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             // 点数由系统旁白公布——避免结果挂在 user 消息上被角色模仿格式
             const diceOnly = !isQuoting && isDiceOnlyMessage(currentText);
             const diceFace = diceOnly ? rollChatDiceFace() : 0;
+
+            applyProactiveIntentFromUserText(session.id, currentText);
 
             const newMsg = pushChatMessage({
                 sessionId: session.id,
