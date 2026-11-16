@@ -2203,6 +2203,9 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     // 群聊通话没有单一角色，交由 CallLayer 按会话成员渲染
                     characterId: session.isGroup ? "" : session.contactId,
                     kind: detail.type === "video" ? "video" : "voice",
+                    engine: !session.isGroup && detail.type !== "video" && process.env.NEXT_PUBLIC_PAIVOICE_ENABLED === "true"
+                        ? "paivoice"
+                        : "legacy",
                     initiator: "character",
                     ...(typeof detail.characterName === "string" ? { initiatorName: detail.characterName } : {}),
                 });
