@@ -26,10 +26,10 @@ The App aborts a voice reply generation after 100 seconds and sends a short time
 
 ## Current scope
 
-- PaiVoice is used for user-initiated one-to-one voice calls.
+- PaiVoice is used for user-initiated and character-initiated one-to-one voice calls when enabled.
 - The service allows one active PaiVoice call per authenticated account; reconnecting resumes the existing call.
-- Group voice calls and character-initiated calls still use the existing call implementation.
-- Video, camera, and screen sharing are not enabled by this integration. The character can end a call by speaking a normal goodbye and emitting the private `[结束通话]` control marker; user interruption cancels that pending hangup.
+- Group calls and video calls remain on the legacy engine. Existing incoming-call notification, ringtone, vibration, and accept/reject UI are retained; the connected one-to-one call uses PaiVoice.
+- Video, camera, and screen sharing are not enabled by this integration. The character can end a call by speaking a normal goodbye and emitting the private `[结束通话]` control marker; user interruption cancels that pending hangup. Explicit `设置定时醒来` tasks force a voice call and schedule up to three retries, two minutes apart.
 - The microphone stays active during connected calls and uses automatic VAD listening.
 - PaiVoice calls skip the legacy post-hangup background reply, because each conversational turn has already been generated and saved during the call.
 - The speaker control mutes/unmutes received audio; actual output routing remains controlled by Android/browser audio routing.
