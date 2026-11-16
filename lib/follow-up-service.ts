@@ -737,6 +737,7 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
         const sessions = loadChatSessions();
         const session = sessions.find(s => s.id === sched.sessionId);
         if (!session || session.contactId !== sched.characterId) return;
+        if (!isProactiveInteractionAllowed(session.id, { allowScheduledWake: true })) return;
 
         const latestMessages = loadChatMessages(session.id);
         const elapsedMinutes = resolveTimedWakeElapsedMinutes(sched, latestMessages, Date.now());
