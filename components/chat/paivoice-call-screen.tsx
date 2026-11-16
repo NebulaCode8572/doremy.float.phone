@@ -535,6 +535,7 @@ export function PaiVoiceCallScreen({
     });
 
     callRef.current = call;
+    if (wakeCall && initiator === "character") wakeCallUserRespondedRef.current = false;
     try {
       // start() is called directly from this button's click handler so the
       // browser can grant microphone access and unlock audio in the gesture.
@@ -546,8 +547,7 @@ export function PaiVoiceCallScreen({
       startedAtRef.current = Date.now();
       setStarted(true);
       setPhase("listening");
-      if (wakeCall && initiator === "character") wakeCallUserRespondedRef.current = false;
-      if (initiator === "character") call.startProactiveTurn();
+      if (initiator === "character" && (!wakeCall || !wakeCallUserRespondedRef.current)) call.startProactiveTurn();
     } catch (cause) {
       call.hangup();
       if (callRef.current === call) callRef.current = null;
