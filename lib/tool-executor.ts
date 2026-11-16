@@ -3441,6 +3441,7 @@ async function executeTimedWakeTool(call: ToolCall, context?: ToolExecutionConte
         fireAt: now + delayMinutes * 60 * 1000,
         delayMinutes,
         intent,
+        source: wakeCall ? "user" : "tool",
         ...(wakeCall ? { wakeCall: true, wakeAttempt: 0 } : {}),
     };
     saveTimedWakeSchedule(schedule);
