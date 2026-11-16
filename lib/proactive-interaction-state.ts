@@ -55,8 +55,9 @@ export function setProactivePermission(sessionId: string, enabled: boolean): Pro
 
 export function isProactiveInteractionAllowed(sessionId: string, options?: { allowScheduledWake?: boolean }): boolean {
     const state = loadProactiveInteractionState(sessionId);
-    if (options?.allowScheduledWake) return true;
-    return state.enabled && state.mode !== "sleep" && state.mode !== "paused";
+    if (!state.enabled || state.mode === "paused") return false;
+    if (options?.allowScheduledWake && state.mode === "sleep") return true;
+    return state.mode !== "sleep";
 }
 
 /**
