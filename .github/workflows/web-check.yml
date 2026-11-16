@@ -3,7 +3,7 @@ name: Web Typecheck
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/paivoice-realtime-call]
     paths:
       - "app/**"
       - "components/**"
