@@ -31,6 +31,8 @@ The App aborts a voice reply generation after 100 seconds and sends a short time
 - Group calls and video calls remain on the legacy engine. Existing incoming-call notification, ringtone, vibration, and accept/reject UI are retained; the connected one-to-one call uses PaiVoice.
 - Video, camera, and screen sharing are not enabled by this integration. The character can end a call by speaking a normal goodbye and emitting the private `[结束通话]` control marker; user interruption cancels that pending hangup. Explicit `设置定时醒来` tasks force a voice call and schedule up to three retries, two minutes apart.
 - The microphone stays active during connected calls and uses automatic VAD listening.
+- After a character-initiated one-to-one call is accepted, the character gets the first turn through a server-mediated proactive-turn event. User-initiated calls still wait for the user to speak first.
+- For explicit wake-call schedules, the character speaks first; if no recognized user response arrives within 30 seconds after the greeting, the call ends and the next retry is queued two minutes later. At most three retries are queued. A recognized response or an explicit decline/hangup cancels the remaining retries.
 - PaiVoice calls skip the legacy post-hangup background reply, because each conversational turn has already been generated and saved during the call.
 - The speaker control mutes/unmutes received audio; actual output routing remains controlled by Android/browser audio routing.
 
