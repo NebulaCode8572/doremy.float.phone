@@ -62,6 +62,7 @@ export function PaiVoiceCallScreen({
   const generationControllersRef = useRef(new Map<string, AbortController>());
   const savedAssistantTurnIdsRef = useRef(new Set<string>());
   const cancelledGenerationTurnIdsRef = useRef(new Set<string>());
+  const proactiveGenerationTurnIdsRef = useRef(new Set<string>());
   const startedAtRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const [phase, setPhase] = useState<CallPhase>(initiator === "character" ? "incoming" : "ready");
@@ -208,6 +209,7 @@ export function PaiVoiceCallScreen({
           const turnId = typeof message?.turn_id === "string" ? message.turn_id : "";
           if (!turnId || initiator !== "character" || !isProactiveInteractionAllowed(session.id, { allowScheduledWake: wakeCall })) return;
           const controller = new AbortController();
+          proactiveGenerationTurnIdsRef.current.add(turnId);
           generationControllersRef.current.set(turnId, controller);
           const timeoutId = window.setTimeout(() => controller.abort(), 100_000);
           void (async () => {
@@ -283,6 +285,7 @@ export function PaiVoiceCallScreen({
             } finally {
               window.clearTimeout(timeoutId);
               generationControllersRef.current.delete(turnId);
+              proactiveGenerationTurnIdsRef.current.delete(turnId);
               cancelledGenerationTurnIdsRef.current.delete(turnId);
             }
           })();
@@ -607,7 +610,14 @@ export function PaiVoiceCallScreen({
   const toggleSpeaker = useCallback(() => {
     const next = !speakerMuted;
     setProactivePermission(session.id, !next);
-    if (next) suspendProactiveActions(session.id);
+    if (next) {
+      suspendProactiveActions(session.id);
+      for (const turnId of proactiveGenerationTurnIdsRef.current) {
+        cancelledGenerationTurnIdsRef.current.add(turnId);
+        generationControllersRef.current.get(turnId)?.abort();
+      }
+      proactiveGenerationTurnIdsRef.current.clear();
+    }
     setSpeakerMuted(next);
   }, [session.id, speakerMuted]);
 
