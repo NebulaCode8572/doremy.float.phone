@@ -63,6 +63,8 @@ export function PaiVoiceCallScreen({
   const savedAssistantTurnIdsRef = useRef(new Set<string>());
   const cancelledGenerationTurnIdsRef = useRef(new Set<string>());
   const proactiveGenerationTurnIdsRef = useRef(new Set<string>());
+  const proactiveTurnRequestedRef = useRef(false);
+  const lastCallActivityAtRef = useRef(0);
   const startedAtRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const [phase, setPhase] = useState<CallPhase>(initiator === "character" ? "incoming" : "ready");
@@ -207,7 +209,8 @@ export function PaiVoiceCallScreen({
         },
         proactiveTurn: (message) => {
           const turnId = typeof message?.turn_id === "string" ? message.turn_id : "";
-          if (!turnId || initiator !== "character" || !isProactiveInteractionAllowed(session.id, { allowScheduledWake: wakeCall })) return;
+          if (!turnId || !isProactiveInteractionAllowed(session.id, { allowScheduledWake: wakeCall })) return;
+          proactiveTurnRequestedRef.current = true;
           const controller = new AbortController();
           proactiveGenerationTurnIdsRef.current.add(turnId);
           generationControllersRef.current.set(turnId, controller);
@@ -220,9 +223,16 @@ export function PaiVoiceCallScreen({
                 {
                   appTags: ["chat", "voice", ...(wakeCall ? ["wake_call"] : ["character_initiated_call"])],
                   signal: controller.signal,
-                  ephemeralSystemNote: wakeCall
-                    ? "你刚刚拨通了用户预约的起床电话。接通后由你先开口，简短自然地问候并叫醒对方，可以结合你们平时的相处方式。不要等用户先说话，不要说自己是 AI 或解释系统任务。说完后停下来等用户回应；除非用户明确要求结束，否则不要在叫醒开场白里主动挂断。"
-                    : "这是你主动发起的一对一语音电话。接通后由你先开口，结合你们最近的聊天自然地打招呼、说明来意或开启话题，然后停下来等用户回应。不要等待用户先说话。如果你确实想自然结束通话，先正常告别，再在回复末尾输出 [结束通话]。",
+                  ephemeralSystemNote: [
+                    wakeCall
+                      ? "你刚刚拨通了用户预约的起床电话。接通后由你先开口，简短自然地问候并叫醒对方，可以结合你们平时的相处方式。不要等用户先说话，不要说自己是 AI 或解释系统任务。说完后停下来等用户回应；除非用户明确要求结束，否则不要在叫醒开场白里主动挂断。"
+                      : initiator === "character"
+                        ? "这是你主动发起的一对一语音电话。接通后由你先开口，结合你们最近的聊天自然地打招呼、说明来意或开启话题，然后停下来等用户回应。不要等待用户先说话。如果你确实想自然结束通话，先正常告别，再在回复末尾输出 [结束通话]。"
+                        : "这是实时语音通话中的自然空闲时段。你可以结合当前对话和最近的共同话题，偶尔自然地开启一段简短交流；不要重复刚说过的话，也不要为了填补沉默而频繁说话。",
+                    loadProactiveInteractionState(session.id).mode === "study"
+                      ? "用户目前处于学习或忙碌状态。只在确实合适时进行低频、简短、温和的提醒或陪伴，不要打断专注，不要要求用户回应。"
+                      : "",
+                  ].filter(Boolean).join("\\n"),
                 },
               );
               if (controller.signal.aborted || callRef.current !== call) return;
@@ -293,6 +303,7 @@ export function PaiVoiceCallScreen({
         transcript: (message) => {
           const turnId = typeof message?.turn_id === "string" ? message.turn_id : "";
           const userText = typeof message?.text === "string" ? message.text.trim() : "";
+          if (userText) lastCallActivityAtRef.current = Date.now();
           if (initiator === "character" && userText) wakeCallUserRespondedRef.current = true;
           if (wakeCall && userText) {
             if (wakeCallTimerRef.current !== null) {
@@ -419,6 +430,7 @@ export function PaiVoiceCallScreen({
         speech: (speaking) => {
           if (!mountedRef.current) return;
           if (speaking) {
+            lastCallActivityAtRef.current = Date.now();
             pendingHangupAfterPlaybackRef.current = false;
             for (const [turnId, controller] of generationControllersRef.current) {
               cancelledGenerationTurnIdsRef.current.add(turnId);
@@ -440,6 +452,7 @@ export function PaiVoiceCallScreen({
         playing: (playing) => {
           if (!mountedRef.current) return;
           if (playing) {
+            proactiveTurnRequestedRef.current = true;
             if (pendingHangupAfterPlaybackRef.current && hangupAfterPlaybackTimerRef.current !== null) {
               window.clearTimeout(hangupAfterPlaybackTimerRef.current);
               hangupAfterPlaybackTimerRef.current = null;
@@ -454,6 +467,8 @@ export function PaiVoiceCallScreen({
             setPhase("speaking");
             return;
           }
+          lastCallActivityAtRef.current = Date.now();
+          proactiveTurnRequestedRef.current = false;
           if (wakeCall && wakeGreetingStartedRef.current && !wakeCallUserRespondedRef.current && wakeCallTimerRef.current === null) {
             wakeCallTimerRef.current = window.setTimeout(() => {
               wakeCallTimerRef.current = null;
@@ -567,6 +582,7 @@ export function PaiVoiceCallScreen({
         return;
       }
       startedAtRef.current = Date.now();
+      lastCallActivityAtRef.current = startedAtRef.current;
       setStarted(true);
       setPhase("listening");
       if (wakeCall && initiator === "character") {
@@ -584,7 +600,10 @@ export function PaiVoiceCallScreen({
           }
         }, 110_000);
       }
-      if (initiator === "character" && !wakeCallUserRespondedRef.current) call.startProactiveTurn();
+      if (initiator === "character" && !wakeCallUserRespondedRef.current && isProactiveInteractionAllowed(session.id, { allowScheduledWake: wakeCall })) {
+        proactiveTurnRequestedRef.current = true;
+        call.startProactiveTurn();
+      }
     } catch (cause) {
       call.hangup();
       if (callRef.current === call) callRef.current = null;
@@ -593,6 +612,25 @@ export function PaiVoiceCallScreen({
       setError(cause instanceof Error ? cause.message : "通话启动失败。");
     }
   }, [initiator, onEnd, saveTranscript, session, started, wakeCall]);
+
+  useEffect(() => {
+    if (!started) return;
+    const timer = window.setInterval(() => {
+      const call = callRef.current;
+      if (!call || call.mode !== "listening" || proactiveTurnRequestedRef.current) return;
+      if (generationControllersRef.current.size > 0 || !isProactiveInteractionAllowed(session.id)) return;
+
+      const state = loadProactiveInteractionState(session.id);
+      const quietWindowMs = state.mode === "study" ? 15 * 60_000 : 4 * 60_000;
+      const lastActivityAt = lastCallActivityAtRef.current || startedAtRef.current || Date.now();
+      if (Date.now() - lastActivityAt < quietWindowMs) return;
+
+      proactiveTurnRequestedRef.current = true;
+      lastCallActivityAtRef.current = Date.now();
+      call.startProactiveTurn();
+    }, 5_000);
+    return () => window.clearInterval(timer);
+  }, [started, session.id]);
 
   const toggleMic = useCallback(async () => {
     const call = callRef.current;
