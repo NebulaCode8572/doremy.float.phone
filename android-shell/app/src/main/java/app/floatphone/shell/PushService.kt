@@ -247,6 +247,7 @@ class PushService : Service() {
                                 body.optString("characterName").ifEmpty { title },
                                 body.optString("sessionId"),
                                 body.optLong("callTs", System.currentTimeMillis()),
+                                body.optBoolean("wakeCall", false),
                             )
                         }.isSuccess
                         if (shown) return
@@ -339,12 +340,13 @@ class PushService : Service() {
      * 全屏来电通知：锁屏/熄屏直接弹 IncomingCallActivity，亮屏时是带
      * 接听/拒接按钮的 heads-up。振动循环 + 55s 超时未接由 CallAlert 管。
      */
-    private fun showIncomingCallNotification(characterName: String, sessionId: String, callTs: Long) {
+    private fun showIncomingCallNotification(characterName: String, sessionId: String, callTs: Long, wakeCall: Boolean) {
         val fullScreen = Intent(this, IncomingCallActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra(IncomingCallActivity.EXTRA_SESSION_ID, sessionId)
             putExtra(IncomingCallActivity.EXTRA_CHARACTER_NAME, characterName)
             putExtra(IncomingCallActivity.EXTRA_CALL_TS, callTs)
+            putExtra(IncomingCallActivity.EXTRA_WAKE_CALL, wakeCall)
         }
         val fullScreenPending = PendingIntent.getActivity(
             this, 60, fullScreen,
@@ -356,6 +358,7 @@ class PushService : Service() {
                 action = actionName
                 putExtra(CallActionReceiver.EXTRA_SESSION_ID, sessionId)
                 putExtra(CallActionReceiver.EXTRA_CALL_TS, callTs)
+                putExtra(CallActionReceiver.EXTRA_WAKE_CALL, wakeCall)
             },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
