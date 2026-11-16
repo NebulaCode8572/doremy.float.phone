@@ -6,6 +6,7 @@ This branch connects the App's user-initiated one-to-one voice call button to th
 
 Set these variables in the App's server/build environment:
 
+- `NEXT_PUBLIC_PAIVOICE_ENABLED=true`: explicitly enables PaiVoice routing. It defaults to `false`, so the existing call screen remains the fallback until the service is configured and verified.
 - `NEXT_PUBLIC_PAIVOICE_WS_URL`: the public PaiVoice WebSocket endpoint, using `wss://` in production. This value is intentionally public.
 - `PAIVOICE_AUTH_SECRET`: the same random secret configured on the PaiVoice service. Keep it server-only; do not add the `NEXT_PUBLIC_` prefix.
 
