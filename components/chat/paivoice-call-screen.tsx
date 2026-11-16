@@ -5,7 +5,9 @@ import { ArrowDown, LoaderCircle, Mic, MicOff, PhoneOff, Volume2, VolumeX } from
 
 import type { Character } from "@/lib/character-types";
 import type { ChatSession } from "@/lib/chat-storage";
-import { pushChatMessage } from "@/lib/chat-storage";
+import { getLatestCharacterStateValues, loadChatMessages, pushChatMessage } from "@/lib/chat-storage";
+import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engine";
+import { parseAIResponse } from "@/lib/rich-message-parser";
 import { VoiceCall } from "@/lib/paivoice/voice-call.js";
 
 type PaiVoiceCallScreenProps = {
@@ -44,6 +46,8 @@ export function PaiVoiceCallScreen({
   onRestore,
 }: PaiVoiceCallScreenProps) {
   const callRef = useRef<VoiceCall | null>(null);
+  const generationControllersRef = useRef(new Map<string, AbortController>());
+  const savedAssistantTurnIdsRef = useRef(new Set<string>());
   const startedAtRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const [phase, setPhase] = useState<CallPhase>("ready");
@@ -77,6 +81,8 @@ export function PaiVoiceCallScreen({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      for (const controller of generationControllersRef.current.values()) controller.abort();
+      generationControllersRef.current.clear();
       callRef.current?.hangup();
       callRef.current = null;
     };
@@ -143,11 +149,99 @@ export function PaiVoiceCallScreen({
             setPhase(mode);
           }
         },
-        transcript: (message) => saveTranscript("user", message?.text),
-        reply: (message) => saveTranscript("assistant", message?.text),
+        transcript: (message) => {
+          const turnId = typeof message?.turn_id === "string" ? message.turn_id : "";
+          const userText = typeof message?.text === "string" ? message.text.trim() : "";
+          saveTranscript("user", userText);
+          if (!turnId || !userText) return;
+
+          const controller = new AbortController();
+          generationControllersRef.current.set(turnId, controller);
+          void (async () => {
+            try {
+              const result = await generateChatCompletion(
+                session,
+                loadChatMessages(session.id),
+                { appTags: ["chat", "voice"], signal: controller.signal },
+              );
+              if (controller.signal.aborted || callRef.current !== call) return;
+
+              const rawText = flattenCompletionResult(result).trim();
+              if (!rawText) throw new Error("角色没有生成可用回复。");
+
+              const parsed = parseAIResponse(rawText, getLatestCharacterStateValues(session.contactId));
+              const chatParts = parsed.parts.filter(part =>
+                !part.mediaType || !["voice_call", "video_call", "poke", "accept_red_packet", "decline_red_packet", "accept_transfer", "decline_transfer", "accept_payment_request", "decline_payment_request"].includes(part.mediaType)
+              );
+              const speechText = chatParts
+                .filter(part => !part.mediaType && part.content.trim())
+                .map(part => part.content)
+                .join("\n")
+                .trim();
+
+              if (chatParts.length === 0 && (parsed.statusPanel || parsed.innerMonologue)) {
+                pushChatMessage({
+                  sessionId: session.id,
+                  role: "assistant",
+                  content: "",
+                  statusPanel: parsed.statusPanel,
+                  innerMonologue: parsed.innerMonologue,
+                  stateValues: parsed.stateValues.length > 0 ? parsed.stateValues : undefined,
+                  freshStateValues: parsed.freshStateValues,
+                  origin: "call",
+                });
+              } else {
+                chatParts.forEach((part, index) => {
+                  pushChatMessage({
+                    sessionId: session.id,
+                    role: "assistant",
+                    content: part.content,
+                    mediaType: part.mediaType,
+                    mediaData: part.mediaData,
+                    statusPanel: index === 0 ? parsed.statusPanel : undefined,
+                    innerMonologue: index === 0 ? parsed.innerMonologue : undefined,
+                    stateValues: index === 0 && parsed.stateValues.length > 0 ? parsed.stateValues : undefined,
+                    freshStateValues: index === 0 ? parsed.freshStateValues : undefined,
+                    origin: "call",
+                  });
+                });
+              }
+
+              window.dispatchEvent(new CustomEvent("chat-messages-updated", {
+                detail: { sessionId: session.id },
+              }));
+              savedAssistantTurnIdsRef.current.add(turnId);
+              call.sendReply(speechText || "我这轮没有可朗读的内容。", turnId);
+            } catch (cause) {
+              if (controller.signal.aborted) return;
+              const fallback = "我这边暂时没能生成回复，请稍后再试。";
+              saveTranscript("assistant", fallback);
+              savedAssistantTurnIdsRef.current.add(turnId);
+              call.sendReply(fallback, turnId);
+              if (mountedRef.current) {
+                setError(cause instanceof Error ? cause.message : "角色回复生成失败。");
+              }
+            } finally {
+              generationControllersRef.current.delete(turnId);
+            }
+          })();
+        },
+        reply: (message) => {
+          const turnId = typeof message?.turn_id === "string" ? message.turn_id : "";
+          if (turnId && savedAssistantTurnIdsRef.current.has(turnId)) {
+            savedAssistantTurnIdsRef.current.delete(turnId);
+            return;
+          }
+          saveTranscript("assistant", message?.text);
+        },
         speech: (speaking) => {
           if (!mountedRef.current) return;
-          if (speaking) setPhase("listening");
+          if (speaking) {
+            if (call.mode === "thinking") {
+              for (const controller of generationControllersRef.current.values()) controller.abort();
+            }
+            setPhase("listening");
+          }
         },
         playing: (playing) => {
           if (!mountedRef.current) return;
@@ -163,6 +257,9 @@ export function PaiVoiceCallScreen({
         },
         closed: () => {
           if (!mountedRef.current) return;
+          callRef.current = null;
+          startedAtRef.current = null;
+          setDuration(0);
           setPhase("ended");
           setStarted(false);
           setHoldingToTalk(false);
@@ -196,7 +293,7 @@ export function PaiVoiceCallScreen({
       setPhase("ready");
       setError(cause instanceof Error ? cause.message : "通话启动失败。");
     }
-  }, [saveTranscript, started]);
+  }, [saveTranscript, started, session]);
 
   const toggleMic = useCallback(async () => {
     const call = callRef.current;
