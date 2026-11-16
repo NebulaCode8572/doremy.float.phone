@@ -4,18 +4,7 @@ on:
   push:
     branches:
       - feature/paivoice-realtime-call
-    paths:
-      - ".github/workflows/paivoice-app-typecheck.yml"
-      - "app/api/paivoice/**"
-      - "components/chat/paivoice-call-screen.tsx"
-      - "components/chat/call-layer.tsx"
-      - "components/chat/chat-room.tsx"
-      - "components/desktop-shell.tsx"
-      - "lib/call-session-store.ts"
-      - "lib/paivoice/**"
-      - ".env.example"
-      - "tsconfig.json"
-      - "package-lock.json"
+  pull_request:
 
 jobs:
   typecheck:
