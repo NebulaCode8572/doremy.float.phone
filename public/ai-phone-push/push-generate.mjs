@@ -1130,8 +1130,9 @@ Deno.serve(async (req: Request) => {
     const title = payload.notify?.title || "小手机";
     const callSessionId = typeof payload.merge?.sessionId === "string" ? payload.merge.sessionId : "";
     // 来电：单条推送（不分段），点开带 ring 参数直达振铃；正文照常进 outbox
+    const isWakeCall = deliverAsCall && payload.merge?.wakeCall === true;
     const targetUrl = deliverAsCall && callSessionId
-      ? `/?ring=${encodeURIComponent(callSessionId)}&rt=${Date.now()}`
+      ? `/?ring=${encodeURIComponent(callSessionId)}&rt=${Date.now()}${isWakeCall ? "&wake=1" : ""}`
       : (payload.notify?.url || "/");
     let parts = deliverAsCall
       ? ["来电话了…"]
@@ -1151,7 +1152,7 @@ Deno.serve(async (req: Request) => {
         body: partBody,
         tag: `${job.id}-${index}`,
         url: targetUrl,
-        ...(deliverAsCall ? { sessionId: callSessionId, callTs: Date.now() } : {}),
+        ...(deliverAsCall ? { sessionId: callSessionId, callTs: Date.now(), ...(isWakeCall ? { wakeCall: true } : {}) } : {}),
       });
       if (vapid) {
         for (const sub of webSubs) {
@@ -1189,7 +1190,7 @@ Deno.serve(async (req: Request) => {
                   ...(typeof payload.notify?.avatar === "string" && payload.notify.avatar
                     ? { avatar: payload.notify.avatar }
                     : {}),
-                  ...(deliverAsCall ? { kind: "call", characterName: title, callTs: Date.now() } : {}),
+                  ...(deliverAsCall ? { kind: "call", characterName: title, callTs: Date.now(), ...(isWakeCall ? { wakeCall: true } : {}) } : {}),
                 },
               })),
             }),
