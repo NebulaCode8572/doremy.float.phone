@@ -91,7 +91,7 @@ export function CallLayer() {
         onEnd: endCall,
     };
 
-    if (call.kind === "voice" && call.engine === "paivoice") {
+    if (call.kind === "voice" && call.engine === "paivoice" && process.env.NEXT_PUBLIC_PAIVOICE_ENABLED === "true") {
         return <PaiVoiceCallScreen {...sharedProps} onEnd={() => endCall({ skipReply: true })} />;
     }
 
