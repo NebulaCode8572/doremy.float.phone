@@ -135,6 +135,19 @@ class IncomingCallActivity : AppCompatActivity() {
 
     private fun finishCall() {
         CallAlert.stop(this)
+        val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+        val wakeCall = intent.getBooleanExtra(EXTRA_WAKE_CALL, false)
+        if (wakeCall && sessionId.isNotEmpty()) {
+            val target = "${MainActivity.SITE_URL}/#wake-call-declined=${android.net.Uri.encode(sessionId)}"
+            runCatching {
+                startActivity(
+                    Intent(this, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        putExtra(MainActivity.EXTRA_OPEN_URL, target)
+                    },
+                )
+            }
+        }
         finish()
     }
 }
