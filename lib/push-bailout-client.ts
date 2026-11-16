@@ -574,7 +574,7 @@ export async function armTimedWakeBailout(schedule: TimedWakeSchedule): Promise<
     if (!bailoutEnabled()) return { ok: false, reason: "当前环境不支持服务端离线预约" };
     try {
         if (!(await hasAccountPushSubscription())) return { ok: false, reason: "当前账号没有可用的离线推送订阅" };
-        if (isWithinPushQuietHours(schedule.fireAt)) return { ok: false, reason: "触发时间落在推送安静时段内" };
+        if (!schedule.wakeCall && isWithinPushQuietHours(schedule.fireAt)) return { ok: false, reason: "触发时间落在推送安静时段内" };
         const session = loadChatSessions().find(s => s.id === schedule.sessionId);
         if (!session || session.isGroup || session.contactId !== schedule.characterId) return { ok: false, reason: "找不到对应的单聊会话" };
         const history = loadChatMessages(session.id);
