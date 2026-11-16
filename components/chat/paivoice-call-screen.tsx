@@ -618,6 +618,8 @@ export function PaiVoiceCallScreen({
       if (initiator === "character" && !wakeCallUserRespondedRef.current && isProactiveInteractionAllowed(session.id, { allowScheduledWake: wakeCall })) {
         proactiveTurnRequestedRef.current = true;
         call.startProactiveTurn();
+      } else {
+        initialCharacterGreetingPendingRef.current = false;
       }
     } catch (cause) {
       call.hangup();
