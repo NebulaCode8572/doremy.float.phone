@@ -16,7 +16,7 @@ The App issues a 120-second, single-use HMAC ticket at `POST /api/paivoice/ticke
 
 1. The user starts a one-to-one voice call from the chat page.
 2. The user taps **开始通话** in the call screen. This deliberate second tap lets the browser request microphone permission and unlock audio playback from a user gesture.
-3. PaiVoice keeps the microphone active during a call and uses client-side VAD to detect speech start/end automatically. Browser capture requests echo cancellation, noise suppression, and automatic gain control; the mic mute control stops the audio track.
+3. PaiVoice keeps the microphone active during a call and uses Silero VAD v5 through ONNX Runtime Web to classify speech locally in the browser. Only accepted speech frames (plus a short pre-roll) are sent to the PaiVoice call service; raw microphone audio is not sent to the VAD asset host. Browser capture requests echo cancellation, noise suppression, and automatic gain control; the mic mute control stops the audio track. If the model/runtime cannot load, the client reports `rms-fallback` and retains the previous RMS detector so calls remain usable.
 4. PaiVoice transcribes the turn and sends a `transcript` event to the App.
 5. The App runs its existing browser-side `generateChatCompletion` with the current chat session and message history. This preserves the App's existing character configuration, prompt assembly, and locally configured provider credentials.
 6. The App sends the generated text back over the same WebSocket as `client_reply`. PaiVoice synthesizes the reply and streams audio back.
@@ -36,13 +36,20 @@ The App aborts a voice reply generation after 100 seconds and sends a short time
 - PaiVoice calls skip the legacy post-hangup background reply, because each conversational turn has already been generated and saved during the call.
 - The speaker control mutes/unmutes received audio; actual output routing remains controlled by Android/browser audio routing.
 
+## Local speech detection
+
+- The browser loads the `@ricky0123/vad-web` browser bundle and ONNX Runtime Web from version-pinned jsDelivr URLs. Model inference runs on the device; the CDN supplies JavaScript/WASM/model assets only and does not receive microphone audio.
+- Silero VAD v5 probabilities gate PCM transmission. The client retains a short in-memory pre-roll to avoid clipping the first syllable, uses a higher confidence threshold and sustained duration before interrupting character playback, and closes a user turn after a sustained non-speech interval.
+- No voiceprint, speaker embedding, voice identity template, or audio recording is created or persisted. VAD distinguishes speech-like activity from non-speech; it does not verify who is speaking and cannot perfectly reject music with vocals.
+- If the browser blocks the CDN scripts, ONNX initialization fails, or the model cannot run in the WebView, the client falls back to the legacy RMS gate. This fallback is functional but less reliable against music.
+
 ## Verification still required
 
 This code has not yet been verified on a real Android device or against a deployed PaiVoice service. Before treating it as ready, test:
 
 - App ticket issuance with a real logged-in account and matching server secret.
 - WSS connection, microphone permission, ASR, TTS, and character reply generation.
-- Automatic VAD turn detection, mic mute/unmute, speaker mute, and interruption while the character is speaking or thinking. Echo cancellation and noise suppression depend on browser/device support and should be tested with both headphones and speaker playback.
+- Silero VAD model loading and inference in the target Android WebView, speech start/end, music-only and music-with-vocals false-trigger rates, first-syllable pre-roll, mic mute/unmute, and interruption while the character is speaking. Verify the `vadStatus` event reports `silero` rather than `rms-fallback`. Echo cancellation and noise suppression depend on browser/device support and should be tested with both headphones and speaker playback.
 - Reconnect during a network change and ensuring a fresh ticket is issued.
 - Transcript persistence after hangup and after reopening the chat.
 - Android background/lock-screen behavior. Browser/PWA background microphone and audio behavior is constrained by the operating system.
