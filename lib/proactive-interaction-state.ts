@@ -69,9 +69,6 @@ export function applyProactiveIntentFromUserText(sessionId: string, rawText: str
     const text = rawText.replace(/\s+/g, "").trim();
     if (!sessionId || !text) return loadProactiveInteractionState(sessionId);
 
-    const negated = /(?:不|没|没有|并不|还没|暂时不)(?:是|在|想|打算|准备)?(?:睡|学习|复习|工作|忙)/.test(text);
-    if (negated) return loadProactiveInteractionState(sessionId);
-
     // Explicitly asking for quiet takes priority over ordinary study/busy wording.
     if (/(?:别|不要|不用|先别|暂时别).{0,8}(?:提醒|打扰|主动联系|主动找我|主动搭话)|(?:安静点|让我安静|暂停主动|不要主动发消息)/.test(text)) {
         return saveState(sessionId, { mode: "paused" });
@@ -83,9 +80,13 @@ export function applyProactiveIntentFromUserText(sessionId: string, rawText: str
     }
 
     // End-of-task / free-time expressions restore ordinary interaction.
-    if (/(?:学完|复习完|题做完|作业写完|事情做完|忙完|工作结束|下班了|下课了|结束学习|歇会|歇一会|休息会|休息一下|放松一下|现在有空|有空了|不忙了|空下来了|可以聊了|先不学了)/.test(text)) {
+    if (/(?:学完|复习完|题做完|作业写完|事情做完|忙完|工作结束|下班了|下课了|结束学习|歇会|歇一会|休息会|休息一下|放松一下|现在有空|有空了|不忙了|空下来了|可以聊了|先不学了|不学了|不学习了)/.test(text)) {
         return saveState(sessionId, { mode: "normal" });
     }
+
+    const negated = /(?:不|没|没有|并不|还没|暂时不)(?:是|在|想|打算|准备)?(?:睡|学习|复习|工作|忙)/.test(text);
+    if (negated) return loadProactiveInteractionState(sessionId);
+
 
     // Busy / focus expressions switch to a quieter, low-frequency companionship mode.
     // Require a first-person/current-state framing so questions or general discussion
