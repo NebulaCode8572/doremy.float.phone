@@ -27,6 +27,7 @@ The App aborts a voice reply generation after 100 seconds and sends a short time
 ## Current scope
 
 - PaiVoice is used for user-initiated one-to-one voice calls.
+- The service allows one active PaiVoice call per authenticated account; reconnecting resumes the existing call.
 - Group voice calls and character-initiated calls still use the existing call implementation.
 - Video, camera, screen sharing, and proactive speech are not enabled by this integration.
 - Push-to-talk is enabled by default in the PaiVoice screen. The microphone track is disabled between holds, and audio is not transmitted while the control is released.
