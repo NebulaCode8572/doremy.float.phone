@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, getSystemInstructionDisplayContent, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, isSessionStreamingEnabled, resolveChatBackgroundImage, resolveChatUserAvatar } from "@/lib/chat-storage";
 import { cleanStreamText, splitStreamPreviewSegments, stripLiteralTexts, stripXmlTagBlocks } from "@/lib/stream-preview";
 import type { StateValue } from "@/lib/chat-storage";
@@ -39,7 +39,7 @@ import { ChatSettingsPanel } from "./chat-settings-panel";
 // 通话界面不再由聊天室渲染：已提升到 desktop-shell 的 CallLayer，
 // 这样切会话、回桌面、开别的 App 都不会中断通话。聊天室只负责「发起」；
 // 挂断后的界面刷新由 chat-call-ended 事件回调，角色回应由全局层统一触发。
-import { startCall } from "@/lib/call-session-store";
+import { getActiveCall, getActiveCallServerSnapshot, subscribeActiveCall, startCall } from "@/lib/call-session-store";
 import { TransferTargetModal } from "./transfer-target-modal";
 import { GiftPickerModal } from "./gift-picker-modal";
 import { ConfirmDialog } from "@/components/ui/modal";
@@ -1138,6 +1138,12 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
 }));
 
 export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
+    const activeCall = useSyncExternalStore(
+        subscribeActiveCall,
+        getActiveCall,
+        getActiveCallServerSnapshot,
+    );
+    const isPaiVoiceCallActiveHere = activeCall?.engine === "paivoice" && activeCall.sessionId === session.id;
     const [liveCSS, setLiveCSS] = useState(session.customCSS || "");
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [transientMessages, setTransientMessages] = useState<ChatMessage[]>([]);
@@ -5348,11 +5354,15 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const seen = new Set<string>();
         return displayMessages.filter(m => {
             if (isReadingDiscussMessage(m)) return false;
+            // PaiVoice speaks through the call audio, not chat bubbles. Keep its
+            // transcript persisted for prompt history and the post-call record,
+            // but hide live call-origin messages while that PaiVoice call is active.
+            if (isPaiVoiceCallActiveHere && m.origin === "call") return false;
             if (seen.has(m.id)) return false;
             seen.add(m.id);
             return true;
         });
-    }, [displayMessages]);
+    }, [displayMessages, isPaiVoiceCallActiveHere]);
 
     const projectedMessages = useMemo<RenderChatMessage[]>(() => {
         const batches = new Map<string, ChatMessage[]>();
