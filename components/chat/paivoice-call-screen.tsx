@@ -431,6 +431,10 @@ export function PaiVoiceCallScreen({
         playing: (playing) => {
           if (!mountedRef.current) return;
           if (playing) {
+            if (pendingHangupAfterPlaybackRef.current && hangupAfterPlaybackTimerRef.current !== null) {
+              window.clearTimeout(hangupAfterPlaybackTimerRef.current);
+              hangupAfterPlaybackTimerRef.current = null;
+            }
             if (wakeCall) {
               wakeGreetingStartedRef.current = true;
               if (wakeCallTimerRef.current !== null) {
