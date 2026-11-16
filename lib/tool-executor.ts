@@ -3420,6 +3420,7 @@ async function executeTimedWakeTool(call: ToolCall, context?: ToolExecutionConte
         };
     }
 
+    const wakeCall = call.name === "设置定时醒来";
     const intent = cleanToolString(call.args.intent, 300);
     if (!intent) {
         return {
@@ -3440,17 +3441,19 @@ async function executeTimedWakeTool(call: ToolCall, context?: ToolExecutionConte
         fireAt: now + delayMinutes * 60 * 1000,
         delayMinutes,
         intent,
-        ...(call.name === "设置定时醒来" ? { wakeCall: true, wakeAttempt: 0 } : {}),
+        ...(wakeCall ? { wakeCall: true, wakeAttempt: 0 } : {}),
     };
     saveTimedWakeSchedule(schedule);
     // 离线推送兜底：到点时 App 被杀也能由服务端接管生成（动态引入避免模块环）
     void import("./push-bailout-client").then(m => m.armTimedWakeBailout(schedule)).catch(() => undefined);
 
     return {
-        name: "稍后主动联系",
+        name: wakeCall ? "定时叫醒电话" : "稍后主动联系",
         success: true,
-        data: `已设置稍后主动联系：约 ${delayMinutes} 分钟后到点。\n目的：${intent}`,
-        userNotice: `已设置 ${delayMinutes} 分钟后主动联系`,
+        data: wakeCall
+            ? `已设置定时叫醒电话：约 ${delayMinutes} 分钟后拨打。\n目的：${intent}`
+            : `已设置稍后主动联系：约 ${delayMinutes} 分钟后到点。\n目的：${intent}`,
+        userNotice: wakeCall ? `已设置 ${delayMinutes} 分钟后电话叫醒` : `已设置 ${delayMinutes} 分钟后主动联系`,
     };
 }
 
