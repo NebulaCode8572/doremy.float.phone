@@ -267,8 +267,10 @@ export function PaiVoiceCallScreen({
               window.dispatchEvent(new CustomEvent("chat-messages-updated", {
                 detail: { sessionId: session.id },
               }));
+              const finalSpeech = speechText || (shouldHangupAfterReply ? "那我先挂了。" : wakeCall ? "早上好，该起床啦。" : "我想先和你说句话。");
+              if (!speechText) saveTranscript("assistant", finalSpeech);
               savedAssistantTurnIdsRef.current.add(turnId);
-              const sent = call.sendReply(speechText || (wakeCall ? "早上好，该起床啦。" : "我想先和你说句话。"), turnId);
+              const sent = call.sendReply(finalSpeech, turnId);
               if (shouldHangupAfterReply && sent) armCharacterHangupFallback();
             } catch (cause) {
               if (controller.signal.aborted) return;
@@ -377,8 +379,10 @@ export function PaiVoiceCallScreen({
               window.dispatchEvent(new CustomEvent("chat-messages-updated", {
                 detail: { sessionId: session.id },
               }));
+              const finalSpeech = speechText || (shouldHangupAfterReply ? "那我先挂了。" : "我这轮没有可朗读的内容。");
+              if (!speechText) saveTranscript("assistant", finalSpeech);
               savedAssistantTurnIdsRef.current.add(turnId);
-              const sent = call.sendReply(speechText || "我这轮没有可朗读的内容。", turnId);
+              const sent = call.sendReply(finalSpeech, turnId);
               if (shouldHangupAfterReply && sent) armCharacterHangupFallback();
             } catch (cause) {
               if (controller.signal.aborted) {
