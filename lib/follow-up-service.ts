@@ -264,7 +264,6 @@ export async function requestBackgroundChatReply(
     }
 }
 
-/** Cancel any pending follow-up for a session (called when user sends a message). */
 /** Stop queued ordinary proactive messages without changing the user's idle-reconnect preferences. */
 export function suspendProactiveActions(sessionId: string): void {
     clearFollowUpSchedule(sessionId);
