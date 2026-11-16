@@ -253,6 +253,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                                 createdAt: Date.now(),
                                 delayMinutes: 0,
                                 intent: "按用户约定的时间电话叫醒",
+                                source: "user",
                                 wakeCall: true,
                                 wakeAttempt: meta.wakeAttempt ?? 0,
                             });
