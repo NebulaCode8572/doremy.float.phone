@@ -29,4 +29,5 @@ export class VoiceCall {
   setMuted(muted: boolean): Promise<void>;
   setPushToTalk(pressed: boolean): void;
   setSpeakerMuted(muted: boolean): void;
+  sendReply(text: string, turnId: string): boolean;
 }
