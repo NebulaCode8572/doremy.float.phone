@@ -527,7 +527,7 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
                     followUpDelay: sched.delaySec ?? 60,
                     appTags: ["chat", "text", "followup"],
                     ephemeralSystemNote: loadProactiveInteractionState(session.id).mode === "study"
-                        ? "用户目前处于学习或忙碌状态。只有确实有价值时才进行简短、低频、温和的陪伴提醒；不要连续提醒，不要要求用户回应，不要打断明显的专注时段。"
+                        ? "用户目前处于学习或忙碌状态。只有确实合适时才进行简短、低频、温和的陪伴；可以结合情境提醒喝水、调整坐姿或休息眼睛，但不要机械重复同类提醒，不要要求用户回应，也不要打断明显的专注时段。"
                         : undefined,
                 },
             );
