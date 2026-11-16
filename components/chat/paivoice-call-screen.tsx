@@ -266,26 +266,6 @@ export function PaiVoiceCallScreen({
                 detail: { sessionId: session.id },
               }));
               savedAssistantTurnIdsRef.current.add(turnId);
-              if (wakeCall) {
-                wakeCallTimerRef.current = window.setTimeout(() => {
-                  wakeCallTimerRef.current = null;
-                  if (!wakeCallUserRespondedRef.current && mountedRef.current && callRef.current === call) {
-                    // 没有音频播放事件时的兜底：最多等 60 秒再开始 30 秒回应窗口。
-                    wakeGreetingStartedRef.current = true;
-                    wakeCallTimerRef.current = window.setTimeout(() => {
-                      wakeCallTimerRef.current = null;
-                      if (!wakeCallUserRespondedRef.current && mountedRef.current && callRef.current === call) {
-                        postponeWakeCallRetry(session.id);
-                        saveTranscript("assistant", "[我挂断了语音通话]");
-                        call.hangup();
-                        callRef.current = null;
-                        startedAtRef.current = null;
-                        onEnd();
-                      }
-                    }, 30_000);
-                  }
-                }, 60_000);
-              }
               call.sendReply(speechText || (wakeCall ? "早上好，该起床啦。" : "我想先和你说句话。"), turnId);
             } catch (cause) {
               if (controller.signal.aborted) return;
@@ -547,6 +527,21 @@ export function PaiVoiceCallScreen({
       startedAtRef.current = Date.now();
       setStarted(true);
       setPhase("listening");
+      if (wakeCall && initiator === "character") {
+        wakeCallTimerRef.current = window.setTimeout(() => {
+          wakeCallTimerRef.current = null;
+          if (!wakeCallUserRespondedRef.current && mountedRef.current && callRef.current === call) {
+            postponeWakeCallRetry(session.id);
+            saveTranscript("assistant", "[我挂断了语音通话]");
+            call.hangup();
+            callRef.current = null;
+            startedAtRef.current = null;
+            setStarted(false);
+            setPhase("ended");
+            onEnd();
+          }
+        }, 90_000);
+      }
       if (initiator === "character" && !wakeCallUserRespondedRef.current) call.startProactiveTurn();
     } catch (cause) {
       call.hangup();
