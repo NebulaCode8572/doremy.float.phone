@@ -15,12 +15,14 @@ import { suspendKeepAliveForCall, resumeKeepAliveAfterCall } from "@/lib/use-wei
 import { useCallScreenSounds } from "@/lib/chat-sound";
 import { startIncomingCallVibration } from "@/lib/call-vibration";
 import { VoiceCall } from "@/lib/paivoice/voice-call.js";
+import { clearTimedWakeSchedule, postponeWakeCallRetry } from "@/lib/timed-wake-storage";
 
 type PaiVoiceCallScreenProps = {
   session: ChatSession;
   character: Character;
   onEnd: () => void;
   initiator?: "user" | "character";
+  wakeCall?: boolean;
   minimized?: boolean;
   onMinimize?: () => void;
   onRestore?: () => void;
@@ -50,6 +52,7 @@ export function PaiVoiceCallScreen({
   character,
   onEnd,
   initiator = "user",
+  wakeCall = false,
   minimized = false,
   onMinimize,
   onRestore,
@@ -63,6 +66,8 @@ export function PaiVoiceCallScreen({
   const [phase, setPhase] = useState<CallPhase>(initiator === "character" ? "incoming" : "ready");
   const pendingHangupAfterPlaybackRef = useRef(false);
   const hangupAfterPlaybackTimerRef = useRef<number | null>(null);
+  const wakeCallTimerRef = useRef<number | null>(null);
+  const wakeCallUserRespondedRef = useRef(false);
   const [started, setStarted] = useState(false);
   const [duration, setDuration] = useState(0);
   const [micMuted, setMicMuted] = useState(false);
@@ -102,6 +107,10 @@ export function PaiVoiceCallScreen({
       if (hangupAfterPlaybackTimerRef.current !== null) {
         window.clearTimeout(hangupAfterPlaybackTimerRef.current);
         hangupAfterPlaybackTimerRef.current = null;
+      }
+      if (wakeCallTimerRef.current !== null) {
+        window.clearTimeout(wakeCallTimerRef.current);
+        wakeCallTimerRef.current = null;
       }
       for (const [turnId, controller] of generationControllersRef.current) {
         cancelledGenerationTurnIdsRef.current.add(turnId);
@@ -194,6 +203,14 @@ export function PaiVoiceCallScreen({
         transcript: (message) => {
           const turnId = typeof message?.turn_id === "string" ? message.turn_id : "";
           const userText = typeof message?.text === "string" ? message.text.trim() : "";
+          if (wakeCall && userText) {
+            wakeCallUserRespondedRef.current = true;
+            if (wakeCallTimerRef.current !== null) {
+              window.clearTimeout(wakeCallTimerRef.current);
+              wakeCallTimerRef.current = null;
+            }
+            clearTimedWakeSchedule(session.id);
+          }
           saveTranscript("user", userText);
           if (!turnId || !userText) return;
 
@@ -333,6 +350,7 @@ export function PaiVoiceCallScreen({
             hangupAfterPlaybackTimerRef.current = window.setTimeout(() => {
               hangupAfterPlaybackTimerRef.current = null;
               if (!mountedRef.current || callRef.current !== call) return;
+              if (wakeCall && !wakeCallUserRespondedRef.current) postponeWakeCallRetry(session.id);
               pushChatMessage({
                 sessionId: session.id,
                 role: "assistant",
@@ -402,6 +420,21 @@ export function PaiVoiceCallScreen({
       startedAtRef.current = Date.now();
       setStarted(true);
       setPhase("listening");
+      if (wakeCall && initiator === "character") {
+        wakeCallUserRespondedRef.current = false;
+        wakeCallTimerRef.current = window.setTimeout(() => {
+          wakeCallTimerRef.current = null;
+          if (!mountedRef.current || callRef.current !== call || wakeCallUserRespondedRef.current) return;
+          postponeWakeCallRetry(session.id);
+          saveTranscript("assistant", "[我挂断了语音通话]");
+          call.hangup();
+          callRef.current = null;
+          startedAtRef.current = null;
+          setStarted(false);
+          setPhase("ended");
+          onEnd();
+        }, 30_000);
+      }
     } catch (cause) {
       call.hangup();
       if (callRef.current === call) callRef.current = null;
@@ -437,11 +470,16 @@ export function PaiVoiceCallScreen({
     }
     generationControllersRef.current.clear();
     savedAssistantTurnIdsRef.current.clear();
+    if (wakeCall) clearTimedWakeSchedule(session.id);
+    if (wakeCallTimerRef.current !== null) {
+      window.clearTimeout(wakeCallTimerRef.current);
+      wakeCallTimerRef.current = null;
+    }
     callRef.current?.hangup();
     callRef.current = null;
     startedAtRef.current = null;
     onEnd();
-  }, [onEnd]);
+  }, [onEnd, session.id, wakeCall]);
 
   if (minimized) {
     return (
@@ -503,6 +541,7 @@ export function PaiVoiceCallScreen({
             <button
               type="button"
               onClick={() => {
+                if (wakeCall) clearTimedWakeSchedule(session.id);
                 saveTranscript("user", "[我拒绝了语音通话]");
                 onEnd();
               }}
