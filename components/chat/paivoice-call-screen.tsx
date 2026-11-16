@@ -8,7 +8,7 @@ import type { ChatSession } from "@/lib/chat-storage";
 import { getLatestCharacterStateValues, loadChatMessages, pushChatMessage } from "@/lib/chat-storage";
 import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engine";
 import { parseAIResponse } from "@/lib/rich-message-parser";
-import { cancelFollowUp } from "@/lib/follow-up-service";
+import { cancelFollowUp, suspendProactiveActions } from "@/lib/follow-up-service";
 import { suspendBailoutsForCall } from "@/lib/push-bailout-client";
 import { setCallAudioSessionActive } from "@/lib/tts-service";
 import { suspendKeepAliveForCall, resumeKeepAliveAfterCall } from "@/lib/use-weixin-bridge";
@@ -607,6 +607,7 @@ export function PaiVoiceCallScreen({
   const toggleSpeaker = useCallback(() => {
     const next = !speakerMuted;
     setProactivePermission(session.id, !next);
+    if (next) suspendProactiveActions(session.id);
     setSpeakerMuted(next);
   }, [speakerMuted]);
 
