@@ -10,7 +10,7 @@ import { getActiveAppTags } from "./content-tag-utils";
 import { loadChatMessages, loadChatSessions, reindexSessionMessageOrdersByTime } from "./chat-storage";
 import { hasAccountPushSubscription, isShellEnvironment } from "./push-client";
 import { isPersonalPushCloudActive, loadPersonalPushCloudState, personalPushFetch } from "./personal-push-cloud";
-import { removeTimedWakeSchedule, scheduleNextWakeCallRetry } from "./timed-wake-storage";
+import { loadTimedWakeSchedules, removeTimedWakeSchedule, scheduleNextWakeCallRetry } from "./timed-wake-storage";
 import { appendBridgeFeed } from "./reality-bridge/storage";
 import { loadScreenChatSettings, saveScreenChatAck } from "./reality-bridge/storage";
 
@@ -237,17 +237,26 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                         }
                         : undefined;
                     if (meta.wakeCall === true) {
-                        scheduleNextWakeCallRetry({
-                            id: getTimedWakeIdFromTriggerKey(entry.trigger_key) || entry.id,
-                            sessionId,
-                            characterId: session.contactId,
-                            fireAt: Date.now(),
-                            createdAt: Date.now(),
-                            delayMinutes: 0,
-                            intent: "按用户约定的时间电话叫醒",
-                            wakeCall: true,
-                            wakeAttempt: meta.wakeAttempt ?? 0,
-                        });
+                        const nextAttempt = (meta.wakeAttempt ?? 0) + 1;
+                        const retryAlreadyQueued = loadTimedWakeSchedules().some(item =>
+                            item.sessionId === sessionId
+                            && item.wakeCall
+                            && item.wakeAttempt === nextAttempt
+                            && item.fireAt > Date.now()
+                        );
+                        if (!retryAlreadyQueued) {
+                            scheduleNextWakeCallRetry({
+                                id: getTimedWakeIdFromTriggerKey(entry.trigger_key) || entry.id,
+                                sessionId,
+                                characterId: session.contactId,
+                                fireAt: Date.now(),
+                                createdAt: Date.now(),
+                                delayMinutes: 0,
+                                intent: "按用户约定的时间电话叫醒",
+                                wakeCall: true,
+                                wakeAttempt: meta.wakeAttempt ?? 0,
+                            });
+                        }
                     }
                     const { hasVisible, newCount, stateValues } = await parseAndSaveResponse(
                         text,
