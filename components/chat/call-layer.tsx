@@ -85,6 +85,7 @@ export function CallLayer() {
         session,
         character,
         initiator: call.initiator,
+        wakeCall: call.wakeCall === true,
         minimized: call.minimized,
         onMinimize: minimizeCall,
         onRestore: restoreCall,
