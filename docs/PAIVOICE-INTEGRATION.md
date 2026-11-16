@@ -57,4 +57,5 @@ The mock ASR/TTS providers only verify protocol flow; mock ASR returns no transc
 - User status is inferred from natural-language messages rather than exact command phrases. Busy/study expressions switch to low-frequency companionship; finishing-study/free-time expressions restore normal interaction; sleep expressions suppress ordinary proactive contact; explicit requests not to be reminded pause proactive contact.
 - Scheduled wake-up calls remain a special user-requested event and may run during sleep mode, but still respect the master proactive permission toggle.
 - Study-mode follow-ups are delayed and generated with a short instruction to keep reminders infrequent, gentle, and non-interruptive.
+- During an active PaiVoice call, idle proactive turns wait about 4 minutes in normal mode and 15 minutes in study mode; the timer is reset by user speech and character playback.
 - These controls are client-side policy. Pending server-side push jobs and Android background behavior still require end-to-end verification before production use.
