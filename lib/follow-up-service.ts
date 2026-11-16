@@ -30,6 +30,7 @@ import {
     type IdleReconnectRule,
 } from "./idle-reconnect-storage";
 import { loadFollowUpConfig } from "./settings-storage";
+import { isProactiveInteractionAllowed, loadProactiveInteractionState } from "./proactive-interaction-state";
 import { parseAIResponse } from "./rich-message-parser";
 import type { ParsedMessagePart } from "./rich-message-parser";
 import { getStatusRegionConfig, isCustomStatusRegionActive } from "./chat-status-region";
@@ -170,6 +171,11 @@ export function stopFollowUpService() {
 /** Schedule a follow-up for a session (called by ChatRoom after AI replies).
  *  Purely anxiety-driven: no anxiety field or below threshold → no follow-up. */
 export function scheduleFollowUp(sessionId: string, count: number, stateValues?: StateValue[]) {
+    if (!isProactiveInteractionAllowed(sessionId)) {
+        clearFollowUpSchedule(sessionId);
+        cancelFollowUpBailout(sessionId);
+        return;
+    }
     const config = loadFollowUpConfig();
 
     if (!stateValues || stateValues.length === 0) {
@@ -197,7 +203,11 @@ export function scheduleFollowUp(sessionId: string, count: number, stateValues?:
     // Linear interpolation: threshold → maxDelay, 100 → minDelay
     const range = 100 - config.anxietyThreshold;
     const t = range > 0 ? (anxietyEntry.value - config.anxietyThreshold) / range : 1;
-    const delaySec = Math.round(config.anxietyMaxDelay + t * (config.anxietyMinDelay - config.anxietyMaxDelay));
+    const baseDelaySec = Math.round(config.anxietyMaxDelay + t * (config.anxietyMinDelay - config.anxietyMaxDelay));
+    const proactiveState = loadProactiveInteractionState(sessionId);
+    const delaySec = proactiveState.mode === "study"
+        ? Math.min(1800, Math.max(600, baseDelaySec * 3))
+        : baseDelaySec;
     const fireAt = Date.now() + delaySec * 1000;
     console.log(`[FollowUp] Anxiety-driven: value=${anxietyEntry.value}, delay=${delaySec}s, session=${sessionId}, count=${count}`);
     saveFollowUpSchedule({ sessionId, fireAt, count, delaySec });
@@ -442,6 +452,7 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
         const session = sessions.find(s => s.id === sched.sessionId);
         if (!session) return;
 
+        if (!isProactiveInteractionAllowed(session.id)) return;
         const latestMessages = loadChatMessages(session.id);
 
         const count = sched.count + 1;
@@ -497,7 +508,14 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
             rounds = await generateBackgroundCompletionRounds(
                 session,
                 messagesWithHint,
-                { followUpCount: count, followUpDelay: sched.delaySec ?? 60, appTags: ["chat", "text", "followup"] },
+                {
+                    followUpCount: count,
+                    followUpDelay: sched.delaySec ?? 60,
+                    appTags: ["chat", "text", "followup"],
+                    ephemeralSystemNote: loadProactiveInteractionState(session.id).mode === "study"
+                        ? "用户目前处于学习或忙碌状态。只有确实有价值时才进行简短、低频、温和的陪伴提醒；不要连续提醒，不要要求用户回应，不要打断明显的专注时段。"
+                        : undefined,
+                },
             );
         } finally {
             stopBailoutHeartbeat();
