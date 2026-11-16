@@ -720,6 +720,7 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
             return;
         }
 
+        if (sched.wakeCall) scheduleNextWakeCallRetry(sched);
         console.log("[TimedWake] Dispatching followup-started for session:", session.id);
         backgroundGeneratingSessions.add(session.id);
         window.dispatchEvent(new CustomEvent("followup-started", { detail: { sessionId: session.id } }));
@@ -752,7 +753,6 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
             latestMessages,
             { wakeCall: sched.wakeCall === true },
         );
-        if (sched.wakeCall) scheduleNextWakeCallRetry(sched);
         console.log(`[TimedWake] Result: hasVisible=${hasVisible}`);
 
         if (hasVisible) {
