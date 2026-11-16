@@ -52,7 +52,7 @@ The mock ASR/TTS providers only verify protocol flow; mock ASR returns no transc
 ## Proactive interaction controls
 
 - The existing microphone control only controls microphone capture and speech recognition.
-- The existing speaker control keeps its original icon and “扬声器已开/已关” label, but its behavior is an account/session-level proactive-contact permission. Turning it off does not mute ordinary call replies; it blocks unsolicited proactive voice and text messages and cancels queued ordinary follow-ups where the client controls them.
+- The existing speaker control keeps its original icon and “扬声器已开/已关” label, but its behavior is a per-session proactive-contact permission. Turning it off does not mute ordinary call replies; it blocks unsolicited proactive voice and text messages and cancels queued ordinary follow-ups where the client controls them.
 - Explicit user messages still receive normal replies while proactive contact is disabled.
 - User status is inferred from natural-language messages rather than exact command phrases. Busy/study expressions switch to low-frequency companionship; finishing-study/free-time expressions restore normal interaction; sleep expressions suppress ordinary proactive contact; explicit requests not to be reminded pause proactive contact.
 - Scheduled wake-up calls remain a special user-requested event and may run during sleep mode, but still respect the master proactive permission toggle.
