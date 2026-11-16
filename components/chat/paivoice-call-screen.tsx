@@ -577,7 +577,7 @@ export function PaiVoiceCallScreen({
             setPhase("ended");
             onEnd();
           }
-        }, 90_000);
+        }, 110_000);
       }
       if (initiator === "character" && !wakeCallUserRespondedRef.current) call.startProactiveTurn();
     } catch (cause) {
