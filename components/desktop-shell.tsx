@@ -1188,7 +1188,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   if (activeApp === "shopping" && !shoppingMounted) setShoppingMounted(true);
   const [widgets, setWidgets] = useState<WidgetInstance[]>([]);
   const [incomingCall, setIncomingCall] = useState<{
-    sessionId: string; type: "voice" | "video"; charName: string; charAvatar: string | null; isGroup?: boolean;
+    sessionId: string; type: "voice" | "video"; charName: string; charAvatar: string | null; isGroup?: boolean; wakeCall?: boolean;
   } | null>(null);
   // 桌面来电横幅显示期间循环振动（开关在聊天主页"语音/视频来电振动"）
   // + 循环来电铃声（角色专属提示音优先，其余在"全局聊天信息 → 提示音"）
@@ -2004,6 +2004,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
         charName,
         charAvatar: char?.avatar || null,
         isGroup,
+        wakeCall: detail.wakeCall === true,
       });
       sendBrowserNotification("来电", {
         body: `${charName} ${isGroup ? "群" : ""}${detail.type === "voice" ? "语音通话" : "视频通话"}`,
@@ -2027,7 +2028,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   useEffect(() => {
     if (!desktopReady) return;
     const CALL_VALID_MS = 120_000;
-    const trigger = (sessionId: string, callTs: number, answered: boolean) => {
+    const trigger = (sessionId: string, callTs: number, answered: boolean, wakeCall = false) => {
       if (!sessionId) return;
       if (callTs > 0 && Date.now() - callTs > CALL_VALID_MS) return;
       if (answered) {
@@ -2036,25 +2037,25 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
         setChatInitSessionId(sessionId);
         window.setTimeout(() => {
           window.dispatchEvent(new CustomEvent("ai-call-trigger", {
-            detail: { sessionId, type: "voice", __fromBar: true },
+            detail: { sessionId, type: "voice", wakeCall, __fromBar: true },
           }));
         }, 600);
         return;
       }
-      window.dispatchEvent(new CustomEvent("ai-call-trigger", { detail: { sessionId, type: "voice" } }));
+      window.dispatchEvent(new CustomEvent("ai-call-trigger", { detail: { sessionId, type: "voice", wakeCall } }));
     };
     const onSwMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; sessionId?: string; callTs?: number } | null;
+      const data = event.data as { type?: string; sessionId?: string; callTs?: number; wakeCall?: boolean } | null;
       if (!data || data.type !== "incoming_call_push") return;
-      trigger(String(data.sessionId || ""), Number(data.callTs) || 0, false);
+      trigger(String(data.sessionId || ""), Number(data.callTs) || 0, false, data.wakeCall === true);
     };
     try { navigator.serviceWorker?.addEventListener("message", onSwMessage); } catch { /* 无 SW 环境 */ }
     const consumeCallHash = () => {
-      const hashMatch = window.location.hash.match(/incoming-call=([^&]+)(?:&rt=(\d+))?(?:&answered=(1))?/);
+      const hashMatch = window.location.hash.match(/incoming-call=([^&]+)(?:&rt=(\d+))?(?:&answered=(1))?(?:&wake=(1))?/);
       if (!hashMatch) return;
       const url = new URL(window.location.href);
       window.history.replaceState(null, "", url.pathname + url.search);
-      trigger(decodeURIComponent(hashMatch[1]), Number(hashMatch[2]) || 0, hashMatch[3] === "1");
+      trigger(decodeURIComponent(hashMatch[1]), Number(hashMatch[2]) || 0, hashMatch[3] === "1", hashMatch[4] === "1");
     };
     // 冷启动参数：等聊天数据水合后再触发（找不到会话时 onTrigger 自会静默放弃）
     const bootTimer = window.setTimeout(() => {
@@ -2062,11 +2063,13 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
         const url = new URL(window.location.href);
         const ring = url.searchParams.get("ring");
         const rt = Number(url.searchParams.get("rt")) || 0;
+        const wakeCall = url.searchParams.get("wake") === "1";
         if (ring) {
           url.searchParams.delete("ring");
           url.searchParams.delete("rt");
+          url.searchParams.delete("wake");
           window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-          trigger(decodeURIComponent(ring), rt, false);
+          trigger(decodeURIComponent(ring), rt, false, wakeCall);
         } else {
           consumeCallHash();
         }
@@ -4562,7 +4565,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                         // __fromBar prevents desktop-shell handler from re-showing the bar
                         setTimeout(() => {
                           window.dispatchEvent(new CustomEvent("ai-call-trigger", {
-                            detail: { sessionId: call.sessionId, type: call.type, __fromBar: true },
+                            detail: { sessionId: call.sessionId, type: call.type, wakeCall: call.wakeCall === true, __fromBar: true },
                           }));
                         }, 600);
                       }}
