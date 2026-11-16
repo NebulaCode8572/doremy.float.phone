@@ -66,3 +66,13 @@ The mock ASR/TTS providers only verify protocol flow; mock ASR returns no transc
 - Study-mode follow-ups are delayed and generated with a short instruction to keep reminders infrequent, gentle, and non-interruptive.
 - During an active PaiVoice call, idle proactive turns wait about 4 minutes in normal mode and 15 minutes in study mode; the timer is reset by user speech and character playback.
 - These controls are client-side policy. Pending server-side push jobs and Android background behavior still require end-to-end verification before production use.
+
+
+## 学习复述模式（PaiVoice）
+
+- 通话中说「开始复述」或「开始背书」进入临时学习复述状态；说「我复述完了」「结束复述」或「我讲完了」结束。
+- 该状态只存在于当前通话组件内，挂断或组件卸载后自动清除，不写入角色长期人设或跨会话设置。
+- 进入后将语音静音收尾时间延长到约 4.5 秒；RMS 备用检测的看门狗也同步延长，减少回忆时短暂停顿被截断。
+- 复述过程不调用常规角色回复生成，只给出简短固定回应（如「嗯，继续。」），避免 Char 频繁插话或变成老师。
+- 结束时才生成一次简短自然回应。提示明确禁止判断专业知识、术语、公式和事实正确性；只允许根据用户表达指出连贯性、明显遗漏或内部矛盾。语音转写可能存在术语误识别，不据此纠错。
+- 该模式目前通过语音口令控制，没有增加通话界面按钮；需要在真实设备上验证识别口令、长停顿、打断和模式退出。
