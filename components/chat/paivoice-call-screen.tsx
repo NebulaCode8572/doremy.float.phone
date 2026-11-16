@@ -16,6 +16,7 @@ import { useCallScreenSounds } from "@/lib/chat-sound";
 import { startIncomingCallVibration } from "@/lib/call-vibration";
 import { VoiceCall } from "@/lib/paivoice/voice-call.js";
 import { clearTimedWakeSchedule, postponeWakeCallRetry } from "@/lib/timed-wake-storage";
+import { applyProactiveIntentFromUserText, isProactiveInteractionAllowed, setProactivePermission } from "@/lib/proactive-interaction-state";
 
 type PaiVoiceCallScreenProps = {
   session: ChatSession;
@@ -205,7 +206,7 @@ export function PaiVoiceCallScreen({
         },
         proactiveTurn: (message) => {
           const turnId = typeof message?.turn_id === "string" ? message.turn_id : "";
-          if (!turnId || initiator !== "character") return;
+          if (!turnId || initiator !== "character" || !isProactiveInteractionAllowed(session.id, { allowScheduledWake: wakeCall })) return;
           const controller = new AbortController();
           generationControllersRef.current.set(turnId, controller);
           const timeoutId = window.setTimeout(() => controller.abort(), 100_000);
@@ -297,6 +298,7 @@ export function PaiVoiceCallScreen({
             }
             clearTimedWakeSchedule(session.id);
           }
+          if (userText) applyProactiveIntentFromUserText(session.id, userText);
           saveTranscript("user", userText);
           if (!turnId || !userText) return;
 
@@ -604,7 +606,7 @@ export function PaiVoiceCallScreen({
 
   const toggleSpeaker = useCallback(() => {
     const next = !speakerMuted;
-    callRef.current?.setSpeakerMuted(next);
+    setProactivePermission(session.id, !next);
     setSpeakerMuted(next);
   }, [speakerMuted]);
 
