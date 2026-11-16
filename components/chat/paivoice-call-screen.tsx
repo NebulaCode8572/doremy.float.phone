@@ -442,7 +442,7 @@ export function PaiVoiceCallScreen({
       setPhase(initiator === "character" ? "incoming" : "ready");
       setError(cause instanceof Error ? cause.message : "通话启动失败。");
     }
-  }, [onEnd, saveTranscript, started, session]);
+  }, [initiator, onEnd, saveTranscript, session, started, wakeCall]);
 
   const toggleMic = useCallback(async () => {
     const call = callRef.current;
