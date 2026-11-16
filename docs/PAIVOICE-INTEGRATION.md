@@ -22,7 +22,7 @@ The App issues a 120-second, single-use HMAC ticket at `POST /api/paivoice/ticke
 6. The App sends the generated text back over the same WebSocket as `client_reply`. PaiVoice synthesizes the reply and streams audio back.
 7. User and assistant text are saved to the existing chat history with `origin: "call"`. No audio-message bubbles are created.
 
-If the browser-side reply does not arrive within 120 seconds, PaiVoice can fall back to the optional server-side `ADAPTER_URL` if one is configured. Without either reply path, the call reports an error rather than inventing a character response.
+The App aborts a voice reply generation after 100 seconds and sends a short timeout response, leaving a margin before PaiVoice's 120-second browser-reply deadline. If the browser-side reply is otherwise lost, PaiVoice can fall back to the optional server-side `ADAPTER_URL` if one is configured. Without either reply path, the call reports an error rather than inventing a character response.
 
 ## Current scope
 
