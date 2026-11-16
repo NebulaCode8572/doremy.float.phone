@@ -119,6 +119,16 @@ export function PaiVoiceCallScreen({
       setError("尚未配置 NEXT_PUBLIC_PAIVOICE_WS_URL。");
       return;
     }
+    try {
+      const parsedUrl = new URL(url);
+      if (!["wss:", "ws:"].includes(parsedUrl.protocol) || (process.env.NODE_ENV === "production" && parsedUrl.protocol !== "wss:")) {
+        setError("正式环境必须使用 wss:// 通话地址。");
+        return;
+      }
+    } catch {
+      setError("PaiVoice WebSocket 地址格式无效。");
+      return;
+    }
 
     setError("");
     setPhase("connecting");
