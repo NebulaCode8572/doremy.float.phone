@@ -267,6 +267,9 @@ export function PaiVoiceCallScreen({
         },
         closed: () => {
           if (!mountedRef.current) return;
+          for (const controller of generationControllersRef.current.values()) controller.abort();
+          generationControllersRef.current.clear();
+          savedAssistantTurnIdsRef.current.clear();
           callRef.current = null;
           startedAtRef.current = null;
           setDuration(0);
