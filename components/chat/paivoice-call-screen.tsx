@@ -400,6 +400,7 @@ export function PaiVoiceCallScreen({
       // Pointer capture is not available in every embedded browser.
     }
     callRef.current.setPushToTalk(true);
+    setError("");
     setHoldingToTalk(true);
   }, [micMuted, started]);
 
