@@ -29,7 +29,8 @@ If the browser-side reply does not arrive within 120 seconds, PaiVoice can fall 
 - PaiVoice is used for user-initiated one-to-one voice calls.
 - Group voice calls and character-initiated calls still use the existing call implementation.
 - Video, camera, screen sharing, and proactive speech are not enabled by this integration.
-- Push-to-talk is enabled by default in the PaiVoice screen. Audio is not transmitted while the control is released.
+- Push-to-talk is enabled by default in the PaiVoice screen. The microphone track is disabled between holds, and audio is not transmitted while the control is released.
+- PaiVoice calls skip the legacy post-hangup background reply, because each conversational turn has already been generated and saved during the call.
 - The speaker control mutes/unmutes received audio; actual output routing remains controlled by Android/browser audio routing.
 
 ## Verification still required
