@@ -274,6 +274,9 @@ export function suspendProactiveActions(sessionId: string): void {
     if (firingSet.has(sessionId)) {
         cancelledWhileFiring.add(sessionId);
     }
+    if (backgroundGeneratingSessions.has(sessionId)) {
+        cancelledBackgroundSessions.add(sessionId);
+    }
 }
 
 export function cancelFollowUp(sessionId: string) {
