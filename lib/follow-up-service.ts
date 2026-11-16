@@ -604,7 +604,11 @@ function pollIdleReconnect(now: number) {
         const effectiveConsecutive = rule.lastFiredAt && rule.lastFiredAt > lastUserAt ? rule.consecutiveCount : 0;
         if (effectiveConsecutive >= IDLE_RECONNECT_MAX_CONSECUTIVE) continue;
 
-        const intervalMs = Math.max(1, rule.intervalMinutes) * 60_000;
+        const proactiveState = loadProactiveInteractionState(rule.sessionId);
+        const intervalMinutes = proactiveState.mode === "study"
+            ? Math.max(15, rule.intervalMinutes * 3)
+            : Math.max(1, rule.intervalMinutes);
+        const intervalMs = intervalMinutes * 60_000;
         const nextDueAt = Math.max(
             lastUserAt + intervalMs,
             rule.lastFiredAt ? rule.lastFiredAt + intervalMs : 0,
@@ -691,6 +695,9 @@ async function fireIdleReconnect(rule: IdleReconnectRule, lastUserAt: number) {
             {
                 appTags: ["chat", "text", "idle_wake"],
                 timedWakeElapsedMinutes: elapsedMinutes,
+                ephemeralSystemNote: loadProactiveInteractionState(session.id).mode === "study"
+                    ? "用户目前正在学习或忙碌。只有确实有价值时才进行简短、低频、温和的陪伴；不要连续提醒，不要要求用户回应，也不要打断专注。"
+                    : undefined,
             },
         );
 
