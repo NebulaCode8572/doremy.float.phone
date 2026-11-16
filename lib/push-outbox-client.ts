@@ -10,7 +10,7 @@ import { getActiveAppTags } from "./content-tag-utils";
 import { loadChatMessages, loadChatSessions, reindexSessionMessageOrdersByTime } from "./chat-storage";
 import { hasAccountPushSubscription, isShellEnvironment } from "./push-client";
 import { isPersonalPushCloudActive, loadPersonalPushCloudState, personalPushFetch } from "./personal-push-cloud";
-import { removeTimedWakeSchedule } from "./timed-wake-storage";
+import { removeTimedWakeSchedule, scheduleNextWakeCallRetry } from "./timed-wake-storage";
 import { appendBridgeFeed } from "./reality-bridge/storage";
 import { loadScreenChatSettings, saveScreenChatAck } from "./reality-bridge/storage";
 
@@ -32,6 +32,8 @@ type OutboxEntry = {
         armAt?: string;
         /** 云端触发快捷动作失败的摘要；成功时不带这个字段 */
         shortcutDeliveryError?: string;
+        wakeCall?: boolean;
+        wakeAttempt?: number;
     } | null;
     created_at: string;
 };
@@ -240,8 +242,25 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                         meta.prevCount ?? 0,
                         followUpIndex,
                         existingMessages,
-                        { silent: options?.silent !== false, ...(shortcutMarker ? { shortcutMarker } : {}) },
+                        {
+                            silent: options?.silent !== false,
+                            ...(shortcutMarker ? { shortcutMarker } : {}),
+                            wakeCall: meta.wakeCall === true,
+                        },
                     );
+                    if (meta.wakeCall === true) {
+                        scheduleNextWakeCallRetry({
+                            id: getTimedWakeIdFromTriggerKey(entry.trigger_key) || entry.id,
+                            sessionId,
+                            characterId: session.contactId,
+                            fireAt: Date.now(),
+                            createdAt: Date.now(),
+                            delayMinutes: 0,
+                            intent: "按用户约定的时间电话叫醒",
+                            wakeCall: true,
+                            wakeAttempt: meta.wakeAttempt ?? 0,
+                        });
+                    }
                     if (hasVisible && newCount < 10) scheduleFollowUp(sessionId, newCount, stateValues);
                     clearTimedWakeIfHandled(entry.trigger_key);
                     consumedIds.push(entry.id);
