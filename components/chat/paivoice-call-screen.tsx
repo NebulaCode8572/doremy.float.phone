@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, LoaderCircle, Mic, MicOff, PhoneOff, Volume2, VolumeX } from "lucide-react";
 
 import type { Character } from "@/lib/character-types";
@@ -60,7 +60,6 @@ export function PaiVoiceCallScreen({
   const [duration, setDuration] = useState(0);
   const [micMuted, setMicMuted] = useState(false);
   const [speakerMuted, setSpeakerMuted] = useState(false);
-  const [holdingToTalk, setHoldingToTalk] = useState(false);
   const [error, setError] = useState("");
 
   const saveTranscript = useCallback((role: "user" | "assistant", rawText: unknown) => {
@@ -76,11 +75,6 @@ export function PaiVoiceCallScreen({
       detail: { sessionId: session.id },
     }));
   }, [session.id]);
-
-  const releaseTalkButton = useCallback(() => {
-    callRef.current?.setPushToTalk(false);
-    setHoldingToTalk(false);
-  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -111,10 +105,6 @@ export function PaiVoiceCallScreen({
   }, []);
 
   useEffect(() => {
-    if (minimized) releaseTalkButton();
-  }, [minimized, releaseTalkButton]);
-
-  useEffect(() => {
     if (!started || !startedAtRef.current) return;
     const timer = window.setInterval(() => {
       const start = startedAtRef.current;
@@ -122,20 +112,6 @@ export function PaiVoiceCallScreen({
     }, 1000);
     return () => window.clearInterval(timer);
   }, [started]);
-
-  useEffect(() => {
-    if (!holdingToTalk) return;
-    const release = () => releaseTalkButton();
-    const onVisibilityChange = () => {
-      if (document.visibilityState !== "visible") release();
-    };
-    window.addEventListener("blur", release);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      window.removeEventListener("blur", release);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [holdingToTalk, releaseTalkButton]);
 
   const startCall = useCallback(async () => {
     if (callRef.current || started) return;
@@ -162,7 +138,7 @@ export function PaiVoiceCallScreen({
     const call = new VoiceCall({
       url,
       video: false,
-      pushToTalk: true,
+      pushToTalk: false,
       getAuthTicket: async () => {
         const response = await fetch("/api/paivoice/ticket", {
           method: "POST",
@@ -378,12 +354,11 @@ export function PaiVoiceCallScreen({
     try {
       await call.setMuted(next);
       setMicMuted(next);
-      if (next) releaseTalkButton();
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "麦克风状态切换失败。");
     }
-  }, [micMuted, releaseTalkButton]);
+  }, [micMuted]);
 
   const toggleSpeaker = useCallback(() => {
     const next = !speakerMuted;
@@ -391,21 +366,7 @@ export function PaiVoiceCallScreen({
     setSpeakerMuted(next);
   }, [speakerMuted]);
 
-  const beginTalk = useCallback((event: PointerEvent<HTMLButtonElement>) => {
-    if (micMuted || !started || !callRef.current) return;
-    event.preventDefault();
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // Pointer capture is not available in every embedded browser.
-    }
-    callRef.current.setPushToTalk(true);
-    setError("");
-    setHoldingToTalk(true);
-  }, [micMuted, started]);
-
   const endCall = useCallback(() => {
-    releaseTalkButton();
     for (const [turnId, controller] of generationControllersRef.current) {
       cancelledGenerationTurnIdsRef.current.add(turnId);
       controller.abort();
@@ -416,7 +377,7 @@ export function PaiVoiceCallScreen({
     callRef.current = null;
     startedAtRef.current = null;
     onEnd();
-  }, [onEnd, releaseTalkButton]);
+  }, [onEnd]);
 
   if (minimized) {
     return (
@@ -460,31 +421,19 @@ export function PaiVoiceCallScreen({
         )}
         <h1 className="text-2xl font-semibold">{character.name}</h1>
         <p className="mt-3 text-sm text-white/65">{started ? formatDuration(duration) : "语音通话"}</p>
-        <p className="mt-2 min-h-6 text-sm text-white/75">
-          {holdingToTalk ? "正在发送你的语音" : PHASE_LABELS[phase]}
-        </p>
+        <p className="mt-2 min-h-6 text-sm text-white/75">{PHASE_LABELS[phase]}</p>
         <p className="mt-4 max-w-xs text-center text-xs leading-5 text-white/45">
-          按住下方按钮时才会向通话服务发送麦克风音频；松开即结束本轮。
+          通话期间自动检测你的语音；停顿后自动结束本轮。看剧或处于嘈杂环境时，可随时关闭麦克风。
         </p>
         {error && <p role="alert" className="mt-4 max-w-sm text-center text-sm text-rose-300">{error}</p>}
       </div>
 
       <div className="flex w-full max-w-sm flex-col items-center gap-7">
         {started ? (
-          <button
-            type="button"
-            disabled={micMuted || phase === "reconnecting" || phase === "ended"}
-            onPointerDown={beginTalk}
-            onPointerUp={releaseTalkButton}
-            onPointerCancel={releaseTalkButton}
-            onPointerLeave={releaseTalkButton}
-            onLostPointerCapture={releaseTalkButton}
-            onContextMenu={(event) => event.preventDefault()}
-            className={`flex h-24 w-24 select-none touch-none items-center justify-center rounded-full border border-white/20 shadow-xl transition ${holdingToTalk ? "scale-95 bg-sky-500" : "bg-white/15"} disabled:opacity-40`}
-            aria-label="按住说话"
-          >
-            <Mic size={34} />
-          </button>
+          <div className="flex h-24 w-24 flex-col items-center justify-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-500/15 text-emerald-100">
+            <Mic size={30} />
+            <span className="text-xs">自动聆听</span>
+          </div>
         ) : (
           <button
             type="button"
@@ -496,8 +445,7 @@ export function PaiVoiceCallScreen({
             {phase === "connecting" ? "正在连接…" : "开始通话"}
           </button>
         )}
-        {started && <span className="text-xs text-white/55">{micMuted ? "麦克风已静音" : holdingToTalk ? "松开结束本轮" : "按住说话"}</span>}
-
+        {started && <span className="text-xs text-white/55">{micMuted ? "麦克风已静音" : "自动收音已开启"}</span>}
         <div className="flex items-center justify-center gap-8">
           <button
             type="button"
