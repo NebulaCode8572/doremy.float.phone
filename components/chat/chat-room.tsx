@@ -6751,7 +6751,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 	                onOpenRichModal={(modal) => { setShowPlusMenu(false); setRichModal(modal); }}
                 onOpenCustomPlusAction={handleOpenCustomPlusAction}
                 onStartVideoCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); startCall({ sessionId: session.id, characterId: session.isGroup ? "" : session.contactId, kind: "video", initiator: "user" }); }}
-                onStartVoiceCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); startCall({ sessionId: session.id, characterId: session.isGroup ? "" : session.contactId, kind: "voice", engine: session.isGroup ? "legacy" : "paivoice", initiator: "user" }); }}
+                onStartVoiceCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); startCall({ sessionId: session.id, characterId: session.isGroup ? "" : session.contactId, kind: "voice", engine: session.isGroup || process.env.NEXT_PUBLIC_PAIVOICE_ENABLED !== "true" ? "legacy" : "paivoice", initiator: "user" }); }}
                 onSendText={handleSendText}
                 onStopGeneration={clearStuckGeneration}
                 onTriggerAIResponse={triggerAIResponse}
