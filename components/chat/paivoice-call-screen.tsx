@@ -68,6 +68,7 @@ export function PaiVoiceCallScreen({
   const hangupAfterPlaybackTimerRef = useRef<number | null>(null);
   const wakeCallTimerRef = useRef<number | null>(null);
   const wakeCallUserRespondedRef = useRef(false);
+  const wakeGreetingStartedRef = useRef(false);
   const [started, setStarted] = useState(false);
   const [duration, setDuration] = useState(0);
   const [micMuted, setMicMuted] = useState(false);
@@ -200,6 +201,106 @@ export function PaiVoiceCallScreen({
             setPhase(mode);
           }
         },
+        proactiveTurn: (message) => {
+          const turnId = typeof message?.turn_id === "string" ? message.turn_id : "";
+          if (!turnId || initiator !== "character") return;
+          const controller = new AbortController();
+          generationControllersRef.current.set(turnId, controller);
+          const timeoutId = window.setTimeout(() => controller.abort(), 100_000);
+          void (async () => {
+            try {
+              const result = await generateChatCompletion(
+                session,
+                loadChatMessages(session.id),
+                {
+                  appTags: ["chat", "voice", ...(wakeCall ? ["wake_call"] : ["character_initiated_call"])],
+                  signal: controller.signal,
+                  ephemeralSystemNote: wakeCall
+                    ? "你刚刚拨通了用户预约的起床电话。接通后由你先开口，简短自然地问候并叫醒对方，可以结合你们平时的相处方式。不要等用户先说话，不要说自己是 AI 或解释系统任务。说完后停下来等用户回应。"
+                    : "这是你主动发起的一对一语音电话。接通后由你先开口，结合你们最近的聊天自然地打招呼、说明来意或开启话题，然后停下来等用户回应。不要等待用户先说话。",
+                },
+              );
+              if (controller.signal.aborted || callRef.current !== call) return;
+              const rawText = flattenCompletionResult(result).trim();
+              if (!rawText) throw new Error("角色没有生成可用的开场白。");
+              const shouldHangupAfterReply = /\[(?:结束通话|挂断电话)\]/.test(rawText);
+              const cleanRawText = rawText.replace(/\[(?:结束通话|挂断电话)\]/g, "").trim();
+              if (shouldHangupAfterReply) pendingHangupAfterPlaybackRef.current = true;
+              const parsed = parseAIResponse(cleanRawText, getLatestCharacterStateValues(session.contactId));
+              const chatParts = parsed.parts.filter(part =>
+                !part.mediaType || !["voice_call", "video_call", "poke", "accept_red_packet", "decline_red_packet", "accept_transfer", "decline_transfer", "accept_payment_request", "decline_payment_request"].includes(part.mediaType)
+              );
+              const speechText = chatParts
+                .filter(part => !part.mediaType && part.content.trim())
+                .map(part => part.content)
+                .join("\n")
+                .trim();
+              if (chatParts.length === 0 && (parsed.statusPanel || parsed.innerMonologue)) {
+                pushChatMessage({
+                  sessionId: session.id,
+                  role: "assistant",
+                  content: "",
+                  statusPanel: parsed.statusPanel,
+                  innerMonologue: parsed.innerMonologue,
+                  stateValues: parsed.stateValues.length > 0 ? parsed.stateValues : undefined,
+                  freshStateValues: parsed.freshStateValues,
+                  origin: "call",
+                });
+              } else {
+                chatParts.forEach((part, index) => {
+                  pushChatMessage({
+                    sessionId: session.id,
+                    role: "assistant",
+                    content: part.content,
+                    mediaType: part.mediaType,
+                    mediaData: part.mediaData,
+                    statusPanel: index === 0 ? parsed.statusPanel : undefined,
+                    innerMonologue: index === 0 ? parsed.innerMonologue : undefined,
+                    stateValues: index === 0 && parsed.stateValues.length > 0 ? parsed.stateValues : undefined,
+                    freshStateValues: index === 0 ? parsed.freshStateValues : undefined,
+                    origin: "call",
+                  });
+                });
+              }
+              window.dispatchEvent(new CustomEvent("chat-messages-updated", {
+                detail: { sessionId: session.id },
+              }));
+              savedAssistantTurnIdsRef.current.add(turnId);
+              if (wakeCall) {
+                wakeCallTimerRef.current = window.setTimeout(() => {
+                  wakeCallTimerRef.current = null;
+                  if (!wakeCallUserRespondedRef.current && mountedRef.current && callRef.current === call) {
+                    // 没有音频播放事件时的兜底：最多等 60 秒再开始 30 秒回应窗口。
+                    wakeGreetingStartedRef.current = true;
+                    wakeCallTimerRef.current = window.setTimeout(() => {
+                      wakeCallTimerRef.current = null;
+                      if (!wakeCallUserRespondedRef.current && mountedRef.current && callRef.current === call) {
+                        postponeWakeCallRetry(session.id);
+                        saveTranscript("assistant", "[我挂断了语音通话]");
+                        call.hangup();
+                        callRef.current = null;
+                        startedAtRef.current = null;
+                        onEnd();
+                      }
+                    }, 30_000);
+                  }
+                }, 60_000);
+              }
+              call.sendReply(speechText || (wakeCall ? "早上好，该起床啦。" : "我想先和你说句话。"), turnId);
+            } catch (cause) {
+              if (controller.signal.aborted) return;
+              const fallback = wakeCall ? "早上好，该起床啦。" : "我想先和你说句话。";
+              saveTranscript("assistant", fallback);
+              savedAssistantTurnIdsRef.current.add(turnId);
+              call.sendReply(fallback, turnId);
+              if (mountedRef.current) setError(cause instanceof Error ? cause.message : "角色开场白生成失败。");
+            } finally {
+              window.clearTimeout(timeoutId);
+              generationControllersRef.current.delete(turnId);
+              cancelledGenerationTurnIdsRef.current.delete(turnId);
+            }
+          })();
+        },
         transcript: (message) => {
           const turnId = typeof message?.turn_id === "string" ? message.turn_id : "";
           const userText = typeof message?.text === "string" ? message.text.trim() : "";
@@ -326,6 +427,10 @@ export function PaiVoiceCallScreen({
           if (!mountedRef.current) return;
           if (speaking) {
             pendingHangupAfterPlaybackRef.current = false;
+            for (const [turnId, controller] of generationControllersRef.current) {
+              cancelledGenerationTurnIdsRef.current.add(turnId);
+              controller.abort();
+            }
             if (hangupAfterPlaybackTimerRef.current !== null) {
               window.clearTimeout(hangupAfterPlaybackTimerRef.current);
               hangupAfterPlaybackTimerRef.current = null;
@@ -342,8 +447,29 @@ export function PaiVoiceCallScreen({
         playing: (playing) => {
           if (!mountedRef.current) return;
           if (playing) {
+            if (wakeCall) {
+              wakeGreetingStartedRef.current = true;
+              if (wakeCallTimerRef.current !== null) {
+                window.clearTimeout(wakeCallTimerRef.current);
+                wakeCallTimerRef.current = null;
+              }
+            }
             setPhase("speaking");
             return;
+          }
+          if (wakeCall && wakeGreetingStartedRef.current && !wakeCallUserRespondedRef.current && wakeCallTimerRef.current === null) {
+            wakeCallTimerRef.current = window.setTimeout(() => {
+              wakeCallTimerRef.current = null;
+              if (!mountedRef.current || callRef.current !== call || wakeCallUserRespondedRef.current) return;
+              postponeWakeCallRetry(session.id);
+              saveTranscript("assistant", "[我挂断了语音通话]");
+              call.hangup();
+              callRef.current = null;
+              startedAtRef.current = null;
+              setStarted(false);
+              setPhase("ended");
+              onEnd();
+            }, 30_000);
           }
           if (pendingHangupAfterPlaybackRef.current && callRef.current === call) {
             pendingHangupAfterPlaybackRef.current = false;
@@ -420,21 +546,8 @@ export function PaiVoiceCallScreen({
       startedAtRef.current = Date.now();
       setStarted(true);
       setPhase("listening");
-      if (wakeCall && initiator === "character") {
-        wakeCallUserRespondedRef.current = false;
-        wakeCallTimerRef.current = window.setTimeout(() => {
-          wakeCallTimerRef.current = null;
-          if (!mountedRef.current || callRef.current !== call || wakeCallUserRespondedRef.current) return;
-          postponeWakeCallRetry(session.id);
-          saveTranscript("assistant", "[我挂断了语音通话]");
-          call.hangup();
-          callRef.current = null;
-          startedAtRef.current = null;
-          setStarted(false);
-          setPhase("ended");
-          onEnd();
-        }, 30_000);
-      }
+      if (wakeCall && initiator === "character") wakeCallUserRespondedRef.current = false;
+      if (initiator === "character") call.startProactiveTurn();
     } catch (cause) {
       call.hangup();
       if (callRef.current === call) callRef.current = null;
