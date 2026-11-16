@@ -221,7 +221,7 @@ export function PaiVoiceCallScreen({
                 session,
                 loadChatMessages(session.id),
                 {
-                  appTags: ["chat", "voice", ...(wakeCall ? ["wake_call"] : ["character_initiated_call"])],
+                  appTags: ["chat", "voice", ...(wakeCall ? ["wake_call"] : initiator === "character" ? ["character_initiated_call"] : ["voice_auto_chat"])],
                   signal: controller.signal,
                   ephemeralSystemNote: [
                     wakeCall
@@ -232,7 +232,7 @@ export function PaiVoiceCallScreen({
                     loadProactiveInteractionState(session.id).mode === "study"
                       ? "用户目前处于学习或忙碌状态。只在确实合适时进行低频、简短、温和的提醒或陪伴，不要打断专注，不要要求用户回应。"
                       : "",
-                  ].filter(Boolean).join("\\n"),
+                  ].filter(Boolean).join("\n"),
                 },
               );
               if (controller.signal.aborted || callRef.current !== call) return;
@@ -312,7 +312,17 @@ export function PaiVoiceCallScreen({
             }
             clearTimedWakeSchedule(session.id);
           }
-          if (userText) applyProactiveIntentFromUserText(session.id, userText);
+          if (userText) {
+            applyProactiveIntentFromUserText(session.id, userText);
+            if (!isProactiveInteractionAllowed(session.id, { allowScheduledWake: wakeCall })) {
+              for (const proactiveTurnId of proactiveGenerationTurnIdsRef.current) {
+                cancelledGenerationTurnIdsRef.current.add(proactiveTurnId);
+                generationControllersRef.current.get(proactiveTurnId)?.abort();
+              }
+              proactiveGenerationTurnIdsRef.current.clear();
+              proactiveTurnRequestedRef.current = false;
+            }
+          }
           saveTranscript("user", userText);
           if (!turnId || !userText) return;
 
@@ -655,6 +665,7 @@ export function PaiVoiceCallScreen({
         generationControllersRef.current.get(turnId)?.abort();
       }
       proactiveGenerationTurnIdsRef.current.clear();
+      proactiveTurnRequestedRef.current = false;
     }
     setSpeakerMuted(next);
   }, [session.id, speakerMuted]);
