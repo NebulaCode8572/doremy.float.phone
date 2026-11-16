@@ -92,7 +92,7 @@ export function CallLayer() {
     };
 
     if (call.kind === "voice" && call.engine === "paivoice") {
-        return <PaiVoiceCallScreen {...sharedProps} />;
+        return <PaiVoiceCallScreen {...sharedProps} onEnd={() => endCall({ skipReply: true })} />;
     }
 
     return call.kind === "voice"
