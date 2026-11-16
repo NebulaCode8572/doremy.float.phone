@@ -78,7 +78,7 @@ export function applyProactiveIntentFromUserText(sessionId: string, rawText: str
     }
 
     // Sleep has higher priority than study/busy states. A scheduled wake call is handled separately.
-    if (/(?:准备睡|打算睡|要睡了|先睡了|去睡了|睡觉了|睡下了|已经睡|我睡了|晚安|困得要睡|准备休息睡觉)/.test(text)) {
+    if (/(?:准备睡|打算睡|要睡了|先睡了|去睡了|睡觉了|在睡觉|睡下了|已经睡|我睡了|晚安|困得要睡|准备休息睡觉)/.test(text)) {
         return saveState(sessionId, { mode: "sleep" });
     }
 
