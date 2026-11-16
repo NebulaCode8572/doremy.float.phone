@@ -16,7 +16,7 @@ import { useCallScreenSounds } from "@/lib/chat-sound";
 import { startIncomingCallVibration } from "@/lib/call-vibration";
 import { VoiceCall } from "@/lib/paivoice/voice-call.js";
 import { clearTimedWakeSchedule, postponeWakeCallRetry } from "@/lib/timed-wake-storage";
-import { applyProactiveIntentFromUserText, isProactiveInteractionAllowed, setProactivePermission } from "@/lib/proactive-interaction-state";
+import { applyProactiveIntentFromUserText, isProactiveInteractionAllowed, loadProactiveInteractionState, setProactivePermission } from "@/lib/proactive-interaction-state";
 
 type PaiVoiceCallScreenProps = {
   session: ChatSession;
@@ -73,7 +73,7 @@ export function PaiVoiceCallScreen({
   const [started, setStarted] = useState(false);
   const [duration, setDuration] = useState(0);
   const [micMuted, setMicMuted] = useState(false);
-  const [speakerMuted, setSpeakerMuted] = useState(false);
+  const [speakerMuted, setSpeakerMuted] = useState(() => !loadProactiveInteractionState(session.id).enabled);
   const [error, setError] = useState("");
   const isIncoming = initiator === "character" && phase === "incoming";
 
