@@ -2043,6 +2043,17 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     const trigger = (sessionId: string, callTs: number, answered: boolean, wakeCall = false) => {
       if (!sessionId) return;
       if (callTs > 0 && Date.now() - callTs > CALL_VALID_MS) return;
+      if (wakeCall) {
+        const pendingRetry = loadTimedWakeSchedules().find(item =>
+          item.sessionId === sessionId && item.wakeCall && item.fireAt > Date.now()
+        );
+        if (!pendingRetry) {
+          const currentWake = loadTimedWakeSchedules().find(item =>
+            item.sessionId === sessionId && item.wakeCall
+          );
+          if (currentWake) scheduleNextWakeCallRetry(currentWake);
+        }
+      }
       if (answered) {
         // 壳上已经按过接听：跳过横幅，直接开聊天进通话屏（同横幅接听键的路径）
         setActiveApp("chat" as IconId);
