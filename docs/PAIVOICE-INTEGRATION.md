@@ -48,3 +48,13 @@ This code has not yet been verified on a real Android device or against a deploy
 - Android background/lock-screen behavior. Browser/PWA background microphone and audio behavior is constrained by the operating system.
 
 The mock ASR/TTS providers only verify protocol flow; mock ASR returns no transcript and mock TTS returns no audio.
+
+## Proactive interaction controls
+
+- The existing microphone control only controls microphone capture and speech recognition.
+- The existing speaker control keeps its original icon and “扬声器已开/已关” label, but its behavior is an account/session-level proactive-contact permission. Turning it off does not mute ordinary call replies; it blocks unsolicited proactive voice and text messages and cancels queued ordinary follow-ups where the client controls them.
+- Explicit user messages still receive normal replies while proactive contact is disabled.
+- User status is inferred from natural-language messages rather than exact command phrases. Busy/study expressions switch to low-frequency companionship; finishing-study/free-time expressions restore normal interaction; sleep expressions suppress ordinary proactive contact; explicit requests not to be reminded pause proactive contact.
+- Scheduled wake-up calls remain a special user-requested event and may run during sleep mode, but still respect the master proactive permission toggle.
+- Study-mode follow-ups are delayed and generated with a short instruction to keep reminders infrequent, gentle, and non-interruptive.
+- These controls are client-side policy. Pending server-side push jobs and Android background behavior still require end-to-end verification before production use.
