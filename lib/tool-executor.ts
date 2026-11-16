@@ -3440,6 +3440,7 @@ async function executeTimedWakeTool(call: ToolCall, context?: ToolExecutionConte
         fireAt: now + delayMinutes * 60 * 1000,
         delayMinutes,
         intent,
+        ...(call.name === "设置定时醒来" ? { wakeCall: true, wakeAttempt: 0 } : {}),
     };
     saveTimedWakeSchedule(schedule);
     // 离线推送兜底：到点时 App 被杀也能由服务端接管生成（动态引入避免模块环）
