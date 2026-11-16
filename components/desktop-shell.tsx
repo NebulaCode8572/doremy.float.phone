@@ -5,7 +5,7 @@ import { Component, memo, useCallback, useEffect, useInsertionEffect, useLayoutE
 import { updateStatusBarTone } from "@/lib/bg-tone";
 import { startDiaryEntryTimerService, stopDiaryEntryTimerService } from "@/lib/diary-entry-timer-service";
 import { startFollowUpService, stopFollowUpService } from "@/lib/follow-up-service";
-import { clearTimedWakeSchedule } from "@/lib/timed-wake-storage";
+import { clearTimedWakeSchedule, loadTimedWakeSchedules, scheduleNextWakeCallRetry } from "@/lib/timed-wake-storage";
 import { startMomentsService, stopMomentsService } from "@/lib/moments-engine";
 import { bgTimerCleanup } from "@/lib/bg-timer";
 import { PhoneThemeApp } from "@/components/phone-theme-app";
@@ -1973,6 +1973,17 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       const sessions = loadChatSessions();
       const session = sessions.find(s => s.id === detail.sessionId);
       if (!session) return;
+      if (detail.wakeCall === true) {
+        const pendingRetry = loadTimedWakeSchedules().find(item =>
+          item.sessionId === detail.sessionId && item.wakeCall && item.fireAt > Date.now()
+        );
+        if (!pendingRetry) {
+          const currentWake = loadTimedWakeSchedules().find(item =>
+            item.sessionId === detail.sessionId && item.wakeCall
+          );
+          if (currentWake) scheduleNextWakeCallRetry(currentWake);
+        }
+      }
       const chars = loadCharacters();
       const isGroup = !!session.isGroup;
       // Group chat: use characterName from event detail; 1:1: use session.contactId
