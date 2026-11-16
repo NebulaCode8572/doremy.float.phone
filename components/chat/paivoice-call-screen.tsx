@@ -609,7 +609,7 @@ export function PaiVoiceCallScreen({
     setProactivePermission(session.id, !next);
     if (next) suspendProactiveActions(session.id);
     setSpeakerMuted(next);
-  }, [speakerMuted]);
+  }, [session.id, speakerMuted]);
 
   const endCall = useCallback(() => {
     for (const [turnId, controller] of generationControllersRef.current) {
