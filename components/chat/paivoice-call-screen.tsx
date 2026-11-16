@@ -734,7 +734,7 @@ export function PaiVoiceCallScreen({
             type="button"
             disabled={!started}
             onClick={toggleSpeaker}
-            aria-label={speakerMuted ? "打开通话声音" : "关闭通话声音"}
+            aria-label={speakerMuted ? "开启主动语音" : "关闭主动语音"}
             className="flex h-14 w-14 items-center justify-center rounded-full bg-white/12 disabled:opacity-35"
           >
             {speakerMuted ? <VolumeX size={22} /> : <Volume2 size={22} />}
