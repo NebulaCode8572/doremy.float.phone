@@ -52,6 +52,7 @@ export function PaiVoiceCallScreen({
   const callRef = useRef<VoiceCall | null>(null);
   const generationControllersRef = useRef(new Map<string, AbortController>());
   const savedAssistantTurnIdsRef = useRef(new Set<string>());
+  const cancelledGenerationTurnIdsRef = useRef(new Set<string>());
   const startedAtRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const [phase, setPhase] = useState<CallPhase>("ready");
@@ -85,7 +86,10 @@ export function PaiVoiceCallScreen({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      for (const controller of generationControllersRef.current.values()) controller.abort();
+      for (const [turnId, controller] of generationControllersRef.current) {
+        cancelledGenerationTurnIdsRef.current.add(turnId);
+        controller.abort();
+      }
       generationControllersRef.current.clear();
       callRef.current?.hangup();
       callRef.current = null;
@@ -188,7 +192,21 @@ export function PaiVoiceCallScreen({
           if (!turnId || !userText) return;
 
           const controller = new AbortController();
+          let timedOut = false;
+          cancelledGenerationTurnIdsRef.current.delete(turnId);
           generationControllersRef.current.set(turnId, controller);
+          const timeoutId = window.setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+          }, 100_000);
+          const sendTimeoutFallback = () => {
+            if (callRef.current !== call || cancelledGenerationTurnIdsRef.current.has(turnId)) return;
+            const fallback = "这轮回复生成时间过长，我们稍后再继续。";
+            saveTranscript("assistant", fallback);
+            savedAssistantTurnIdsRef.current.add(turnId);
+            call.sendReply(fallback, turnId);
+            if (mountedRef.current) setError("角色回复生成超时，本轮已结束。");
+          };
           void (async () => {
             try {
               const result = await generateChatCompletion(
@@ -196,7 +214,10 @@ export function PaiVoiceCallScreen({
                 loadChatMessages(session.id),
                 { appTags: ["chat", "voice"], signal: controller.signal },
               );
-              if (controller.signal.aborted || callRef.current !== call) return;
+              if (controller.signal.aborted || callRef.current !== call) {
+                if (timedOut) sendTimeoutFallback();
+                return;
+              }
 
               const rawText = flattenCompletionResult(result).trim();
               if (!rawText) throw new Error("角色没有生成可用回复。");
@@ -245,7 +266,10 @@ export function PaiVoiceCallScreen({
               savedAssistantTurnIdsRef.current.add(turnId);
               call.sendReply(speechText || "我这轮没有可朗读的内容。", turnId);
             } catch (cause) {
-              if (controller.signal.aborted) return;
+              if (controller.signal.aborted) {
+                if (timedOut) sendTimeoutFallback();
+                return;
+              }
               const fallback = "我这边暂时没能生成回复，请稍后再试。";
               saveTranscript("assistant", fallback);
               savedAssistantTurnIdsRef.current.add(turnId);
@@ -254,7 +278,9 @@ export function PaiVoiceCallScreen({
                 setError(cause instanceof Error ? cause.message : "角色回复生成失败。");
               }
             } finally {
+              window.clearTimeout(timeoutId);
               generationControllersRef.current.delete(turnId);
+              cancelledGenerationTurnIdsRef.current.delete(turnId);
             }
           })();
         },
@@ -270,7 +296,10 @@ export function PaiVoiceCallScreen({
           if (!mountedRef.current) return;
           if (speaking) {
             if (call.mode === "thinking") {
-              for (const controller of generationControllersRef.current.values()) controller.abort();
+              for (const [turnId, controller] of generationControllersRef.current) {
+                cancelledGenerationTurnIdsRef.current.add(turnId);
+                controller.abort();
+              }
             }
             setPhase("listening");
           }
@@ -289,7 +318,10 @@ export function PaiVoiceCallScreen({
         },
         closed: () => {
           if (!mountedRef.current) return;
-          for (const controller of generationControllersRef.current.values()) controller.abort();
+          for (const [turnId, controller] of generationControllersRef.current) {
+            cancelledGenerationTurnIdsRef.current.add(turnId);
+            controller.abort();
+          }
           generationControllersRef.current.clear();
           savedAssistantTurnIdsRef.current.clear();
           callRef.current = null;
@@ -364,7 +396,10 @@ export function PaiVoiceCallScreen({
 
   const endCall = useCallback(() => {
     releaseTalkButton();
-    for (const controller of generationControllersRef.current.values()) controller.abort();
+    for (const [turnId, controller] of generationControllersRef.current) {
+      cancelledGenerationTurnIdsRef.current.add(turnId);
+      controller.abort();
+    }
     generationControllersRef.current.clear();
     savedAssistantTurnIdsRef.current.clear();
     callRef.current?.hangup();
