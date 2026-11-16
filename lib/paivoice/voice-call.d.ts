@@ -16,6 +16,7 @@ export type PaiVoiceOptions = {
     closed?: PaiVoiceEvent;
     error?: (message: string) => void;
     nothingHeard?: PaiVoiceEvent;
+    replyTimeout?: PaiVoiceEvent;
   };
 };
 
