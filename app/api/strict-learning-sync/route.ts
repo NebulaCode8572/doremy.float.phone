@@ -3,6 +3,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { getCurrentAccount } from "@/lib/server/account-auth";
 import { supabaseRestFetch } from "@/lib/server/supabase-rest";
 import { readLimitedJson } from "@/lib/server/read-limited-json";
+import { normalizeStrictLearningStore } from "@/lib/strict-learning-schema";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,9 +43,24 @@ export async function GET(request: Request) {
     );
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 503 });
     const row = result.data[0];
+    let payload = null;
+    if (row) {
+      if (row.payload === undefined || row.payload === null) {
+        return NextResponse.json({ error: "云端学习记录为空或格式无效，已停止同步以避免覆盖数据" }, { status: 503 });
+      }
+      try {
+        payload = normalizeStrictLearningStore(row.payload);
+      } catch {
+        return NextResponse.json({ error: "云端学习记录格式异常，已停止同步以避免覆盖数据" }, { status: 503 });
+      }
+    }
+    const revision = Number(row?.revision ?? 0);
+    if (!Number.isSafeInteger(revision) || revision < 0) {
+      return NextResponse.json({ error: "云端同步版本号无效" }, { status: 503 });
+    }
     return NextResponse.json({
-      revision: Number(row?.revision || 0),
-      payload: row?.payload ?? null,
+      revision,
+      payload,
       updatedAt: row?.updated_at ?? null,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
@@ -59,13 +75,17 @@ export async function PUT(request: Request) {
     const parsedBody = await readLimitedJson(request, 2_000_000);
     if (!parsedBody.ok) return NextResponse.json({ error: parsedBody.error === "请求内容超过大小限制" ? "学习记录超过云同步大小限制" : parsedBody.error }, { status: parsedBody.status });
     const body = parsedBody.value;
-    const expectedRevision = Number(body?.expectedRevision);
-    const payload = body?.payload;
-    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+    const expectedRevision = body.expectedRevision;
+    if (typeof expectedRevision !== "number" || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
       return NextResponse.json({ error: "同步版本号无效" }, { status: 400 });
     }
-    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-      return NextResponse.json({ error: "学习记录格式无效" }, { status: 400 });
+    let payload;
+    try {
+      payload = normalizeStrictLearningStore(body.payload);
+    } catch (error) {
+      return NextResponse.json({
+        error: error instanceof Error ? error.message : "学习记录格式无效",
+      }, { status: 400 });
     }
     const result = await supabaseRestFetch<WriteRow[]>("rpc/strict_learning_sync_write", {
       method: "POST",
@@ -74,12 +94,26 @@ export async function PUT(request: Request) {
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 503 });
     const row = result.data[0];
     if (!row?.ok) {
+      let currentPayload = null;
+      if (row?.payload !== undefined && row.payload !== null) {
+        try {
+          currentPayload = normalizeStrictLearningStore(row.payload);
+        } catch {
+          return NextResponse.json({ error: "云端冲突记录格式异常，已停止同步以避免覆盖数据" }, { status: 503 });
+        }
+      } else {
+        return NextResponse.json({ error: "云端冲突记录为空，已停止同步以避免覆盖数据" }, { status: 503 });
+      }
+      const currentRevision = Number(row.revision);
+      if (!Number.isSafeInteger(currentRevision) || currentRevision < 0) {
+        return NextResponse.json({ error: "云端冲突版本号无效" }, { status: 503 });
+      }
       return NextResponse.json({
         error: "云端记录已在其他设备更新。为避免覆盖较新的记录，本次同步已暂停。",
         conflict: true,
-        revision: Number(row?.revision || 0),
-        payload: row?.payload ?? null,
-        updatedAt: row?.updated_at ?? null,
+        revision: currentRevision,
+        payload: currentPayload,
+        updatedAt: row.updated_at ?? null,
       }, { status: 409 });
     }
     return NextResponse.json({
