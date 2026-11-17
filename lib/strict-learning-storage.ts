@@ -21,7 +21,8 @@ export function getStrictLearningStoreKey(accountId: string): string {
  * subsequent accounts receive their own empty store.
  */
 export async function migrateLegacyStrictLearningStore(accountId: string): Promise<string> {
-  const scopedKey = getStrictLearningStoreKey(accountId);
+  const normalized = accountId.trim();
+  const scopedKey = getStrictLearningStoreKey(normalized);
   // IndexedDB transactions serialize across tabs: only the first account can
   // claim the legacy record, and no second account can copy it concurrently.
   const outcome = await kvMoveIfAbsent(LEGACY_STORE_KEY, scopedKey);
