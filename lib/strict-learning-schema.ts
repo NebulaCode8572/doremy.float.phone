@@ -96,15 +96,19 @@ function normalizeDay(key: string, value: unknown): StrictDay {
   }
   if (day.recall !== undefined) {
     if (!isRecord(day.recall)) throw new Error(`${key} 的回忆记录格式无效`);
-    assertString(day.recall, "text", 20000, `${key} 的回忆内容`);
-    assertString(day.recall, "notes", 20000, `${key} 的补充笔记`);
+    if (typeof day.recall.text !== "string" || day.recall.text.length > 20000) {
+      throw new Error("回忆内容格式无效：" + key);
+    }
+    if (typeof day.recall.notes !== "string" || day.recall.notes.length > 20000) {
+      throw new Error("补充笔记格式无效：" + key);
+    }
     assertString(day.recall, "feedback", 4000, `${key} 的角色反馈`);
     if (typeof day.recall.completedAt !== "number" || !Number.isFinite(day.recall.completedAt) || day.recall.completedAt < 0) {
       throw new Error(`${key} 的回忆完成时间无效`);
     }
   }
   if (day.charNote !== undefined) {
-    if (!isRecord(day.charNote) || !isDateKey(day.charNote.date) || typeof day.charNote.characterId !== "string" || day.charNote.characterId.length > 256 || typeof day.charNote.text !== "string" || day.charNote.text.length > 4000) {
+    if (!isRecord(day.charNote) || day.charNote.date !== key || !isDateKey(day.charNote.date) || typeof day.charNote.characterId !== "string" || day.charNote.characterId.length > 256 || typeof day.charNote.text !== "string" || day.charNote.text.length > 4000) {
       throw new Error(`${key} 的每日留言格式无效`);
     }
   }
@@ -125,11 +129,11 @@ export function normalizeStrictLearningStore(input: unknown): StrictStore {
 
   const profileInput = source.profile === undefined ? {} : source.profile;
   if (!isRecord(profileInput)) throw new Error("个人资料格式无效");
-  assertString(profileInput, "nickname", 80, "昵称");
-  assertString(profileInput, "lineOne", 200, "个人资料第一行");
-  assertString(profileInput, "lineTwo", 200, "个人资料第二行");
-  assertString(profileInput, "avatar", 600000, "头像");
-  assertString(profileInput, "banner", 600000, "顶部横幅");
+  assertString(profileInput, "nickname", 200, "昵称");
+  assertString(profileInput, "lineOne", 2000, "个人资料第一行");
+  assertString(profileInput, "lineTwo", 2000, "个人资料第二行");
+  assertString(profileInput, "avatar", 8000000, "头像");
+  assertString(profileInput, "banner", 8000000, "顶部横幅");
 
   const daysInput = source.days === undefined ? {} : source.days;
   if (!isRecord(daysInput) || Object.keys(daysInput).length > 5000) throw new Error("每日学习记录格式无效");
