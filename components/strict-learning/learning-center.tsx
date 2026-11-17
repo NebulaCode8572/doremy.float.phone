@@ -130,7 +130,9 @@ export function StrictLearningCenter() {
   const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
   const lastQueuedSnapshotRef = useRef("");
   const [syncStatus, setSyncStatus] = useState("仅保存在本机");
-  const [persistenceError, setPersistenceError] = useState("");
+  const [persistenceError, setPersistenceError] = useState("正在保存…");
+  const persistenceQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const persistenceSnapshotRef = useRef("");
   const [syncKeyVersion, setSyncKeyVersion] = useState(0);
   const [syncConflict, setSyncConflict] = useState<{ payload: StrictStore; revision: number } | null>(null);
   const [profileDraft, setProfileDraft] = useState<StrictProfile>(DEFAULT_STORE.profile);
@@ -260,10 +262,17 @@ export function StrictLearningCenter() {
     if (!loaded || loadedAccountId !== account.id) return;
     const snapshot = JSON.stringify(store);
     let cancelled = false;
-    void kvSetAsync(storeKey, snapshot).then(() => {
-      if (!cancelled) setPersistenceError("");
+    persistenceSnapshotRef.current = snapshot;
+    setPersistenceError("正在保存…");
+    persistenceQueueRef.current = persistenceQueueRef.current
+      .catch(() => undefined)
+      .then(() => kvSetAsync(storeKey, snapshot));
+    void persistenceQueueRef.current.then(() => {
+      if (!cancelled && persistenceSnapshotRef.current === snapshot) setPersistenceError("");
     }).catch(error => {
-      if (!cancelled) setPersistenceError(error instanceof Error ? error.message : "本机数据库写入失败");
+      if (!cancelled && persistenceSnapshotRef.current === snapshot) {
+        setPersistenceError(error instanceof Error ? error.message : "本机数据库写入失败");
+      }
     });
     if (!syncReadyRef.current || account.id !== "local_user" || snapshot === lastQueuedSnapshotRef.current) {
       return () => { cancelled = true; };
@@ -653,7 +662,7 @@ export function StrictLearningCenter() {
               <button type="button" onClick={() => void saveRecall()} disabled={busy !== null} className="strict-upload-button"><Check size={18} />{busy === "note" ? "Char 正在回复…" : "保存今日回忆"}</button>
             </section>
 
-            <section className="strict-audit-card"><Sparkles size={20} /><div className="min-w-0 flex-1"><strong>Char 审核状态</strong><p className="text-xs text-slate-600 mt-1">提交凭证后，识别结果和简短反馈会显示在对应任务卡片中。</p><div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-slate-500">本机保存：{persistenceError ? `失败：${persistenceError}` : "已写入数据库"}</p><p className="text-xs text-slate-500">云端同步：{syncStatus}</p>{!syncConflict && (syncStatus.startsWith("云端同步失败") || syncStatus.startsWith("云同步不可用")) ? <button type="button" className="text-xs underline text-slate-600" onClick={() => setSyncKeyVersion(value => value + 1)}>重试云同步</button> : null}</div>{syncConflict ? <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="strict-save-button" onClick={() => { syncRevisionRef.current = syncConflict.revision; syncReadyRef.current = true; lastQueuedSnapshotRef.current = JSON.stringify(syncConflict.payload); setStore(syncConflict.payload); setSyncConflict(null); setSyncStatus("已载入云端版本"); }}>载入云端版本</button><button type="button" className="strict-save-button" onClick={() => { syncRevisionRef.current = syncConflict.revision; syncReadyRef.current = true; lastQueuedSnapshotRef.current = ""; setSyncConflict(null); setSyncStatus("准备将本机版本覆盖到云端"); setStore(previous => ({ ...previous })); }}>保留本机版本并覆盖云端</button></div> : null}</div></section>
+            <section className="strict-audit-card"><Sparkles size={20} /><div className="min-w-0 flex-1"><strong>Char 审核状态</strong><p className="text-xs text-slate-600 mt-1">提交凭证后，识别结果和简短反馈会显示在对应任务卡片中。</p><div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-slate-500">本机保存：{persistenceError ? (persistenceError === "正在保存…" ? persistenceError : `失败：${persistenceError}`) : "已写入数据库"}</p><p className="text-xs text-slate-500">云端同步：{syncStatus}</p>{!syncConflict && (syncStatus.startsWith("云端同步失败") || syncStatus.startsWith("云同步不可用")) ? <button type="button" className="text-xs underline text-slate-600" onClick={() => setSyncKeyVersion(value => value + 1)}>重试云同步</button> : null}</div>{syncConflict ? <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="strict-save-button" onClick={() => { syncRevisionRef.current = syncConflict.revision; syncReadyRef.current = true; lastQueuedSnapshotRef.current = JSON.stringify(syncConflict.payload); setStore(syncConflict.payload); setSyncConflict(null); setSyncStatus("已载入云端版本"); }}>载入云端版本</button><button type="button" className="strict-save-button" onClick={() => { syncRevisionRef.current = syncConflict.revision; syncReadyRef.current = true; lastQueuedSnapshotRef.current = ""; setSyncConflict(null); setSyncStatus("准备将本机版本覆盖到云端"); setStore(previous => ({ ...previous })); }}>保留本机版本并覆盖云端</button></div> : null}</div></section>
             {notice ? <div className="strict-notice" role="status">{notice}</div> : null}
           </div>
           {editingProfile ? (
