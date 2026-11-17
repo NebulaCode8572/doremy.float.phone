@@ -42,8 +42,11 @@
 6. 进入「系统设置 → 视觉模型 API」填写接口、模型和 API Key，保存后测试连接。
 
 ## 单用户部署的访问边界
-- 当部署启用 `NEXT_PUBLIC_SELF_HOSTED_MODE=true` 时，应用会跳过账号登录，并把服务端请求固定映射到 `local_user`。这实现了免注册、免登录的单用户体验，但不等于站点私有：任何能够访问公开站点地址的人都可能使用应用功能；严格模式云同步接口另有共享密钥保护，视觉 API 设置和识别接口目前没有单独的站点访问口令。
-- 如果站点部署在公开 Netlify 地址，正式公开使用前必须明确是否接受“知道地址即可访问”，或增加单用户共享访问口令。不要把“只有一个 local_user”误认为“只有一个人能访问”。
+- 当部署启用 `NEXT_PUBLIC_SELF_HOSTED_MODE=true` 时，应用会跳过账号登录，并把服务端请求固定映射到 `local_user`。该模式要求额外配置站点共享访问口令；没有有效配置时会停留在访问页，不会退回到公开访问。
+- 在托管平台的**服务端环境变量**中设置 `SELF_HOSTED_ACCESS_PASSWORD` 和 `SELF_HOSTED_ACCESS_SECRET`。建议分别生成：`openssl rand -base64 32`（访问口令）和 `openssl rand -hex 32`（Cookie 签名密钥）。访问口令至少 16 个字符，签名密钥至少 32 个字符；两者都不能添加 `NEXT_PUBLIC_` 前缀，也不要提交到 Git。
+- 访问口令只在进入站点时验证一次。服务端发放 HttpOnly、SameSite=Lax Cookie，有效期 30 天；浏览器 JavaScript 无法读取口令 Cookie。所有应用页面和 API 都要求有效 Cookie，只有访问页、口令验证接口和静态资源例外。
+- 修改访问口令后，旧 Cookie 在有效期内仍然有效；若要立即撤销所有已登录设备，请同时轮换 `SELF_HOSTED_ACCESS_PASSWORD` 和 `SELF_HOSTED_ACCESS_SECRET` 并重新部署。
+- 访问口令只控制站点访问，不创建账号、不注册、不改变固定的 `local_user` 身份。严格模式云同步仍使用独立的 `STRICT_LEARNING_SYNC_SECRET`；视觉 API Key 仍使用独立的 `VISION_CREDENTIAL_ENCRYPTION_KEY` 加密。
 
 ## 当前阶段边界
 - 每日留言、凭证审核反馈和晚间回忆内容/回复均写入监督角色的原有聊天会话，并以近期聊天记录作为生成上下文；学习中心直接调用绑定文本模型，尚未接入聊天页完整的工具调用与插件编排流程。

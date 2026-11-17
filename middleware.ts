@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 
 import { ACCOUNT_GATE_COOKIE, ACCOUNT_SESSION_COOKIE } from "./lib/account-cookie-constants";
 import { verifyAccountGateCookieValue } from "./lib/account-gate-cookie";
+import {
+  SELF_HOSTED_ACCESS_COOKIE,
+  verifySelfHostedAccessCookieValue,
+} from "./lib/self-hosted-access";
 import { isSelfHostedModeEnabled } from "./lib/self-hosting";
 
 const PUBLIC_ROUTE_PREFIXES = [
@@ -48,18 +52,38 @@ function isApiRoute(pathname: string): boolean {
   return pathname.startsWith("/api/");
 }
 
-function rewriteToHome(request: NextRequest): NextResponse {
-  const url = request.nextUrl.clone();
-  url.pathname = "/";
-  url.search = "";
-  return NextResponse.rewrite(url);
-}
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (isSelfHostedModeEnabled()) {
-    return NextResponse.next();
+    // Only the access page and its verification endpoint remain public in
+    // single-user self-hosted mode. Static assets are served without a cookie.
+    if (
+      pathname === "/access" ||
+      pathname === "/api/access/verify" ||
+      isStaticRoute(pathname)
+    ) {
+      return NextResponse.next();
+    }
+
+    const accessCookie = request.cookies.get(SELF_HOSTED_ACCESS_COOKIE)?.value ?? "";
+    if (await verifySelfHostedAccessCookieValue(accessCookie)) {
+      return NextResponse.next();
+    }
+
+    if (isApiRoute(pathname)) {
+      return NextResponse.json(
+        { ok: false, error: "请先输入站点访问口令。" },
+        { status: 401, headers: { "Cache-Control": "no-store, max-age=0" } },
+      );
+    }
+
+    const url = request.nextUrl.clone();
+    const requestedPath = `${pathname}${request.nextUrl.search}`;
+    url.pathname = "/access";
+    url.search = "";
+    url.searchParams.set("next", requestedPath);
+    return NextResponse.redirect(url, { headers: { "Cache-Control": "no-store, max-age=0" } });
   }
 
   if (isStaticRoute(pathname) || isPublicRoute(pathname)) {
@@ -83,7 +107,10 @@ export async function middleware(request: NextRequest) {
   // cookie until /api/auth/me refreshes the signed gate cookie.
   if (sessionToken || pathname === "/") return NextResponse.next();
 
-  return rewriteToHome(request);
+  const url = request.nextUrl.clone();
+  url.pathname = "/";
+  url.search = "";
+  return NextResponse.rewrite(url);
 }
 
 export const config = {
