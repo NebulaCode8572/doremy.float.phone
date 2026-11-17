@@ -37,7 +37,7 @@ export function registerDynamicPrefix(prefix: string): void {
     if (_hydrated) migrateLegacyPrefix(prefix);
 }
 
-const LOCAL_STORAGE_FALLBACK_PREFIX = "__KV_FALLBACK_V1__:";
+const LOCAL_STORAGE_FALLBACK_PREFIX = "\u0000KV_FALLBACK_V1\u0000";
 
 function decodeLocalStorageValue(raw: string): { value: string; isFallback: boolean } {
     return raw.startsWith(LOCAL_STORAGE_FALLBACK_PREFIX)
@@ -213,9 +213,16 @@ export function hydrateKvDb(): Promise<void> {
             if (raw !== null) queueLegacyValue(k, raw);
         }
 
-        if (batch.length > 0) {
-            await kvDb.entries.bulkPut(batch);
-            for (const { key, value } of batch) _cache.set(key, value);
+        // Only apply the exact localStorage snapshots inspected above. If a
+        // newer write replaced one while hydration was reading, leave that
+        // newer fallback marker for its own IndexedDB write/retry path.
+        const safeBatch = batch.filter(({ key }) => {
+            const sourceRaw = removeKeys.get(key);
+            return sourceRaw !== undefined && localStorage.getItem(key) === sourceRaw;
+        });
+        if (safeBatch.length > 0) {
+            await kvDb.transaction("rw", kvDb.entries, () => kvDb.entries.bulkPut(safeBatch));
+            for (const { key, value } of safeBatch) _cache.set(key, value);
         }
         for (const [key, raw] of removeKeys) {
             removeLegacyLocalStorageKeyIfRaw(key, raw);
