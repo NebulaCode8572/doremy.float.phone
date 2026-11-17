@@ -322,6 +322,7 @@ export function MainApp() {
               initialThemeProfile={preparedDesktopTheme?.profile}
               initialThemeAssets={preparedDesktopTheme?.assets}
             />
+            <StrictLearningCenter />
             <OfflinePushRevampAnnouncement />
             <CloudBackupScheduler />
             <RealityBridgeScheduler />
