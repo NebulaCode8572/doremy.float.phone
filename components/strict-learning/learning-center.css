@@ -38,3 +38,10 @@
 .strict-edit-label input{width:100%;border:1px solid #dce9ec;border-radius:12px;background:#fff;padding:11px;color:#315766;font-size:14px;outline:none}
 .strict-save-button{border:0;border-radius:15px;padding:12px;background:#b8dce9;color:#315766;font-weight:700}
 @media(min-width:700px){.strict-learning-overlay{background:rgba(17,39,47,.38);padding:20px}.strict-learning-page{border-radius:24px;min-height:calc(100dvh - 40px);box-shadow:0 16px 48px rgba(20,53,63,.2)}}
+
+.strict-streak-mini{display:flex;align-items:center;gap:10px;flex:0 0 auto;margin-left:auto;padding-top:24px}
+.strict-streak-item{min-width:34px;display:flex;flex-direction:column;align-items:center;gap:2px;color:#7895a0;font-size:10px;line-height:1.2;white-space:nowrap}
+.strict-streak-icon{font-size:19px;line-height:1.2;filter:saturate(.9)}
+.strict-streak-item.is-locked{opacity:.55;filter:grayscale(.45)}
+.strict-streak-item.is-unlocked{color:#5d8793}
+@media(max-width:390px){.strict-profile-row{gap:8px}.strict-avatar-wrap{width:82px;height:82px;flex-basis:82px}.strict-streak-mini{gap:6px}.strict-streak-item{min-width:29px;font-size:9px}.strict-streak-icon{font-size:17px}}
