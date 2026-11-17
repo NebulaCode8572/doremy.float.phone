@@ -137,7 +137,13 @@ export function StrictLearningCenter() {
           setNotice("没有同时确认手环累计时长和手机锁屏日期时间，请重新拍摄同框凭证。");
           return;
         }
-        if (String(result.phoneLockDate) !== today) {\n          updateDay({ focus: { status: "needs-confirmation", minutes: store.days[today]?.focus?.minutes || 0, result } });\n          setNotice(`锁屏日期识别为 ${String(result.phoneLockDate)}，与今天（${today}）不一致。请核对设备日期后再提交。`);\n          return;\n        }\n        const newMinutes = Number(result.focusDurationMinutes);
+        const oldMinutes = store.days[today]?.focus?.minutes || 0;
+        if (String(result.phoneLockDate) !== today) {
+          updateDay({ focus: { status: "date-mismatch", minutes: oldMinutes, result } });
+          setNotice(`锁屏日期识别为 ${String(result.phoneLockDate)}，与今天（${today}）不一致。请核对设备日期后再提交。`);
+          return;
+        }
+        const newMinutes = Number(result.focusDurationMinutes);
         if (!Number.isFinite(newMinutes) || newMinutes < 0) {
           updateDay({ focus: { status: "needs-reupload", result } });
           setNotice("未能识别今日累计专注时长，请上传更清晰的截图。");
@@ -253,7 +259,8 @@ export function StrictLearningCenter() {
               <div className="flex items-start gap-3"><Timer className="strict-task-icon" size={36} /><div className="min-w-0 flex-1"><div className="flex items-center justify-between"><strong>专注学习</strong><span className="strict-status">{day.focus?.status === "approved" ? "已审核" : day.focus?.status === "needs-confirmation" ? "待核对" : day.focus?.status === "needs-reupload" ? "请重新上传" : "待审核"}</span></div><p className="text-xs text-slate-500 mt-1">手环番茄钟 + 手机锁屏同框。</p></div></div>
               <div className="mt-3 text-sm font-medium">{formatMinutes(focusMinutes)} / 08:00</div>
               <div className="strict-progress-track"><div className="strict-progress-fill" style={{ width: `${Math.min(100, focusMinutes / 480 * 100)}%` }} /></div>
-              {day.focus?.result ? <div className="strict-result">识别到今日累计专注 {formatMinutes(day.focus.result.focusDurationMinutes)} · 锁屏 {String(day.focus.result.phoneLockDate || "—")} {String(day.focus.result.phoneLockTime || "")}</div> : null}\n              {day.focus?.status === "needs-confirmation" && day.focus.result ? <button type="button" className="strict-upload-button" onClick={() => { const minutes = Number(day.focus?.result?.focusDurationMinutes); if (Number.isFinite(minutes) && minutes >= 0) { updateDay({ focus: { status: "approved", minutes, result: day.focus?.result } }); setNotice(`已确认并更新为 ${formatMinutes(minutes)}，采用覆盖而非累加。`); } }}>确认并以新截图覆盖记录</button> : null}
+              {day.focus?.result ? <div className="strict-result">识别到今日累计专注 {formatMinutes(day.focus.result.focusDurationMinutes)} · 锁屏 {String(day.focus.result.phoneLockDate || "—")} {String(day.focus.result.phoneLockTime || "")}</div> : null}
+              {day.focus?.status === "needs-confirmation" && day.focus.result ? <button type="button" className="strict-upload-button" onClick={() => { const minutes = Number(day.focus?.result?.focusDurationMinutes); if (Number.isFinite(minutes) && minutes >= 0) { updateDay({ focus: { status: "approved", minutes, result: day.focus?.result } }); setNotice(`已确认并更新为 ${formatMinutes(minutes)}，采用覆盖而非累加。`); } }}>确认并以新截图覆盖记录</button> : null}
               <label className="strict-upload-button"><Camera size={18} />{busy === "focus" ? "正在识别…" : "拍摄学习凭证"}<input type="file" accept="image/*" capture="environment" disabled={busy !== null} onChange={event => { void submitEvidence("focus", event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>
             </section>
 
