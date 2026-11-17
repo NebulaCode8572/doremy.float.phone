@@ -505,13 +505,13 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                         <CardGrid
                             label="API Config"
                             labelClassName="settings-menu-section-title"
-                            items={SETTINGS_MENU.filter(item => ["api", "voice"].includes(item.id)).map(makeCardItem)}
+                            items={SETTINGS_MENU.filter(item => ["api", "vision", "voice"].includes(item.id)).map(makeCardItem)}
                         />
                         <div className="settings-data-rules-section">
                             <h3 className="settings-menu-section-title">Data & Rules</h3>
                             <div className="mt-[10px] flex flex-col gap-3">
                                 <CardGrid
-                                    items={SETTINGS_MENU.filter(item => ["presets", "worldbook", "regex", "data"].includes(item.id)).map(makeCardItem)}
+                                    items={SETTINGS_MENU.filter(item => ["presets", "worldbook", "regex", "data", "strictLearning"].includes(item.id)).map(makeCardItem)}
                                 />
                                 <FeaturedCard item={bindingFeaturedItem} />
                             </div>
