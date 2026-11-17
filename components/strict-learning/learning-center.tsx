@@ -78,6 +78,7 @@ export function StrictLearningCenter() {
   const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
   const lastQueuedSnapshotRef = useRef("");
   const [syncStatus, setSyncStatus] = useState("仅保存在本机");
+  const [syncConflict, setSyncConflict] = useState<{ payload: StrictStore; revision: number } | null>(null);
   const [profileDraft, setProfileDraft] = useState<StrictProfile>(DEFAULT_STORE.profile);
 
   const today = todayKey();
@@ -94,6 +95,7 @@ export function StrictLearningCenter() {
     syncRevisionRef.current = 0;
     lastQueuedSnapshotRef.current = "";
     setSyncStatus("云端同步准备中");
+    setSyncConflict(null);
     setLoaded(false);
     setLoadedAccountId("");
     setLoadError("");
@@ -140,19 +142,21 @@ export function StrictLearningCenter() {
             initialStore.profile.avatar || initialStore.profile.banner
           );
           if (remote.payload && typeof remote.payload === "object") {
-            if (localHasData) {
+            const parsed = remote.payload as Partial<StrictStore>;
+            const remoteStore: StrictStore = {
+              ...DEFAULT_STORE,
+              ...parsed,
+              profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
+              days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
+              streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
+              sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
+            };
+            if (localHasData && JSON.stringify(initialStore) !== JSON.stringify(remoteStore)) {
               syncReadyRef.current = false;
-              setSyncStatus("云端与本机均有记录，已暂停自动覆盖；请先保留本机数据并处理冲突");
+              setSyncConflict({ payload: remoteStore, revision: Number(remote.revision || 0) });
+              setSyncStatus("云端与本机均有不同记录，请选择保留哪一份");
             } else {
-              const parsed = remote.payload as Partial<StrictStore>;
-              initialStore = {
-                ...DEFAULT_STORE,
-                ...parsed,
-                profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
-                days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
-                streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
-                sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
-              };
+              initialStore = remoteStore;
               setSyncStatus("已从云端载入");
               syncReadyRef.current = true;
             }
@@ -216,7 +220,21 @@ export function StrictLearningCenter() {
       const data = await response.json();
       if (response.status === 409) {
         syncReadyRef.current = false;
-        setSyncStatus("检测到其他设备更新，已暂停覆盖；请重新打开学习中心载入云端版本");
+        if (data.payload && typeof data.payload === "object") {
+          const parsed = data.payload as Partial<StrictStore>;
+          setSyncConflict({
+            payload: {
+              ...DEFAULT_STORE,
+              ...parsed,
+              profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
+              days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
+              streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
+              sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
+            },
+            revision: Number(data.revision || 0),
+          });
+        }
+        setSyncStatus("检测到其他设备更新，请选择保留哪一份");
         return;
       }
       if (!response.ok) throw new Error(data.error || "云端同步失败");
@@ -571,7 +589,7 @@ export function StrictLearningCenter() {
               <button type="button" onClick={() => void saveRecall()} disabled={busy !== null} className="strict-upload-button"><Check size={18} />{busy === "note" ? "Char 正在回复…" : "保存今日回忆"}</button>
             </section>
 
-            <section className="strict-audit-card"><Sparkles size={20} /><div><strong>Char 审核状态</strong><p className="text-xs text-slate-600 mt-1">提交凭证后，识别结果和简短反馈会显示在对应任务卡片中。</p><p className="text-xs text-slate-500 mt-1">云端同步：{syncStatus}</p></div></section>
+            <section className="strict-audit-card"><Sparkles size={20} /><div className="min-w-0 flex-1"><strong>Char 审核状态</strong><p className="text-xs text-slate-600 mt-1">提交凭证后，识别结果和简短反馈会显示在对应任务卡片中。</p><p className="text-xs text-slate-500 mt-1">云端同步：{syncStatus}</p>{syncConflict ? <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="strict-save-button" onClick={() => { syncRevisionRef.current = syncConflict.revision; syncReadyRef.current = true; lastQueuedSnapshotRef.current = JSON.stringify(syncConflict.payload); setStore(syncConflict.payload); setSyncConflict(null); setSyncStatus("已载入云端版本"); }}>载入云端版本</button><button type="button" className="strict-save-button" onClick={() => { syncRevisionRef.current = syncConflict.revision; syncReadyRef.current = true; lastQueuedSnapshotRef.current = ""; setSyncConflict(null); setSyncStatus("准备将本机版本覆盖到云端"); setStore(previous => ({ ...previous })); }}>保留本机版本并覆盖云端</button></div> : null}</div></section>
             {notice ? <div className="strict-notice" role="status">{notice}</div> : null}
           </div>
           {editingProfile ? (
