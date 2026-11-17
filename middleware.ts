@@ -64,15 +64,15 @@ function isSelfHostedTokenRoute(pathname: string): boolean {
 }
 
 function isStaticRoute(pathname: string): boolean {
-  return !pathname.startsWith("/api/") && (
-    STATIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix)) || STATIC_FILE_RE.test(pathname)
-  );
+  if (pathname.startsWith("/api/") || pathname.startsWith("/_next/")) return false;
+  return STATIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
+    STATIC_FILE_RE.test(pathname);
 }
 
 function isStaticAssetRoute(pathname: string): boolean {
-  if (pathname.startsWith("/api/")) return false;
+  if (pathname.startsWith("/api/") || pathname.startsWith("/_next/")) return false;
   // _next/static and _next/image are excluded by the middleware matcher.
-  // Do not exempt every other /_next/* route (for example, internal data routes).
+  // All other /_next/* paths, including .json data routes, remain protected.
   return STATIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
     STATIC_FILE_RE.test(pathname);
 }
