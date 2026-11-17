@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentAccount } from "@/lib/server/account-auth";
-import { loadVisionSettings } from "@/lib/server/vision-credentials";
+import { callVisionProvider, loadVisionSettings } from "@/lib/server/vision-credentials";
 import { getSupabaseServerConfig } from "@/lib/server/supabase-rest";
 import { readLimitedJson } from "@/lib/server/read-limited-json";
 
@@ -62,30 +62,25 @@ export async function POST(request: Request) {
     }
     const { publicSettings, apiKey } = await loadVisionSettings(account.id);
     if (!publicSettings.configured || !apiKey) return NextResponse.json({ error: "尚未配置全局视觉模型，请先前往系统设置配置。" }, { status: 409 });
-    const base = publicSettings.baseUrl.replace(/\/$/, "").replace(/\/chat\/completions$/i, "");
-    const response = await fetch(`${base}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: publicSettings.model,
-        temperature: 0,
-        max_tokens: 700,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: [
-            { type: "text", text: kind === "focus" ? "识别手环今日累计专注时长，并检查是否同时出现手机锁屏日期和时间。" : "识别这张手环睡眠报告中的昨晚睡眠数据，并提取报告对应的起床日期（不是入睡日期）。" },
-            { type: "image_url", image_url: { url: imageDataUrl } },
-          ] },
-        ],
-      }),
-      cache: "no-store",
-      redirect: "error",
+    const response = await callVisionProvider(publicSettings.baseUrl, apiKey, {
+      model: publicSettings.model,
+      temperature: 0,
+      max_tokens: 700,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: [
+          { type: "text", text: kind === "focus" ? "识别手环今日累计专注时长，并检查是否同时出现手机锁屏日期和时间。" : "识别这张手环睡眠报告中的昨晚睡眠数据，并提取报告对应的起床日期（不是入睡日期）。" },
+          { type: "image_url", image_url: { url: imageDataUrl } },
+        ] },
+      ],
     });
     if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      return NextResponse.json({ error: `视觉模型请求失败（HTTP ${response.status}）：${detail.slice(0, 180)}` }, { status: 502 });
+      return NextResponse.json({ error: `视觉模型请求失败（HTTP ${response.status}）：${response.text.slice(0, 180)}` }, { status: 502 });
     }
-    const data = await response.json();
+    let data: any;
+    try { data = JSON.parse(response.text); }
+    catch { return NextResponse.json({ error: "视觉模型返回了无效 JSON。" }, { status: 502 }); }
+
     const raw = data?.choices?.[0]?.message?.content;
     const text = typeof raw === "string" ? raw : Array.isArray(raw) ? raw.map((part: { text?: string }) => part?.text || "").join("") : "";
     const jsonText = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
