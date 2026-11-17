@@ -1,12 +1,11 @@
 // v13：本次升版是为了强制作废旧缓存。
 // 折叠逻辑的修复已进 main，但客户端仍在跑旧 JS —— /_next/static/ 走 cache-first，
 // 旧包会被一直留在 RUNTIME_CACHE 里。升 CACHE_VERSION 会在 activate 时整批清空。
-const CACHE_VERSION = "ai-phone-pwa-v13";
+const CACHE_VERSION = "ai-phone-pwa-v14";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
 const PRECACHE_URLS = [
-  "/",
   "/manifest.json",
   "/icon-192.png",
   "/icon-512.png",
@@ -28,10 +27,7 @@ self.addEventListener("activate", (event) => {
           .filter((key) => !key.startsWith(CACHE_VERSION))
           .map((key) => caches.delete(key))
       ))
-      // 刷新预缓存的 "/" 快照：它是离线导航的最终兜底，若停留在旧部署版本，
-      // 引用的旧 hash CSS/JS 已 404，会渲染出无样式页面（文字堆在左上角）。
-      .then(() => caches.open(STATIC_CACHE))
-      .then((cache) => cache.add(new Request("/", { cache: "reload" })).catch(() => {}))
+      // Protected application documents are deliberately not precached.
       .then(() => self.clients.claim())
   );
 });
@@ -46,18 +42,9 @@ function isCacheableRequest(request) {
 }
 
 async function networkFirst(request) {
-  const cache = await caches.open(RUNTIME_CACHE);
-  try {
-    const response = await fetch(request);
-    if (response.ok) cache.put(request, response.clone());
-    return response;
-  } catch (error) {
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    const fallback = await caches.match("/");
-    if (fallback) return fallback;
-    throw error;
-  }
+  // Navigations may contain the authenticated app shell. Never persist them:
+  // otherwise an offline PWA launch could bypass the site access-code gate.
+  return fetch(request);
 }
 
 // 静态资源（字体/图片/脚本/样式/模型）用 cache-first：命中缓存直接返回，
