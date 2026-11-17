@@ -10,7 +10,7 @@ import { WidgetScheduler } from "@/components/widget/widget-scheduler";
 import { CheckInScheduler } from "@/components/screenshot/checkin-scheduler";
 import { MediaMaintenanceScheduler } from "@/components/media-maintenance-scheduler";
 import { ShellPushRegistrar } from "@/components/shell-push-registrar";
-import { DesktopShell } from "./desktop-shell";
+import { DesktopShell } from "./desktop-shell";\nimport { StrictLearningCenter } from "@/components/strict-learning/learning-center";
 import { OfflinePushRevampAnnouncement } from "./offline-push-revamp-announcement";
 import { SplashAnimation } from "./splash-animation";
 import { MusicProvider } from "@/lib/music-context";
