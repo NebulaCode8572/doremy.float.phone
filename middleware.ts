@@ -52,7 +52,10 @@ const STATIC_ROUTE_PREFIXES = [
 const STATIC_FILE_RE = /\.(?:avif|bin|css|gif|glb|gltf|hdr|ico|jpeg|jpg|js|json|map|mjs|mp3|ogg|otf|png|svg|ttf|txt|wasm|wav|webmanifest|webp|woff|woff2)$/i;
 
 function isPublicRoute(pathname: string): boolean {
-  return PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname === prefix.slice(0, -1) || pathname.startsWith(prefix));
+  return PUBLIC_ROUTE_PREFIXES.some((prefix) => {
+    const route = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+    return pathname === route || pathname.startsWith(route + "/");
+  });
 }
 
 function isSelfHostedTokenRoute(pathname: string): boolean {
