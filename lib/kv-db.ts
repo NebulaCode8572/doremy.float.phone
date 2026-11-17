@@ -225,6 +225,49 @@ export function kvRemove(key: string): void {
         console.warn("[KvDB] delete failed:", key, err));
 }
 
+/** Atomically move a key if the destination is absent. Safe across tabs. */
+export async function kvMoveIfAbsent(
+    sourceKey: string,
+    targetKey: string,
+): Promise<{ moved: boolean; value: string | null }> {
+    if (sourceKey === targetKey) {
+        const current = await kvDb.entries.get(targetKey);
+        return { moved: false, value: current?.value ?? null };
+    }
+
+    let outcome: { moved: boolean; value: string | null } = { moved: false, value: null };
+    await kvDb.transaction("rw", kvDb.entries, async () => {
+        const target = await kvDb.entries.get(targetKey);
+        if (target) {
+            // A previous migration already assigned the legacy value. Remove any
+            // leftover source so a later account cannot claim the same data.
+            await kvDb.entries.delete(sourceKey);
+            outcome = { moved: false, value: target.value };
+            return;
+        }
+
+        const source = await kvDb.entries.get(sourceKey);
+        if (!source) {
+            outcome = { moved: false, value: null };
+            return;
+        }
+
+        await kvDb.entries.put({ key: targetKey, value: source.value });
+        await kvDb.entries.delete(sourceKey);
+        outcome = { moved: true, value: source.value };
+    });
+
+    _cache.delete(sourceKey);
+    if (outcome.value !== null) _cache.set(targetKey, outcome.value);
+    else _cache.delete(targetKey);
+
+    if (isManagedLegacyKey(sourceKey)) removeLegacyLocalStorageKey(sourceKey);
+    if (outcome.value !== null && isManagedLegacyKey(targetKey)) {
+        writeFallbackLocalStorage(targetKey, outcome.value);
+    }
+    return outcome;
+}
+
 // ── Iterate keys with a prefix (for dynamic keys) ──
 export function kvKeysWithPrefix(prefix: string): string[] {
     const result: string[] = [];
