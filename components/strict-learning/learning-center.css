@@ -1,6 +1,6 @@
 .strict-learning-overlay{position:fixed;inset:0;z-index:3000;background:#e8f5f9;overflow:auto;color:#203e48;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);font-family:inherit}
-.strict-learning-page{max-width:620px;min-height:100%;margin:0 auto;padding:14px 18px 32px;background:linear-gradient(180deg,#e7f5f9 0%,#e8f5f9 100%);display:flex;flex-direction:column;gap:14px}
-.strict-learning-topbar{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 2px}
+.strict-learning-page{position:relative;max-width:620px;min-height:100%;margin:0 auto;padding:8px 18px 32px;background:linear-gradient(180deg,#e7f5f9 0%,#e8f5f9 100%);display:flex;flex-direction:column;gap:14px}
+.strict-close-float{position:absolute;right:24px;top:16px;z-index:5;width:32px;height:32px;border:0;border-radius:50%;background:rgba(255,255,255,.68);color:#557987;display:grid;place-items:center}
 .strict-icon-button,.strict-edit-button{width:36px;height:36px;border:0;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.72);color:#557987}
 .strict-profile{border-radius:22px;overflow:hidden;background:transparent}
 .strict-banner{height:145px;border-radius:18px 18px 8px 8px;background:linear-gradient(125deg,#c5e7f0,#e4f5f7 65%,#d3edf2);background-position:center;background-size:cover;display:flex;align-items:flex-start;padding:20px;color:#315766}
