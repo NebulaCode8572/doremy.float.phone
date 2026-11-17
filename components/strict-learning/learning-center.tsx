@@ -226,12 +226,13 @@ export function StrictLearningCenter() {
         }
         const bedtimeOk = bedtime !== null && beforeBedtimeDeadline(bedtime, deadline as number);
         const wakeOk = wake !== null && ((wakeFrom as number) <= (wakeUntil as number) ? wake >= (wakeFrom as number) && wake <= (wakeUntil as number) : wake >= (wakeFrom as number) || wake <= (wakeUntil as number));
-        if (bedtimeOk && wakeOk) {
+        const durationOk = minSleepHours === null || (Number.isFinite(minSleepHours) && minSleepHours >= 1 && minSleepHours <= 24 && sleepMinutes >= minSleepHours * 60);
+        if (bedtimeOk && wakeOk && durationOk) {
           updateDay({ sleep: { status: "approved", result } });
           setNotice(`睡眠审核通过：入睡 ${String(result.sleepStart)}，起床 ${String(result.wakeTime)}。`);
         } else {
           updateDay({ sleep: { status: "not-met", result } });
-          setNotice(`睡眠记录已识别，但未达到设定时间：入睡需不晚于 ${store.sleepRules.bedtimeDeadline}，起床需在 ${store.sleepRules.wakeFrom}–${store.sleepRules.wakeUntil}。`);
+          setNotice(`睡眠记录已识别，但未达到设定时间：入睡需不晚于 ${store.sleepRules.bedtimeDeadline}，起床需在 ${store.sleepRules.wakeFrom}–${store.sleepRules.wakeUntil}${store.sleepRules.minSleepHours ? `，睡眠不少于 ${store.sleepRules.minSleepHours} 小时` : ""}。`);
         }
       }
     } catch (error) {
