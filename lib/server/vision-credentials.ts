@@ -32,7 +32,7 @@ function isPublicIp(address: string): boolean {
     if (a === 100 && b >= 64 && b <= 127) return false;
     if (a === 169 && b === 254) return false;
     if (a === 172 && b >= 16 && b <= 31) return false;
-    if (a === 192 && (b === 168 || (b === 0 && (c === 0 || c === 2)))) return false;
+    if (a === 192 && (b === 168 || (b === 0 && (c === 0 || c === 2)) || (b === 88 && c === 99))) return false;
     if (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) return false;
     if (a === 203 && b === 0 && c === 113) return false;
     return true;
@@ -48,7 +48,7 @@ function isPublicIp(address: string): boolean {
     if (groups.length !== 8 || groups.some(part => !Number.isInteger(part) || part < 0 || part > 0xffff)) return false;
     const first = groups[0];
     if (first < 0x2000 || first > 0x3fff) return false;
-    if (first === 0x2001 && [0x0010, 0x0020, 0x0db8].includes(groups[1])) return false;
+    if (first === 0x2001 && [0x0000, 0x0010, 0x0020, 0x0db8].includes(groups[1])) return false;
     if (first === 0x2002) return false;
     return true;
   }
