@@ -23,11 +23,13 @@ export function StrictLearningSettings() {
   const [minSleepHours, setMinSleepHours] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [loadedAccountId, setLoadedAccountId] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     setLoaded(false);
     setLoadedAccountId("");
+    setLoadError("");
     setEnabled(false);
     setSupervisorId("");
     setBedtimeDeadline("");
@@ -55,6 +57,7 @@ export function StrictLearningSettings() {
       setLoadedAccountId(account.id);
       setLoaded(true);
     })().catch(() => {
+      if (!cancelled) setLoadError("学习记录加载失败，请检查本机存储状态后重试。");
       // Keep the page hidden on migration failure rather than risk showing
       // or writing another account's legacy record.
     });
@@ -77,7 +80,9 @@ export function StrictLearningSettings() {
     window.dispatchEvent(new CustomEvent("strict-learning-updated"));
   };
 
-  if (!loaded || loadedAccountId !== account.id) return null;
+  if (!loaded || loadedAccountId !== account.id) {
+    return loadError ? <div role="alert" className="px-4 py-3 text-sm text-red-700">{loadError}</div> : null;
+  }
   return (
     <div className="flex flex-col gap-4 px-1 pb-8">
       <section className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-card)] p-4">
