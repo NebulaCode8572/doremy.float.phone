@@ -188,7 +188,7 @@ export function PaiVoiceCallScreen({
     const ttsConfig = selectedVoiceConfig?.provider === "Minimax" && selectedVoiceConfig.enableTTS
       ? {
           model: selectedVoiceConfig.model || "speech-01-turbo",
-          voice_id: selectedVoiceConfig.defaultVoice || "",
+          voice_id: selectedVoiceConfig.defaultVoice || "male-qn-qingse",
           speed: selectedVoiceConfig.speechSpeed ?? 1,
           pitch: selectedVoiceConfig.speechPitch ?? 0,
           language_boost: selectedVoiceConfig.languageBoost || "",
