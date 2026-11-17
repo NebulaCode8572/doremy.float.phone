@@ -155,6 +155,16 @@ function normalizeDay(key: string, value: unknown): StrictDay {
     }
     if (!isRecord(day.sleep.result)) throw new Error(`${key} 缺少睡眠凭证识别结果`);
     assertVisionResult(day.sleep.result, `${key} 的睡眠识别结果`, "sleep");
+    if (day.sleep.status === "approved") {
+      const result = day.sleep.result;
+      if (result.recordDate !== key ||
+        typeof result.sleepStart !== "string" || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(result.sleepStart) ||
+        typeof result.wakeTime !== "string" || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(result.wakeTime) ||
+        typeof result.sleepDurationMinutes !== "number" || !Number.isInteger(result.sleepDurationMinutes) ||
+        result.sleepDurationMinutes <= 0 || result.sleepDurationMinutes > 1440) {
+        throw new Error(`${key} 的已审核睡眠记录与凭证数据不一致`);
+      }
+    }
     assertString(day.sleep, "feedback", 4000, `${key} 的睡眠反馈`);
   }
   if (day.focus !== undefined) {
@@ -163,8 +173,14 @@ function normalizeDay(key: string, value: unknown): StrictDay {
     }
     if (!isRecord(day.focus.result)) throw new Error(`${key} 缺少专注凭证识别结果`);
     assertVisionResult(day.focus.result, `${key} 的专注识别结果`, "focus");
-    if (day.focus.status === "approved" && day.focus.minutes === undefined) {
-      throw new Error(`${key} 的已审核专注记录缺少时长`);
+    if (day.focus.status === "approved") {
+      const result = day.focus.result;
+      if (day.focus.minutes === undefined) throw new Error(`${key} 的已审核专注记录缺少时长`);
+      if (result.phoneLockDate !== key || result.deviceVisible !== true || result.phoneLockVisible !== true ||
+        typeof result.phoneLockTime !== "string" || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(result.phoneLockTime) ||
+        result.focusDurationMinutes !== day.focus.minutes) {
+        throw new Error(`${key} 的已审核专注记录与凭证数据不一致`);
+      }
     }
     if ((day.focus.pendingMinutes === undefined) !== (day.focus.pendingResult === undefined)) {
       throw new Error(`${key} 的待确认专注记录不完整`);
@@ -172,6 +188,13 @@ function normalizeDay(key: string, value: unknown): StrictDay {
     assertOptionalInteger(day.focus, "minutes", 0, 1440, `${key} 的专注时长`);
     assertOptionalInteger(day.focus, "pendingMinutes", 0, 1440, `${key} 的待确认专注时长`);
     assertVisionResult(day.focus.pendingResult, `${key} 的待确认识别结果`, "focus");
+    if (day.focus.pendingResult !== undefined) {
+      if (day.focus.pendingResult.phoneLockDate !== key ||
+        day.focus.pendingResult.deviceVisible !== true || day.focus.pendingResult.phoneLockVisible !== true ||
+        day.focus.pendingResult.focusDurationMinutes !== day.focus.pendingMinutes) {
+        throw new Error(`${key} 的待确认专注记录与凭证数据不一致`);
+      }
+    }
     assertString(day.focus, "feedback", 4000, `${key} 的专注反馈`);
   }
   if (day.recall !== undefined) {
