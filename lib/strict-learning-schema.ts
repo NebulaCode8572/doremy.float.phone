@@ -158,8 +158,8 @@ function normalizeDay(key: string, value: unknown): StrictDay {
     if (day.sleep.status === "approved") {
       const result = day.sleep.result;
       if (result.recordDate !== key ||
-        typeof result.sleepStart !== "string" || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(result.sleepStart) ||
-        typeof result.wakeTime !== "string" || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(result.wakeTime) ||
+        typeof result.sleepStart !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(result.sleepStart) ||
+        typeof result.wakeTime !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(result.wakeTime) ||
         typeof result.sleepDurationMinutes !== "number" || !Number.isInteger(result.sleepDurationMinutes) ||
         result.sleepDurationMinutes <= 0 || result.sleepDurationMinutes > 1440) {
         throw new Error(`${key} 的已审核睡眠记录与凭证数据不一致`);
@@ -177,7 +177,7 @@ function normalizeDay(key: string, value: unknown): StrictDay {
       const result = day.focus.result;
       if (day.focus.minutes === undefined) throw new Error(`${key} 的已审核专注记录缺少时长`);
       if (result.phoneLockDate !== key || result.deviceVisible !== true || result.phoneLockVisible !== true ||
-        typeof result.phoneLockTime !== "string" || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(result.phoneLockTime) ||
+        typeof result.phoneLockTime !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(result.phoneLockTime) ||
         result.focusDurationMinutes !== day.focus.minutes) {
         throw new Error(`${key} 的已审核专注记录与凭证数据不一致`);
       }
