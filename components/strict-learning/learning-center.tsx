@@ -223,7 +223,7 @@ export function StrictLearningCenter() {
           return;
         }
         const bedtimeOk = bedtime !== null && beforeBedtimeDeadline(bedtime, deadline as number);
-        const wakeOk = wake !== null && wake >= (wakeFrom as number) && wake <= (wakeUntil as number);
+        const wakeOk = wake !== null && ((wakeFrom as number) <= (wakeUntil as number) ? wake >= (wakeFrom as number) && wake <= (wakeUntil as number) : wake >= (wakeFrom as number) || wake <= (wakeUntil as number));
         if (bedtimeOk && wakeOk) {
           updateDay({ sleep: { status: "approved", result } });
           setNotice(`睡眠审核通过：入睡 ${String(result.sleepStart)}，起床 ${String(result.wakeTime)}。`);
