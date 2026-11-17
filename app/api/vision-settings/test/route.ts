@@ -19,10 +19,17 @@ export async function POST(request: Request) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: publicSettings.model,
-        messages: [{ role: "user", content: "请只回复：连接成功" }],
-        max_tokens: 16,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "请观察这张测试图片，并简短说明你是否成功读取了图片内容。" },
+            { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC" } },
+          ],
+        }],
+        max_tokens: 32,
       }),
       cache: "no-store",
+      redirect: "error",
     });
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
