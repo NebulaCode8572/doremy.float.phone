@@ -10,7 +10,7 @@ import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engi
 import { parseAIResponse } from "@/lib/rich-message-parser";
 import { cancelFollowUp, suspendProactiveActions } from "@/lib/follow-up-service";
 import { suspendBailoutsForCall } from "@/lib/push-bailout-client";
-import { setCallAudioSessionActive } from "@/lib/tts-service";
+import { resolveVoiceConfig, setCallAudioSessionActive } from "@/lib/tts-service";
 import { suspendKeepAliveForCall, resumeKeepAliveAfterCall } from "@/lib/use-weixin-bridge";
 import { useCallScreenSounds } from "@/lib/chat-sound";
 import { startIncomingCallVibration } from "@/lib/call-vibration";
@@ -183,10 +183,22 @@ export function PaiVoiceCallScreen({
 
     let finishCharacterHangup = () => {};
     let armCharacterHangupFallback = () => {};
+    const selectedVoiceConfig = resolveVoiceConfig(character.id, "chat");
+    // Pass only public synthesis settings. MiniMax credentials remain in PaiVoice's server environment.
+    const ttsConfig = selectedVoiceConfig?.provider === "Minimax" && selectedVoiceConfig.enableTTS
+      ? {
+          model: selectedVoiceConfig.model || "speech-01-turbo",
+          voice_id: selectedVoiceConfig.defaultVoice || "",
+          speed: selectedVoiceConfig.speechSpeed ?? 1,
+          pitch: selectedVoiceConfig.speechPitch ?? 0,
+          language_boost: selectedVoiceConfig.languageBoost || "",
+        }
+      : null;
     const call = new VoiceCall({
       url,
       video: false,
       pushToTalk: false,
+      ttsConfig,
       getAuthTicket: async () => {
         const response = await fetch("/api/paivoice/ticket", {
           method: "POST",
