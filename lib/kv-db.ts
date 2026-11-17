@@ -214,16 +214,21 @@ export function hydrateKvDb(): Promise<void> {
             if (raw !== null) queueLegacyValue(k, raw);
         }
 
-        // Only apply the exact localStorage snapshots inspected above. If a
-        // newer write replaced one while hydration was reading, leave that
-        // newer fallback marker for its own IndexedDB write/retry path.
-        const safeBatch = batch.filter(({ key }) => {
-            const sourceRaw = removeKeys.get(key);
-            return sourceRaw !== undefined && localStorage.getItem(key) === sourceRaw;
-        });
-        if (safeBatch.length > 0) {
-            await kvDb.transaction("rw", kvDb.entries, () => kvDb.entries.bulkPut(safeBatch));
-            for (const { key, value } of safeBatch) {
+        // Recheck the exact localStorage snapshots inside the read/write
+        // transaction. A newer write in another task/tab must not be replaced
+        // by a stale value collected earlier in this hydration pass.
+        let committedBatch: { key: string; value: string }[] = [];
+        if (batch.length > 0) {
+            await kvDb.transaction("rw", kvDb.entries, async () => {
+                committedBatch = batch.filter(({ key }) => {
+                    const sourceRaw = removeKeys.get(key);
+                    return sourceRaw !== undefined && localStorage.getItem(key) === sourceRaw;
+                });
+                if (committedBatch.length > 0) {
+                    await kvDb.entries.bulkPut(committedBatch);
+                }
+            });
+            for (const { key, value } of committedBatch) {
                 if (localStorage.getItem(key) === removeKeys.get(key)) _cache.set(key, value);
             }
         }
