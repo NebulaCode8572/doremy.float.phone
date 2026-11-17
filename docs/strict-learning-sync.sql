@@ -45,10 +45,11 @@ begin
       return;
     end if;
   else
-    update public.strict_learning_records
-       set payload = p_payload, revision = revision + 1, updated_at = now()
-     where user_id = 'local_user' and revision = p_expected_revision
-     returning * into saved;
+    update public.strict_learning_records as current_record
+       set payload = p_payload, revision = current_record.revision + 1, updated_at = now()
+     where current_record.user_id = 'local_user'
+       and current_record.revision = p_expected_revision
+     returning current_record.* into saved;
     if found then
       return query select true, saved.revision, saved.payload, saved.updated_at;
       return;
