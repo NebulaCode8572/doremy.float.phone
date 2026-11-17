@@ -164,8 +164,8 @@ export function StrictLearningCenter() {
           setNotice("睡眠时间信息不完整，请重新上传完整睡眠报告。");
           return;
         }
-        updateDay({ sleep: { status: "approved", result } });
-        setNotice(`已识别睡眠报告：${formatMinutes(sleepMinutes)}。`);
+        updateDay({ sleep: { status: "recognized", result } });
+        setNotice(`已识别睡眠报告：${formatMinutes(sleepMinutes)}。达标规则尚未配置，暂不计入完成项。`);
       }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "凭证审核失败");
@@ -258,7 +258,7 @@ export function StrictLearningCenter() {
             </section>
 
             <section className="strict-task-card">
-              <div className="flex items-start gap-3"><Moon className="strict-task-icon" size={34} /><div className="min-w-0 flex-1"><div className="flex items-center justify-between"><strong>睡眠报告</strong><span className="strict-status">{day.sleep?.status === "approved" ? "已审核" : day.sleep?.status === "needs-reupload" ? "请重新上传" : "待提交"}</span></div><p className="text-xs text-slate-500 mt-1">上传手环睡眠截图，识别昨晚信息。</p></div></div>
+              <div className="flex items-start gap-3"><Moon className="strict-task-icon" size={34} /><div className="min-w-0 flex-1"><div className="flex items-center justify-between"><strong>睡眠报告</strong><span className="strict-status">{day.sleep?.status === "approved" ? "已审核" : day.sleep?.status === "recognized" ? "待规则审核" : day.sleep?.status === "needs-reupload" ? "请重新上传" : "待提交"}</span></div><p className="text-xs text-slate-500 mt-1">上传手环睡眠截图，识别昨晚信息。</p></div></div>
               {day.sleep?.result ? <div className="strict-result">入睡 {String(day.sleep.result.sleepStart || "—")} · 起床 {String(day.sleep.result.wakeTime || "—")} · 睡眠 {formatMinutes(day.sleep.result.sleepDurationMinutes)}</div> : null}
               <label className="strict-upload-button"><Upload size={18} />{busy === "sleep" ? "正在识别…" : "上传睡眠报告"}<input type="file" accept="image/*" disabled={busy !== null} onChange={event => { void submitEvidence("sleep", event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>
             </section>
