@@ -43,12 +43,20 @@ The App aborts a voice reply generation after 100 seconds and sends a short time
 - No voiceprint, speaker embedding, voice identity template, or audio recording is created or persisted. VAD distinguishes speech-like activity from non-speech; it does not verify who is speaking and cannot perfectly reject music with vocals.
 - If the browser blocks the CDN scripts, ONNX initialization fails, or the model cannot run in the WebView, the client falls back to the legacy RMS gate. This fallback is functional but less reliable against music.
 
+## MiniMax streaming audio
+
+- PaiVoice's MiniMax TTS provider uses the same T2A V2 model, Voice ID, speed, pitch, volume, language boost, and text-wrapper cleanup as Float's existing `lib/tts-service.ts` implementation.
+- For low latency, the service can request SSE streaming as 44.1kHz mono signed 16-bit PCM and forward each chunk over the existing WebSocket. The App decodes and schedules PCM chunks as they arrive instead of waiting for the complete MP3 file.
+- Set `PAIVOICE_MINIMAX_STREAM=false` to use Float-compatible 44.1kHz/256kbps MP3 output and buffered playback. This is the comparison mode for checking the closest possible output-format match against Float.
+- The MiniMax API key and Voice ID stay in PaiVoice's server-side environment. The browser receives audio only; it never receives the provider credential.
+- Streaming PCM preserves the selected voice/model controls but uses a different output encoding from Float's normal MP3 path. Actual timbre, prosody, first-audio latency, and chunk-boundary continuity still require device testing with the same text and voice settings.
+
 ## Verification still required
 
 This code has not yet been verified on a real Android device or against a deployed PaiVoice service. Before treating it as ready, test:
 
 - App ticket issuance with a real logged-in account and matching server secret.
-- WSS connection, microphone permission, ASR, TTS, and character reply generation.
+- WSS connection, microphone permission, ASR, TTS, and character reply generation. For MiniMax, compare both streaming PCM and non-streaming MP3 modes against Float using identical text, model, Voice ID, speed, pitch, emotion, and language boost; record first-audio latency and listen for chunk gaps or altered prosody.
 - Silero VAD model loading and inference in the target Android WebView, speech start/end, music-only and music-with-vocals false-trigger rates, first-syllable pre-roll, mic mute/unmute, and interruption while the character is speaking. Verify the `vadStatus` event reports `silero` rather than `rms-fallback`. Echo cancellation and noise suppression depend on browser/device support and should be tested with both headphones and speaker playback.
 - Reconnect during a network change and ensuring a fresh ticket is issued.
 - Transcript persistence after hangup and after reopening the chat.
