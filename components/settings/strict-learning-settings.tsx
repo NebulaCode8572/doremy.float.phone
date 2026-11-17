@@ -27,6 +27,8 @@ export function StrictLearningSettings() {
   const [loadError, setLoadError] = useState("");
   const [syncKeyDraft, setSyncKeyDraft] = useState("");
   const [syncKeySaved, setSyncKeySaved] = useState(false);
+  const [syncKeyTestStatus, setSyncKeyTestStatus] = useState("");
+  const [syncKeyTesting, setSyncKeyTesting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +43,8 @@ export function StrictLearningSettings() {
     setMinSleepHours("");
     setSyncKeyDraft(getStrictLearningSyncKey());
     setSyncKeySaved(Boolean(getStrictLearningSyncKey()));
+    setSyncKeyTestStatus("");
+    setSyncKeyTesting(false);
     setSubpageTitle("严格学习模式");
 
     void (async () => {
@@ -111,21 +115,40 @@ export function StrictLearningSettings() {
               className="ui-input w-full"
             />
           </label>
-          <div className="mt-3 flex items-center gap-2">
-            <button type="button" className="ui-button" onClick={() => {
-              if (syncKeyDraft.trim().length < 32) return;
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" className="ui-button" disabled={syncKeyDraft.trim().length < 32} onClick={() => {
               saveStrictLearningSyncKey(syncKeyDraft);
               setSyncKeyDraft(syncKeyDraft.trim());
               setSyncKeySaved(true);
+              setSyncKeyTestStatus("密钥已保存在本机，可以测试连接");
             }}>保存密钥</button>
+            <button type="button" className="ui-button" disabled={syncKeyTesting || syncKeyDraft.trim().length < 32} onClick={async () => {
+              setSyncKeyTesting(true);
+              setSyncKeyTestStatus("正在验证……");
+              try {
+                const response = await fetch("/api/strict-learning-sync", {
+                  headers: { Authorization: `Bearer ${syncKeyDraft.trim()}` },
+                  cache: "no-store",
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || "连接失败");
+                setSyncKeyTestStatus(`连接成功，云端版本：${Number(data.revision || 0)}`);
+              } catch (error) {
+                setSyncKeyTestStatus(error instanceof Error ? `连接失败：${error.message}` : "连接失败");
+              } finally {
+                setSyncKeyTesting(false);
+              }
+            }}>{syncKeyTesting ? "测试中…" : "测试连接"}</button>
             <button type="button" className="ui-button" onClick={() => {
               saveStrictLearningSyncKey("");
               setSyncKeyDraft("");
               setSyncKeySaved(false);
+              setSyncKeyTestStatus("已清除本机密钥");
             }}>清除</button>
-            <span className="text-xs text-[var(--c-text-secondary)]">{syncKeySaved ? "已保存在本机" : syncKeyDraft.trim().length > 0 && syncKeyDraft.trim().length < 32 ? "密钥至少需要 32 个字符" : "尚未保存"}</span>
           </div>
-          <p className="mt-3 text-xs leading-5 text-[var(--c-text-secondary)]">服务端还需配置环境变量 STRICT_LEARNING_SYNC_SECRET，且其值必须与这里填写的密钥完全一致。保存后重新打开学习中心以开始同步。</p>
+          <p className="mt-2 text-xs text-[var(--c-text-secondary)]">{syncKeySaved ? "已保存在本机" : syncKeyDraft.trim().length > 0 && syncKeyDraft.trim().length < 32 ? "密钥至少需要 32 个字符" : "尚未保存"}</p>
+          {syncKeyTestStatus ? <p role="status" className="mt-2 text-xs leading-5 text-[var(--c-text-secondary)]">{syncKeyTestStatus}</p> : null}
+          <p className="mt-3 text-xs leading-5 text-[var(--c-text-secondary)]">服务端还需配置环境变量 STRICT_LEARNING_SYNC_SECRET，且其值必须与这里填写的密钥完全一致。测试连接只读取云端版本，不会写入或覆盖学习记录。保存后重新打开学习中心以开始同步。</p>
         </section>
       ) : null}
       <label className="flex flex-col gap-2 text-sm">
