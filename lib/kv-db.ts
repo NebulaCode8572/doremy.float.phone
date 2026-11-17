@@ -185,6 +185,7 @@ export function hydrateKvDb(): Promise<void> {
                 // A marked value is a known failed-write recovery copy and
                 // takes precedence over the older IndexedDB value.
                 if (existing !== decoded.value) batch.push({ key, value: decoded.value });
+                else _cache.set(key, decoded.value);
                 removeKeys.set(key, raw);
                 return;
             }
