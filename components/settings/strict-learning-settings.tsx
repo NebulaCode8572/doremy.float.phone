@@ -3,14 +3,17 @@
 import { useContext, useEffect, useState } from "react";
 import { SettingsContext } from "@/components/phone-settings-app";
 import { kvGet, kvSet } from "@/lib/kv-db";
+import { useAccount } from "@/lib/account-context";
+import { getStrictLearningStoreKey, migrateLegacyStrictLearningStore } from "@/lib/strict-learning-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 
-const STORE_KEY = "strict_learning_center_v1";
 type Store = { enabled?: boolean; supervisorId?: string; profile?: Record<string, unknown>; days?: Record<string, unknown>; sleepRules?: { bedtimeDeadline?: string; wakeFrom?: string; wakeUntil?: string; minSleepHours?: string } };
 
 export function StrictLearningSettings() {
   const { setSubpageTitle } = useContext(SettingsContext);
+  const { account } = useAccount();
+  const storeKey = getStrictLearningStoreKey(account.id);
   const [enabled, setEnabled] = useState(false);
   const [supervisorId, setSupervisorId] = useState("");
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -22,7 +25,8 @@ export function StrictLearningSettings() {
 
   useEffect(() => {
     setSubpageTitle("严格学习模式");
-    const raw = kvGet(STORE_KEY);
+    const activeStoreKey = migrateLegacyStrictLearningStore(account.id);
+    const raw = kvGet(activeStoreKey);
     if (raw) {
       try {
         const store = JSON.parse(raw) as Store;
@@ -37,17 +41,17 @@ export function StrictLearningSettings() {
     setCharacters(loadCharacters());
     setLoaded(true);
     return () => setSubpageTitle(null);
-  }, [setSubpageTitle]);
+  }, [account.id, setSubpageTitle]);
 
   const persist = (updates: Partial<Store>) => {
-    const raw = kvGet(STORE_KEY);
+    const raw = kvGet(storeKey);
     let current: Store = {};
     if (raw) { try { current = JSON.parse(raw) as Store; } catch { current = {}; } }
     const next: Store = { ...current, enabled, supervisorId, ...updates };
     if (updates.sleepRules) {
       next.sleepRules = { ...(current.sleepRules || {}), ...updates.sleepRules };
     }
-    kvSet(STORE_KEY, JSON.stringify(next));
+    kvSet(storeKey, JSON.stringify(next));
     window.dispatchEvent(new CustomEvent("strict-learning-updated"));
   };
 
