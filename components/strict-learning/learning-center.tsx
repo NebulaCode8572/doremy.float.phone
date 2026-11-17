@@ -219,14 +219,17 @@ export function StrictLearningCenter() {
       {open ? (
         <div className="strict-learning-overlay" role="dialog" aria-modal="true" aria-label="学习中心">
           <div className="strict-learning-page">
-            <header className="strict-learning-topbar">
-              <div><div className="text-lg font-bold">学习中心</div><div className="text-xs opacity-70">{today} · 监督者 {supervisor?.name || "未选择"}</div></div>
-              <button type="button" onClick={() => setOpen(false)} className="strict-icon-button" aria-label="关闭"><X size={20} /></button>
-            </header>
+            <button type="button" onClick={() => setOpen(false)} className="strict-close-float" aria-label="关闭学习中心"><X size={19} /></button>
 
             <section className="strict-profile">
-              <div className="strict-banner" style={store.profile.banner ? { backgroundImage: `url(${store.profile.banner})` } : undefined}>
-                <div className="strict-banner-quote">今天也向前走了一点。</div>
+              <div className="strict-crt" style={store.profile.banner ? { backgroundImage: `url(${store.profile.banner})` } : undefined}>
+                <div className="strict-crt-screen">
+                  <div className="strict-crt-status"><span>9:41</span><span>▮▮▮　◉　▰</span></div>
+                  <div className="strict-crt-quote">今天也向前走了一点。</div>
+                  <div className="strict-crt-bottom"><span>↳<br />{today}</span><span className="strict-crt-face">૮ ˶ᵔ ᵕ ᵔ˶ ა</span></div>
+                </div>
+                <div className="strict-crt-brand">TINY TYPE</div>
+                <div className="strict-crt-decoration">★　✿　🌈</div>
               </div>
               <div className="strict-profile-row">
                 <div className="strict-avatar-wrap">{store.profile.avatar ? <img src={store.profile.avatar} alt="用户头像" /> : <span>小玉</span>}</div>
