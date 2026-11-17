@@ -57,7 +57,7 @@ function isPublicRoute(pathname: string): boolean {
 
 function isSelfHostedTokenRoute(pathname: string): boolean {
   return SELF_HOSTED_TOKEN_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(\`\${route}/\`),
+    (route) => pathname === route || pathname.startsWith(route + "/"),
   );
 }
 
@@ -101,7 +101,7 @@ export async function middleware(request: NextRequest) {
     }
 
     const url = request.nextUrl.clone();
-    const requestedPath = \`\${pathname}\${request.nextUrl.search}\`;
+    const requestedPath = pathname + request.nextUrl.search;
     url.pathname = "/access";
     url.search = "";
     url.searchParams.set("next", requestedPath);
