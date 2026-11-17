@@ -18,7 +18,7 @@ type StrictDay = {
   recall?: { text: string; notes: string; completedAt: number; feedback?: string };
   charNote?: { date: string; characterId: string; text: string };
 };
-type StrictStore = { enabled: boolean; supervisorId: string; profile: StrictProfile; days: Record<string, StrictDay>; streak: { count: number; lastCheckinDate: string; boatUnlocked: boolean }; sleepRules: { bedtimeDeadline: string; wakeFrom: string; wakeUntil: string } };
+type StrictStore = { enabled: boolean; supervisorId: string; profile: StrictProfile; days: Record<string, StrictDay>; streak: { count: number; lastCheckinDate: string; boatUnlocked: boolean }; sleepRules: { bedtimeDeadline: string; wakeFrom: string; wakeUntil: string; minSleepHours: string } };
 type VisionResult = Record<string, unknown>;
 
 const STORE_KEY = "strict_learning_center_v1";
@@ -28,7 +28,7 @@ const DEFAULT_STORE: StrictStore = {
   profile: { nickname: "小玉", lineOne: "@白衣魔法使", lineTwo: "把今天过成值得骄傲的一天。", avatar: "", banner: "" },
   days: {},
   streak: { count: 0, lastCheckinDate: "", boatUnlocked: false },
-  sleepRules: { bedtimeDeadline: "", wakeFrom: "", wakeUntil: "" },
+  sleepRules: { bedtimeDeadline: "", wakeFrom: "", wakeUntil: "", minSleepHours: "" },
 };
 const todayKey = () => {
   const now = new Date();
@@ -218,6 +218,7 @@ export function StrictLearningCenter() {
         const deadline = clockMinutes(store.sleepRules.bedtimeDeadline);
         const wakeFrom = clockMinutes(store.sleepRules.wakeFrom);
         const wakeUntil = clockMinutes(store.sleepRules.wakeUntil);
+        const minSleepHours = store.sleepRules.minSleepHours ? Number(store.sleepRules.minSleepHours) : null;
         if ([deadline, wakeFrom, wakeUntil].some(value => value === null)) {
           updateDay({ sleep: { status: "recognized", result } });
           setNotice("睡眠数据已识别。请先在系统设置中填写入睡截止时间和起床时间范围，再进行达标审核。");
