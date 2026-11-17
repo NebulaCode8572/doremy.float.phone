@@ -89,6 +89,10 @@ export function StrictLearningCenter() {
 
   useEffect(() => {
     let cancelled = false;
+    syncReadyRef.current = false;
+    syncRevisionRef.current = 0;
+    lastQueuedSnapshotRef.current = "";
+    setSyncStatus("云端同步准备中");
     setLoaded(false);
     setLoadedAccountId("");
     setLoadError("");
