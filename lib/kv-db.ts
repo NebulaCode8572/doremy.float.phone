@@ -176,6 +176,11 @@ export function hydrateKvDb(): Promise<void> {
         const queueLegacyValue = (key: string, raw: string) => {
             const decoded = decodeLocalStorageValue(raw);
             const existing = persisted.get(key);
+            if (!decoded.isFallback && _cache.has(key) && _cache.get(key) !== decoded.value) {
+                // A value written during an earlier failed hydration attempt
+                // may be newer than this unmarked legacy mirror.
+                return;
+            }
             if (decoded.isFallback) {
                 // A marked value is a known failed-write recovery copy and
                 // takes precedence over the older IndexedDB value.
