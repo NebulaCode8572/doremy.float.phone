@@ -49,6 +49,14 @@ const formatMinutes = (value: unknown) => {
   if (!Number.isFinite(minutes) || minutes < 0) return "—";
   return `${Math.floor(minutes / 60)}小时${String(minutes % 60).padStart(2, "0")}分`;
 };
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
 function readImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -139,7 +147,9 @@ export function StrictLearningCenter() {
             initialStore.profile.nickname !== DEFAULT_STORE.profile.nickname ||
             initialStore.profile.lineOne !== DEFAULT_STORE.profile.lineOne ||
             initialStore.profile.lineTwo !== DEFAULT_STORE.profile.lineTwo ||
-            initialStore.profile.avatar || initialStore.profile.banner
+            initialStore.profile.avatar || initialStore.profile.banner ||
+            initialStore.sleepRules.bedtimeDeadline || initialStore.sleepRules.wakeFrom ||
+            initialStore.sleepRules.wakeUntil || initialStore.sleepRules.minSleepHours
           );
           if (remote.payload && typeof remote.payload === "object") {
             const parsed = remote.payload as Partial<StrictStore>;
@@ -151,7 +161,7 @@ export function StrictLearningCenter() {
               streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
               sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
             };
-            if (localHasData && JSON.stringify(initialStore) !== JSON.stringify(remoteStore)) {
+            if (localHasData && stableStringify(initialStore) !== stableStringify(remoteStore)) {
               syncReadyRef.current = false;
               setSyncConflict({ payload: remoteStore, revision: Number(remote.revision || 0) });
               setSyncStatus("云端与本机均有不同记录，请选择保留哪一份");
