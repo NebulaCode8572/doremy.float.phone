@@ -31,7 +31,7 @@ export function StrictLearningSettings() {
     const raw = kvGet(STORE_KEY);
     let current: Store = {};
     if (raw) { try { current = JSON.parse(raw) as Store; } catch { current = {}; } }
-    kvSet(STORE_KEY, JSON.stringify({ ...current, enabled, supervisorId, ...updates }));
+    kvSet(STORE_KEY, JSON.stringify({ ...current, enabled, supervisorId, ...updates }));\n    window.dispatchEvent(new CustomEvent("strict-learning-updated"));
   };
 
   if (!loaded) return null;
