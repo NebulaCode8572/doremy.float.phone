@@ -52,7 +52,7 @@ function isPublicIp(address: string): boolean {
     // benchmarking prefix 2001:2::/48), plus documentation and 6to4 ranges.
     if (first === 0x2001 && groups[1] <= 0x01ff) return false;
     if (first === 0x2001 && groups[1] === 0x0db8) return false;
-    if (first === 0x2002 || first === 0x3fff) return false;
+    if (first === 0x2002 || (first === 0x3fff && (groups[1] & 0xfff0) === 0)) return false;
     return true;
   }
   return false;
