@@ -36,7 +36,6 @@ const SELF_HOSTED_TOKEN_ROUTES = [
 ];
 
 const STATIC_ROUTE_PREFIXES = [
-  "/_next/",
   "/birds/",
   "/diary/",
   "/fonts/",
@@ -72,8 +71,9 @@ function isStaticRoute(pathname: string): boolean {
 
 function isStaticAssetRoute(pathname: string): boolean {
   if (pathname.startsWith("/api/")) return false;
-  return pathname.startsWith("/_next/") ||
-    STATIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
+  // _next/static and _next/image are excluded by the middleware matcher.
+  // Do not exempt every other /_next/* route (for example, internal data routes).
+  return STATIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
     STATIC_FILE_RE.test(pathname);
 }
 
