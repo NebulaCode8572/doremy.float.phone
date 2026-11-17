@@ -19,8 +19,9 @@
 .strict-progress-card{padding:17px 20px}
 .strict-progress-track{height:11px;border-radius:999px;background:#e0e9eb;overflow:hidden;margin-top:8px}
 .strict-progress-fill{height:100%;border-radius:999px;background:#a8d4e0;transition:width .25s ease}
-.strict-message-card{background:rgba(255,255,255,.78)}
+.strict-message-card{background:rgba(255,255,255,.78);padding:20px 21px 23px}
 .strict-message-card>div:first-child{color:#315766}
+.strict-message-card>div:nth-child(2){margin-top:18px!important;padding:2px 1px 0;color:#294651;font-size:14px;line-height:2;white-space:pre-wrap;overflow-wrap:anywhere}
 .strict-select{min-width:0;flex:1;border:1px solid #d9e9ed;border-radius:12px;padding:9px 10px;background:#f7fbfc;color:#315766;font-size:12px}
 .strict-small-button{border:0;border-radius:12px;padding:9px 12px;background:#d9edf2;color:#527987;font-size:12px;font-weight:650;white-space:nowrap}
 .strict-task-icon{flex:0 0 auto;color:#9fc9d5}
