@@ -633,13 +633,6 @@ export function StrictLearningCenter() {
             <section className="strict-message-card">
               <div className="flex items-center gap-2"><Sparkles size={20} /><strong>留言板</strong><span className="ml-auto text-xs text-slate-500">每日更新</span></div>
               <div className="mt-3 text-sm leading-7">{day.charNote?.date === today ? day.charNote.text : "今天的留言还没有写好。"}</div>
-              <div className="mt-3 flex items-center gap-2">
-                <select value={store.supervisorId} onChange={event => setStore(previous => ({ ...previous, supervisorId: event.target.value }))} className="strict-select">
-                  <option value="">选择监督 Char</option>
-                  {characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}
-                </select>
-                <button type="button" onClick={() => void generateDailyNote()} disabled={busy !== null} className="strict-small-button">{busy === "note" ? "生成中…" : "生成今日留言"}</button>
-              </div>
             </section>
 
             <section className="strict-task-card">
