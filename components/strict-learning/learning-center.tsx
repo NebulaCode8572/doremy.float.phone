@@ -14,7 +14,7 @@ type StrictDay = {
   date: string;
   sleep?: { status: string; result?: Record<string, unknown> };
   focus?: { status: string; minutes?: number; result?: Record<string, unknown> };
-  recall?: { text: string; notes: string; completedAt: number };
+  recall?: { text: string; notes: string; completedAt: number; feedback?: string };
   charNote?: { date: string; characterId: string; text: string };
 };
 type StrictStore = { enabled: boolean; supervisorId: string; profile: StrictProfile; days: Record<string, StrictDay>; streak: { count: number; lastCheckinDate: string; boatUnlocked: boolean }; sleepRules: { bedtimeDeadline: string; wakeFrom: string; wakeUntil: string } };
@@ -328,7 +328,7 @@ export function StrictLearningCenter() {
               <div className="flex items-center gap-3"><ClipboardList className="strict-task-icon" size={34} /><div className="flex-1"><strong>晚间主动回忆</strong><div className="text-xs text-slate-500 mt-1">不看笔记，回忆今天学到的内容。</div></div><span className="strict-status">{day.recall?.completedAt ? "已完成" : "未完成"}</span></div>
               <textarea value={recallText} onChange={event => setRecallText(event.target.value)} placeholder="今天学了什么？" className="strict-recall-input" rows={3} />
               <textarea value={recallNotes} onChange={event => setRecallNotes(event.target.value)} placeholder="可选：补充笔记、易错点或资料说明" className="strict-recall-input mt-2" rows={2} />
-              <button type="button" onClick={saveRecall} className="strict-upload-button"><Check size={18} />保存今日回忆</button>
+              {day.recall?.feedback ? <div className="strict-result"><strong>Char：</strong>{day.recall.feedback}</div> : null}\n              <button type="button" onClick={() => void saveRecall()} disabled={busy !== null} className="strict-upload-button"><Check size={18} />{busy === "note" ? "Char 正在回复…" : "保存今日回忆"}</button>
             </section>
 
             <section className="strict-audit-card"><Sparkles size={20} /><div><strong>Char 审核状态</strong><p className="text-xs text-slate-600 mt-1">提交凭证后，识别结果和简短反馈会显示在对应任务卡片中。</p></div></section>
