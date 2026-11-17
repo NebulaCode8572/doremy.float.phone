@@ -82,30 +82,41 @@ export function StrictLearningCenter() {
   const focusMinutes = day.focus?.minutes || 0;
 
   useEffect(() => {
+    let cancelled = false;
     setLoaded(false);
     setLoadedAccountId("");
     setOpen(false);
     setStore(DEFAULT_STORE);
     setRecallText("");
     setRecallNotes("");
-    const activeStoreKey = migrateLegacyStrictLearningStore(account.id);
-    const raw = kvGet(activeStoreKey);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as Partial<StrictStore>;
-        setStore({
-          ...DEFAULT_STORE,
-          ...parsed,
-          profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
-          days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
-          streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
-          sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
-        });
-      } catch { /* retain defaults */ }
-    }
-    setCharacters(loadCharacters());
-    setLoadedAccountId(account.id);
-    setLoaded(true);
+
+    void (async () => {
+      const activeStoreKey = await migrateLegacyStrictLearningStore(account.id);
+      if (cancelled) return;
+      const raw = kvGet(activeStoreKey);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as Partial<StrictStore>;
+          setStore({
+            ...DEFAULT_STORE,
+            ...parsed,
+            profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
+            days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
+            streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
+            sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
+          });
+        } catch { /* retain defaults */ }
+      }
+      setCharacters(loadCharacters());
+      setLoadedAccountId(account.id);
+      setLoaded(true);
+    })().catch(() => {
+      if (!cancelled) {
+        setNotice("学习记录迁移失败，请重新打开学习中心。");
+      }
+    });
+
+    return () => { cancelled = true; };
   }, [account.id]);
 
   useEffect(() => {
