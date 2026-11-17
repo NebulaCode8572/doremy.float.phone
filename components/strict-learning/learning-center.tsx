@@ -17,7 +17,7 @@ type StrictDay = {
   recall?: { text: string; notes: string; completedAt: number };
   charNote?: { date: string; characterId: string; text: string };
 };
-type StrictStore = { enabled: boolean; supervisorId: string; profile: StrictProfile; days: Record<string, StrictDay> };
+type StrictStore = { enabled: boolean; supervisorId: string; profile: StrictProfile; days: Record<string, StrictDay>; streak: { count: number; lastCheckinDate: string; boatUnlocked: boolean } };
 type VisionResult = Record<string, unknown>;
 
 const STORE_KEY = "strict_learning_center_v1";
@@ -26,10 +26,16 @@ const DEFAULT_STORE: StrictStore = {
   supervisorId: "",
   profile: { nickname: "小玉", lineOne: "@白衣魔法使", lineTwo: "把今天过成值得骄傲的一天。", avatar: "", banner: "" },
   days: {},
+  streak: { count: 0, lastCheckinDate: "", boatUnlocked: false },
 };
 const todayKey = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
+const dayDistance = (from: string, to: string) => {
+  if (!from || !to) return Number.POSITIVE_INFINITY;
+  const parse = (value: string) => Date.UTC(Number(value.slice(0, 4)), Number(value.slice(5, 7)) - 1, Number(value.slice(8, 10)));
+  return Math.round((parse(to) - parse(from)) / 86400000);
 };
 const formatMinutes = (value: unknown) => {
   const minutes = Number(value);
@@ -61,7 +67,8 @@ export function StrictLearningCenter() {
   const today = todayKey();
   const day = store.days[today] || { date: today };
   const supervisor = useMemo(() => characters.find(character => character.id === store.supervisorId) || null, [characters, store.supervisorId]);
-  const completed = Number(day.sleep?.status === "approved") + Number((day.focus?.minutes || 0) >= 480) + Number(Boolean(day.recall?.completedAt));
+  const completed = Number(day.sleep?.status === "approved") + Number(day.focus?.status === "approved" && (day.focus?.minutes || 0) >= 480) + Number(Boolean(day.recall?.completedAt));
+  const currentStreak = dayDistance(store.streak.lastCheckinDate, today) <= 1 ? store.streak.count : 0;
   const focusMinutes = day.focus?.minutes || 0;
 
   useEffect(() => {
@@ -74,6 +81,7 @@ export function StrictLearningCenter() {
           ...parsed,
           profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
           days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
+          streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
         });
       } catch { /* retain defaults */ }
     }
@@ -84,6 +92,15 @@ export function StrictLearningCenter() {
   useEffect(() => {
     if (loaded) kvSet(STORE_KEY, JSON.stringify(store));
   }, [loaded, store]);
+
+  useEffect(() => {
+    if (!loaded || completed !== 3 || store.streak.lastCheckinDate === today) return;
+    setStore(previous => {
+      if (previous.streak.lastCheckinDate === today) return previous;
+      const nextCount = dayDistance(previous.streak.lastCheckinDate, today) === 1 ? previous.streak.count + 1 : 1;
+      return { ...previous, streak: { count: nextCount, lastCheckinDate: today, boatUnlocked: previous.streak.boatUnlocked || nextCount >= 30 } };
+    });
+  }, [loaded, completed, today, store.streak.lastCheckinDate]);
 
   useEffect(() => {
     if (!open) return;
@@ -238,6 +255,10 @@ export function StrictLearningCenter() {
                   <div className="text-sm text-slate-600">{store.profile.lineOne}</div>
                   <div className="text-xs text-slate-500 mt-1">{store.profile.lineTwo}</div>
                 </div>
+                <div className="strict-streak-mini" aria-label={`连续打卡 ${currentStreak} 天，${store.streak.boatUnlocked ? "已获得轮船" : `轮船进度 ${Math.min(currentStreak, 30)} / 30 天`}`}>
+                  <div className="strict-streak-item"><span className="strict-streak-icon" aria-hidden="true">🔥</span><span>{currentStreak}天</span></div>
+                  <div className={`strict-streak-item ${store.streak.boatUnlocked ? "is-unlocked" : "is-locked"}`}><span className="strict-streak-icon" aria-hidden="true">🚢</span><span>{store.streak.boatUnlocked ? "已获得" : `${Math.min(currentStreak, 30)}/30`}</span></div>
+                </div>
                 <button type="button" className="strict-edit-button" onClick={() => { setProfileDraft(store.profile); setEditingProfile(true); }} aria-label="编辑资料"><Pencil size={17} /></button>
               </div>
             </section>
@@ -249,7 +270,7 @@ export function StrictLearningCenter() {
             </section>
 
             <section className="strict-message-card">
-              <div className="flex items-center gap-2"><Sparkles size={20} /><strong>Char 的留言</strong><span className="ml-auto text-xs text-slate-500">每日更新</span></div>
+              <div className="flex items-center gap-2"><Sparkles size={20} /><strong>留言板</strong><span className="ml-auto text-xs text-slate-500">每日更新</span></div>
               <div className="mt-3 text-sm leading-7">{day.charNote?.date === today ? day.charNote.text : "今天的留言还没有写好。"}</div>
               <div className="mt-3 flex items-center gap-2">
                 <select value={store.supervisorId} onChange={event => setStore(previous => ({ ...previous, supervisorId: event.target.value }))} className="strict-select">
