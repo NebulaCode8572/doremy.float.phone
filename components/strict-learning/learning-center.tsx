@@ -148,6 +148,7 @@ export function StrictLearningCenter() {
             cache: "no-store",
           });
           const remote = await response.json();
+          if (cancelled || generation !== syncGenerationRef.current) return;
           if (!response.ok) throw new Error(remote.error || "云端读取失败");
           syncRevisionRef.current = Number(remote.revision || 0);
           const localHasData = Boolean(
@@ -190,6 +191,7 @@ export function StrictLearningCenter() {
                 body: JSON.stringify({ expectedRevision: 0, payload: initialStore }),
               });
               const saved = await upload.json();
+              if (cancelled || generation !== syncGenerationRef.current) return;
               if (upload.status === 409 && saved.payload && typeof saved.payload === "object") {
                 const parsedRemote = saved.payload as Partial<StrictStore>;
                 const remoteStore: StrictStore = {
@@ -222,8 +224,8 @@ export function StrictLearningCenter() {
       } else {
         setSyncStatus(account.id === "local_user" ? "请先在严格学习设置中填写共享密钥" : "当前账号模式不支持此云同步");
       }
+      if (cancelled || generation !== syncGenerationRef.current) return;
       lastQueuedSnapshotRef.current = JSON.stringify(initialStore);
-      if (cancelled) return;
       setStore(initialStore);
       setCharacters(loadCharacters());
       setLoadedAccountId(account.id);
