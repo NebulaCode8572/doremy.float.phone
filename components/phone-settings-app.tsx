@@ -27,7 +27,8 @@ import { DeviceActionSettings } from "./device-action/device-action-settings";
 import { SystemCalendarSettings } from "./system-calendar/system-calendar-settings";
 import { ScreenshotSettings } from "./screenshot/screenshot-settings";
 import { WidgetSettings } from "./widget/widget-settings";
-import { VisionApiSettings } from "./settings/vision-api-settings";\nimport { StrictLearningSettings } from "./settings/strict-learning-settings";
+import { VisionApiSettings } from "./settings/vision-api-settings";
+import { StrictLearningSettings } from "./settings/strict-learning-settings";
 import { fetchIsAdmin } from "@/lib/moderation-client";
 import { PageShell } from "./ui/page-shell";
 import { CardGrid, FeaturedCard, type CardItem, type FeaturedCardItem } from "./ui/card-grid";
@@ -52,6 +53,7 @@ type SubPage =
     | "main"
     | "api"
     | "vision"
+    | "strictLearning"
     | "voice"
     | "imageGeneration"
     | "presets"
@@ -75,7 +77,8 @@ type SubPage =
 
 const SETTINGS_MENU = [
     { id: "api", icon: HardDrive, label: "API 设置", desc: "大模型接口", iconColor: BINDING_ACCENTS.api , glass: "api" },
-    { id: "vision", icon: Image, label: "视觉模型 API", desc: "全局图片理解模型", iconColor: CONTENT_APP_ACCENTS.moments, glass: "image-generation" },\n    { id: "strictLearning", icon: BookOpen, label: "严格学习模式", desc: "学习任务与凭证审核", iconColor: CONTENT_APP_ACCENTS.chat, glass: "" },
+    { id: "vision", icon: Image, label: "视觉模型 API", desc: "全局图片理解模型", iconColor: CONTENT_APP_ACCENTS.moments, glass: "image-generation" },
+    { id: "strictLearning", icon: BookOpen, label: "严格学习模式", desc: "学习任务与凭证审核", iconColor: CONTENT_APP_ACCENTS.chat, glass: "" },
     { id: "voice", icon: Mic, label: "语音 API", desc: "语音合成", iconColor: BINDING_ACCENTS.voice , glass: "voice" },
     { id: "imageGeneration", icon: Image, label: "图像生成 API", desc: "模型、参考图与提示词", iconColor: CONTENT_APP_ACCENTS.moments , glass: "image-generation" },
     { id: "presets", icon: Fingerprint, label: "预设", desc: "角色预设", iconColor: BINDING_ACCENTS.preset , glass: "presets" },
