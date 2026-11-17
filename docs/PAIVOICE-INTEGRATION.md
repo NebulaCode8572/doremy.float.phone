@@ -45,7 +45,8 @@ The App aborts a voice reply generation after 100 seconds and sends a short time
 
 ## MiniMax streaming audio
 
-- PaiVoice's MiniMax TTS provider uses the same T2A V2 model, Voice ID, speed, pitch, volume, language boost, and text-wrapper cleanup as Float's existing `lib/tts-service.ts` implementation.
+- PaiVoice's MiniMax TTS provider receives the selected character's model, Voice ID, speed, pitch, and language boost directly from Float's existing Chat voice binding. Only these non-secret settings are sent; the MiniMax API key stays in PaiVoice's server environment.
+- The T2A V2 request uses Float's existing text-wrapper cleanup and voice-setting defaults (volume 1.0, with emotion only when explicitly configured server-side).
 - For low latency, the service can request SSE streaming as 44.1kHz mono signed 16-bit PCM and forward each chunk over the existing WebSocket. The App decodes and schedules PCM chunks as they arrive instead of waiting for the complete MP3 file.
 - Set `PAIVOICE_MINIMAX_STREAM=false` to use Float-compatible 44.1kHz/256kbps MP3 output and buffered playback. This is the comparison mode for checking the closest possible output-format match against Float.
 - The MiniMax API key and Voice ID stay in PaiVoice's server-side environment. The browser receives audio only; it never receives the provider credential.
