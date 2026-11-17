@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Camera, Check, ChevronDown, ClipboardList, Moon, Pencil, Sparkles, Timer, Upload, X } from "lucide-react";
+import { BookOpen, Camera, Check, ClipboardList, Moon, Pencil, Sparkles, Timer, Upload, X } from "lucide-react";
+import "./learning-center.css";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
