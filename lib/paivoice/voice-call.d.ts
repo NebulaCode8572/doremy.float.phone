@@ -1,7 +1,17 @@
 export type PaiVoiceEvent = (payload?: any) => void;
 
+export type PaiVoiceTtsConfig = {
+  model?: string;
+  voice_id?: string;
+  speed?: number;
+  pitch?: number;
+  language_boost?: string;
+};
+
 export type PaiVoiceOptions = {
   url: string;
+  /** Non-secret voice settings copied from the selected Float character configuration. */
+  ttsConfig?: PaiVoiceTtsConfig | null;
   video?: false;
   pushToTalk?: boolean;
   getAuthTicket: () => Promise<string>;
