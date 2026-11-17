@@ -10,7 +10,7 @@ export type StrictDay = {
   date: string;
   sleep?: { status: "recognized" | "approved" | "not-met" | "date-mismatch" | "needs-reupload"; result?: Record<string, unknown>; feedback?: string };
   focus?: { status: "approved" | "date-mismatch" | "needs-reupload"; minutes?: number; result?: Record<string, unknown>; feedback?: string; pendingMinutes?: number; pendingResult?: Record<string, unknown> };
-  recall?: { text: string; notes: string; completedAt: number; feedback?: string };
+  recall?: { text: string; images?: string[]; completedAt: number; feedback?: string };
   charNote?: { date: string; characterId: string; text: string };
   [key: string]: unknown;
 };
@@ -210,6 +210,7 @@ function normalizeDay(key: string, value: unknown): StrictDay {
       throw new Error("补充笔记格式无效：" + key);
     }
     assertString(day.recall, "feedback", 4000, `${key} 的角色反馈`);
+    if (day.recall.images !== undefined && (!Array.isArray(day.recall.images) || day.recall.images.length > 3 || day.recall.images.some((image) => typeof image !== "string" || image.length > 500000))) throw new Error(`${key} 的回忆资料图片格式无效`);
     if (typeof day.recall.completedAt !== "number" || !Number.isFinite(day.recall.completedAt) || day.recall.completedAt < 0) {
       throw new Error(`${key} 的回忆完成时间无效`);
     }
