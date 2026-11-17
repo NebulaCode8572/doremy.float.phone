@@ -2251,3 +2251,32 @@ export const MUSIC_CSS_EXAMPLE = `/* ══════════════�
   /* background: var(--c-music-accent-dim); */
 }
 `;
+
+
+/** 通话界面字幕 CSS 示例；选择器会自动限制在通话字幕区域内。 */
+export const CALL_SCREEN_CSS_EXAMPLE = `/* ═══ 通话界面字幕 CSS 示例 ═══ */
+/* 只影响通话字幕，不影响聊天室消息气泡。 */
+
+/* 角色说的话 */
+.call-subtitle[data-role="assistant"] {
+  background: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  padding: 10px 14px;
+}
+
+/* 用户说的话 */
+.call-subtitle[data-role="user"] {
+  background: rgba(70, 130, 255, 0.38);
+  color: #FFFFFF;
+  border: 1px solid rgba(130, 170, 255, 0.3);
+  border-radius: 16px;
+  padding: 10px 14px;
+}
+
+/* 双语字幕 */
+.call-subtitle-bilingual {
+  line-height: 1.6;
+}
+`;
