@@ -25,6 +25,8 @@ import {
     loadMenstrualRecords,
 } from "./menstrual-storage";
 import { loadTimedWakeSchedules, removeTimedWakeSchedule, type TimedWakeSchedule } from "./timed-wake-storage";
+import { loadProactiveCallSchedules, type ProactiveCallSchedule } from "./proactive-call-storage";
+import { nextDailyAlarmAt, type DailyAlarmConfig } from "./daily-alarm-storage";
 import {
     IDLE_RECONNECT_MAX_CONSECUTIVE,
     loadIdleReconnectRules,
@@ -620,6 +622,109 @@ export async function armTimedWakeBailout(schedule: TimedWakeSchedule): Promise<
     }
 }
 
+/** 独立的稍后主动来电预约：服务端任务携带确定的 call 类型，到点不再依赖模型输出通话标记。 */
+export async function armProactiveCallBailout(schedule: ProactiveCallSchedule): Promise<BailoutArmResult> {
+    if (!bailoutEnabled()) return { ok: false, reason: "当前环境不支持服务端离线预约" };
+    try {
+        if (!(await hasAccountPushSubscription())) return { ok: false, reason: "当前账号没有可用的离线推送订阅" };
+        if (isWithinPushQuietHours(schedule.fireAt)) return { ok: false, reason: "触发时间落在推送安静时段内" };
+        const session = loadChatSessions().find(s => s.id === schedule.sessionId);
+        if (!session || session.isGroup || session.contactId !== schedule.characterId) {
+            return { ok: false, reason: "找不到对应的单聊会话" };
+        }
+
+        const history = loadChatMessages(session.id);
+        const { llmMessages, character, config, preset, regexes, userIdentity } = await buildChatPromptMessages(
+            session,
+            history,
+            { appTags: ["chat", "text", "proactive_call"] },
+        );
+        llmMessages.push({
+            role: "system",
+            content: "这是一次已经确定的主动语音来电任务。请生成接通后自然、简短的第一段开场台词，围绕以下约定展开；不要输出通话标记，不要改成普通消息。来电主题：" + schedule.intent,
+        });
+        const request = buildProviderRequest(config, preset, toLlmRequestMessages(llmMessages));
+        const posted = await postBailoutJob({
+            triggerKey: `proactivecall:${schedule.id}`,
+            kind: "timed_task",
+            executeAtMs: schedule.fireAt + 15_000,
+            request,
+            notifyTitle: character.name,
+            merge: {
+                sessionId: session.id,
+                prevCount: 0,
+                regexes,
+                characterName: character.name,
+                userName: userIdentity?.name ?? "用户",
+                appId: "chat",
+                appTags: ["chat", "text", "proactive_call"],
+                armAt: new Date(schedule.fireAt).toISOString(),
+                proactiveCall: true,
+                proactiveCallId: schedule.id,
+            },
+        });
+        return posted ? { ok: true } : { ok: false, reason: "服务端预约接口没有确认成功" };
+    } catch (err) {
+        console.warn("[PushBailout] proactive call arm failed:", err);
+        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+}
+
+/** 每日 AI 闹钟：每个本地日期一条独立任务，消息与来电在同一生成实例中完成。 */
+export async function armDailyAlarmBailout(
+    config: DailyAlarmConfig,
+    options: { force?: boolean } = {},
+): Promise<BailoutArmResult> {
+    if (!config.enabled) return { ok: false, reason: "每日闹钟未启用" };
+    if (!bailoutEnabled()) return { ok: false, reason: "当前环境不支持服务端离线预约" };
+    try {
+        if (!(await hasAccountPushSubscription())) return { ok: false, reason: "当前账号没有可用的离线推送订阅" };
+        const next = nextDailyAlarmAt(Date.now(), config.localTime, config.timeZone);
+        if (!options.force && next.fireAt <= Date.now() + 5 * 60_000) return { ok: true };
+        const session = loadChatSessions().find(item => item.id === config.sessionId);
+        if (!session || session.isGroup || session.contactId !== config.characterId) {
+            return { ok: false, reason: "找不到每日闹钟对应的单聊会话" };
+        }
+        const history = loadChatMessages(session.id);
+        const { llmMessages, character, config: providerConfig, preset, regexes, userIdentity } =
+            await buildChatPromptMessages(session, history, { appTags: ["chat", "text", "daily_alarm"] });
+        llmMessages.push({
+            role: "system",
+            content: [
+                "这是用户明确设置的每日 AI 闹钟任务。",
+                "请先在聊天里发送一条自然、简短、有角色个性的早安消息；随后发起语音来电。",
+                "来电已由系统确定，不需要输出任何通话标记，也不要把它改成普通消息。",
+                "来电接通后的第一句话应自然承接早安消息，不要重复整段早安内容。",
+            ].join("\n"),
+        });
+        const request = buildProviderRequest(providerConfig, preset, toLlmRequestMessages(llmMessages));
+        const triggerKey = "dailyalarm:" + config.id + ":" + next.dateKey;
+        const posted = await postBailoutJob({
+            triggerKey,
+            kind: "timed_task",
+            executeAtMs: next.fireAt + 15_000,
+            request,
+            notifyTitle: character.name,
+            merge: {
+                sessionId: session.id,
+                prevCount: 0,
+                regexes,
+                characterName: character.name,
+                userName: userIdentity?.name ?? "用户",
+                appId: "chat",
+                appTags: ["chat", "text", "daily_alarm"],
+                armAt: new Date(next.fireAt).toISOString(),
+                proactiveCall: true,
+                dailyAlarm: { id: config.id, dateKey: next.dateKey, localTime: config.localTime, timeZone: config.timeZone },
+                alarmInstanceId: config.id + ":" + next.dateKey,
+            },
+        });
+        return posted ? { ok: true } : { ok: false, reason: "服务端没有确认每日闹钟预约" };
+    } catch (err) {
+        console.warn("[PushBailout] daily alarm arm failed:", err);
+        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+}
 /** 经期关怀兜底：预测未来 7 天内的关怀日，为选中的角色各挂一单（每周期幂等）。 */
 export async function armPeriodCareBailouts(): Promise<void> {
     if (!bailoutEnabled()) return;
@@ -699,6 +804,15 @@ export async function refreshScheduledBailouts(): Promise<void> {
     }
     refreshingScheduled = true;
     try {
+
+        for (const schedule of loadProactiveCallSchedules()) {
+            // 已经过期的本地记录不再重挂，避免完成过的来电在后续巡检中被重新排队。
+            if (schedule.fireAt <= Date.now()) continue;
+            const result = await armProactiveCallBailout(schedule);
+            console.warn(result.ok
+                ? `[PushBailout] 稍后主动来电已挂上：${schedule.id}`
+                : `[PushBailout] 稍后主动来电未挂上：${schedule.id} — ${result.reason}`);
+        }
         for (const schedule of loadTimedWakeSchedules()) {
             // 失败原因过去被直接丢弃，导致「push_jobs 一条记录都没有」完全无法定位：
             // 是没走到、被安静时段拦了、找不到会话、还是 POST 被拒，全都看不见。

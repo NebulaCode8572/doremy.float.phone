@@ -2204,6 +2204,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     characterId: session.isGroup ? "" : session.contactId,
                     kind: detail.type === "video" ? "video" : "voice",
                     initiator: "character",
+                    accepted: detail.__fromBar === true,
                     ...(typeof detail.characterName === "string" ? { initiatorName: detail.characterName } : {}),
                 });
                 // Dismiss the global incoming-call bar (if showing)

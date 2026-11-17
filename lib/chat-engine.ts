@@ -82,7 +82,7 @@ import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { pushApiLog } from "./api-log-store";
 export { getApiLogs, clearApiLogs, type DebugInfo } from "./api-log-store";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
-import { getInternalCapability, getInternalCapabilitySubToolDefinitions } from "./internal-capability-storage";
+import { getInternalCapability, getInternalCapabilitySubToolDefinitions, TIMED_WAKE_CAPABILITY_ID } from "./internal-capability-storage";
 import { isMediaStoreRef, loadMediaBlob } from "./media-cache-storage";
 import {
     DEFAULT_CHAT_BILINGUAL_PROMPT,
@@ -1559,6 +1559,9 @@ export function isNativeSingleTool(tool: EnabledTool): boolean {
     if (tool.source === "composite") return true;
     if (tool.source === "custom_app") return true;
     if (tool.source === "internal") {
+        // 定时联系同时包含普通主动消息和独立主动来电。两者都是高频、明确的动作，
+        // 原生协议中直接并列暴露，避免 loader 展开后模型仍调用旧的父级工具名。
+        if (tool.sourceId === TIMED_WAKE_CAPABILITY_ID) return true;
         const capability = getInternalCapability(tool.sourceId);
         const subTools = capability ? getInternalCapabilitySubToolDefinitions(capability) : [];
         return subTools.length === 0;
@@ -1702,6 +1705,16 @@ export function buildNativeChatTools(enabledTools: EnabledTool[], expandedSource
     };
 
     for (const tool of enabledTools) {
+        if (tool.source === "internal" && tool.sourceId === TIMED_WAKE_CAPABILITY_ID) {
+            const sourceKey = nativeToolSourceKey(tool);
+            registerTool(tool.name, tool.description, tool.parameterSchema || "{}", sourceKey, tool.usageGuide);
+            const capability = getInternalCapability(tool.sourceId);
+            const subTools = capability ? getInternalCapabilitySubToolDefinitions(capability) : [];
+            for (const subTool of subTools) {
+                registerTool(subTool.name, subTool.description, subTool.parameterSchema, sourceKey, subTool.usageGuide);
+            }
+            continue;
+        }
         if (isNativeSingleTool(tool)) {
             const sourceKey = nativeToolSourceKey(tool);
             registerTool(tool.name, tool.description, tool.parameterSchema || "{}", sourceKey, tool.usageGuide);
