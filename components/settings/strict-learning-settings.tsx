@@ -7,7 +7,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 
 const STORE_KEY = "strict_learning_center_v1";
-type Store = { enabled?: boolean; supervisorId?: string; profile?: Record<string, unknown>; days?: Record<string, unknown>; sleepRules?: { bedtimeDeadline?: string; wakeFrom?: string; wakeUntil?: string } };
+type Store = { enabled?: boolean; supervisorId?: string; profile?: Record<string, unknown>; days?: Record<string, unknown>; sleepRules?: { bedtimeDeadline?: string; wakeFrom?: string; wakeUntil?: string; minSleepHours?: string } };
 
 export function StrictLearningSettings() {
   const { setSubpageTitle } = useContext(SettingsContext);
@@ -17,6 +17,7 @@ export function StrictLearningSettings() {
   const [bedtimeDeadline, setBedtimeDeadline] = useState("");
   const [wakeFrom, setWakeFrom] = useState("");
   const [wakeUntil, setWakeUntil] = useState("");
+  const [minSleepHours, setMinSleepHours] = useState("");
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -30,6 +31,8 @@ export function StrictLearningSettings() {
         setBedtimeDeadline(store.sleepRules?.bedtimeDeadline || "");
         setWakeFrom(store.sleepRules?.wakeFrom || "");
         setWakeUntil(store.sleepRules?.wakeUntil || "");
+        setMinSleepHours(store.sleepRules?.minSleepHours || "");
+        setMinSleepHours(store.sleepRules?.minSleepHours || "");
       } catch { /* defaults */ }
     }
     setCharacters(loadCharacters());
@@ -69,8 +72,9 @@ export function StrictLearningSettings() {
           <label className="flex items-center justify-between gap-3 text-sm"><span>入睡截止时间</span><input type="time" value={bedtimeDeadline} onChange={event => { setBedtimeDeadline(event.target.value); persist({ sleepRules: { bedtimeDeadline: event.target.value, wakeFrom, wakeUntil } }); }} className="ui-input w-32" /></label>
           <label className="flex items-center justify-between gap-3 text-sm"><span>最早起床时间</span><input type="time" value={wakeFrom} onChange={event => { setWakeFrom(event.target.value); persist({ sleepRules: { bedtimeDeadline, wakeFrom: event.target.value, wakeUntil } }); }} className="ui-input w-32" /></label>
           <label className="flex items-center justify-between gap-3 text-sm"><span>最晚起床时间</span><input type="time" value={wakeUntil} onChange={event => { setWakeUntil(event.target.value); persist({ sleepRules: { bedtimeDeadline, wakeFrom, wakeUntil: event.target.value } }); }} className="ui-input w-32" /></label>
+          <label className="flex items-center justify-between gap-3 text-sm"><span>最低睡眠时长（可选）</span><input type="number" min="1" max="24" step="0.5" value={minSleepHours} onChange={event => { setMinSleepHours(event.target.value); persist({ sleepRules: { bedtimeDeadline, wakeFrom, wakeUntil, minSleepHours: event.target.value } }); }} placeholder="不限制" className="ui-input w-32" /></label>
         </div>
-        <p className="mt-2 text-xs text-[var(--c-text-secondary)]">审核通过条件：入睡不晚于截止时间，起床处于允许范围内。时间范围需完整填写。</p>
+        <p className="mt-2 text-xs text-[var(--c-text-secondary)]">审核通过条件：入睡不晚于截止时间，起床处于允许范围内；最低睡眠时长为可选条件。</p>
       </section>
       <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-card)] p-4 text-xs leading-6 text-[var(--c-text-secondary)]">
         每日任务：睡眠报告、累计专注 8 小时、晚间主动回忆。专注截图读取手环显示的今日累计时长，新数值审核通过后覆盖旧记录，不做重复累加。
