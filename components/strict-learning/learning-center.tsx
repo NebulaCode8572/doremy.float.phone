@@ -149,7 +149,9 @@ export function StrictLearningCenter() {
             initialStore.profile.lineTwo !== DEFAULT_STORE.profile.lineTwo ||
             initialStore.profile.avatar || initialStore.profile.banner ||
             initialStore.sleepRules.bedtimeDeadline || initialStore.sleepRules.wakeFrom ||
-            initialStore.sleepRules.wakeUntil || initialStore.sleepRules.minSleepHours
+            initialStore.sleepRules.wakeUntil || initialStore.sleepRules.minSleepHours ||
+            initialStore.streak.count > 0 || initialStore.streak.lastCheckinDate ||
+            initialStore.streak.boatUnlocked
           );
           if (remote.payload && typeof remote.payload === "object") {
             const parsed = remote.payload as Partial<StrictStore>;
