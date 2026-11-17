@@ -43,7 +43,7 @@ export async function GET(request: Request) {
     );
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 503 });
     const row = result.data[0];
-    let payload = null;
+    let payload: ReturnType<typeof normalizeStrictLearningStore> | null = null;
     if (row) {
       if (row.payload === undefined || row.payload === null) {
         return NextResponse.json({ error: "云端学习记录为空或格式无效，已停止同步以避免覆盖数据" }, { status: 503 });
@@ -94,7 +94,7 @@ export async function PUT(request: Request) {
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 503 });
     const row = result.data[0];
     if (!row?.ok) {
-      let currentPayload = null;
+      let currentPayload: ReturnType<typeof normalizeStrictLearningStore> | null = null;
       if (row?.payload !== undefined && row.payload !== null) {
         try {
           currentPayload = normalizeStrictLearningStore(row.payload);
@@ -116,9 +116,13 @@ export async function PUT(request: Request) {
         updatedAt: row.updated_at ?? null,
       }, { status: 409 });
     }
+    const nextRevision = Number(row.revision);
+    if (!Number.isSafeInteger(nextRevision) || nextRevision < 1) {
+      return NextResponse.json({ error: "云端同步版本号无效" }, { status: 503 });
+    }
     return NextResponse.json({
       ok: true,
-      revision: Number(row.revision || 0),
+      revision: nextRevision,
       updatedAt: row.updated_at ?? null,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
