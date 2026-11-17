@@ -51,6 +51,32 @@ function readImage(file: File): Promise<string> {
   });
 }
 
+async function cropLauncherImage(file: File): Promise<string> {
+  const image = new Image();
+  const url = URL.createObjectURL(file);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("无法读取这张图片"));
+      image.src = url;
+    });
+    const side = Math.min(image.naturalWidth, image.naturalHeight);
+    const sx = Math.floor((image.naturalWidth - side) / 2);
+    const sy = Math.floor((image.naturalHeight - side) / 2);
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 320;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("当前浏览器不支持图片处理");
+    context.drawImage(image, sx, sy, side, side, 0, 0, 320, 320);
+    const blob = await canvasToBlob(canvas, "image/webp", 0.86);
+    if (blob.size > 240 * 1024) throw new Error("图片处理后仍然过大，请换一张图片");
+    return blobToDataUrl(blob);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("图片压缩失败")), type, quality);
@@ -136,6 +162,13 @@ export function StrictLearningCenter() {
   const [syncKeyVersion, setSyncKeyVersion] = useState(0);
   const [syncConflict, setSyncConflict] = useState<{ payload: StrictStore; revision: number } | null>(null);
   const [profileDraft, setProfileDraft] = useState<StrictProfile>(DEFAULT_STORE.profile);
+  const [launcherPosition, setLauncherPosition] = useState<{ left: number; top: number } | null>(null);
+  const [launcherImage, setLauncherImage] = useState("");
+  const [launcherPickerOpen, setLauncherPickerOpen] = useState(false);
+  const launcherPointerRef = useRef<{ pointerId: number; startX: number; startY: number; left: number; top: number; moved: boolean } | null>(null);
+  const launcherLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressLauncherClickRef = useRef(false);
+  const launcherFileRef = useRef<HTMLInputElement>(null);
 
   const today = todayKey();
   const day = store.days[today] || { date: today };
@@ -144,6 +177,19 @@ export function StrictLearningCenter() {
   const streakGap = dayDistance(store.streak.lastCheckinDate, today);
   const currentStreak = streakGap >= 0 && streakGap <= 1 ? store.streak.count : 0;
   const focusMinutes = day.focus?.minutes || 0;
+
+  useEffect(() => {
+    try {
+      const rawPosition = localStorage.getItem("strict_learning_launcher_position_v1");
+      if (rawPosition) {
+        const parsed = JSON.parse(rawPosition) as { left?: number; top?: number };
+        if (Number.isFinite(parsed.left) && Number.isFinite(parsed.top)) {
+          setLauncherPosition({ left: Number(parsed.left), top: Number(parsed.top) });
+        }
+      }
+      setLauncherImage(localStorage.getItem("strict_learning_launcher_image_v1") || "");
+    } catch {}
+  }, []);
 
   useEffect(() => {
     const handleSyncKeyUpdated = () => setSyncKeyVersion(version => version + 1);
@@ -583,17 +629,108 @@ export function StrictLearningCenter() {
     finally { setBusy(null); }
   };
 
+  const launcherStyle: React.CSSProperties = launcherPosition
+    ? { left: launcherPosition.left, top: launcherPosition.top, right: "auto", bottom: "auto" }
+    : { right: 16, bottom: "calc(28px + env(safe-area-inset-bottom))" };
+
+  const handleLauncherPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    launcherPointerRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      left: rect.left,
+      top: rect.top,
+      moved: false,
+    };
+    suppressLauncherClickRef.current = false;
+    if (launcherLongPressRef.current) clearTimeout(launcherLongPressRef.current);
+    launcherLongPressRef.current = setTimeout(() => {
+      if (!launcherPointerRef.current?.moved) {
+        suppressLauncherClickRef.current = true;
+        setLauncherPickerOpen(true);
+      }
+      launcherLongPressRef.current = null;
+    }, 650);
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch {}
+  };
+
+  const handleLauncherPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = launcherPointerRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.moved && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+      drag.moved = true;
+      suppressLauncherClickRef.current = true;
+      if (launcherLongPressRef.current) {
+        clearTimeout(launcherLongPressRef.current);
+        launcherLongPressRef.current = null;
+      }
+    }
+    if (!drag.moved) return;
+    const size = event.currentTarget.offsetWidth || 58;
+    const left = Math.max(0, Math.min(window.innerWidth - size, drag.left + dx));
+    const top = Math.max(0, Math.min(window.innerHeight - size, drag.top + dy));
+    setLauncherPosition({ left, top });
+    try { localStorage.setItem("strict_learning_launcher_position_v1", JSON.stringify({ left, top })); } catch {}
+  };
+
+  const handleLauncherPointerEnd = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (launcherLongPressRef.current) {
+      clearTimeout(launcherLongPressRef.current);
+      launcherLongPressRef.current = null;
+    }
+    if (launcherPointerRef.current?.pointerId === event.pointerId) launcherPointerRef.current = null;
+  };
+
+  const handleLauncherImageChange = async (file?: File) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    try {
+      const image = await cropLauncherImage(file);
+      localStorage.setItem("strict_learning_launcher_image_v1", image);
+      setLauncherImage(image);
+      setLauncherPickerOpen(false);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "悬浮球图片处理失败");
+    } finally {
+      if (launcherFileRef.current) launcherFileRef.current.value = "";
+    }
+  };
+
   if (!loaded || loadedAccountId !== account.id) {
     return loadError ? <div role="alert" className="p-4 text-sm text-red-700">{loadError}</div> : null;
   }
   return (
     <>
-      {store.enabled ? <button
-        type="button"
-        aria-label="打开学习中心"
-        onClick={() => setOpen(true)}
-        style={{ position: "fixed", right: 16, bottom: "calc(28px + env(safe-area-inset-bottom))", zIndex: 1200, width: 58, height: 58, borderRadius: 999, border: "2px solid rgba(255,255,255,.92)", background: "#b8dce9", color: "#315766", boxShadow: "0 4px 16px rgba(49,87,102,.22)", display: "grid", placeItems: "center" }}
-      ><BookOpen size={27} /></button> : null}
+      {store.enabled ? <>
+        <button
+          type="button"
+          aria-label="打开学习中心；拖动可移动，长按可更换图片"
+          onPointerDown={handleLauncherPointerDown}
+          onPointerMove={handleLauncherPointerMove}
+          onPointerUp={handleLauncherPointerEnd}
+          onPointerCancel={handleLauncherPointerEnd}
+          onClick={() => {
+            if (suppressLauncherClickRef.current) {
+              suppressLauncherClickRef.current = false;
+              return;
+            }
+            setOpen(true);
+          }}
+          style={{ position: "fixed", ...launcherStyle, zIndex: 1200, width: 58, height: 58, padding: 0, overflow: "hidden", touchAction: "none", userSelect: "none", borderRadius: 999, border: "2px solid rgba(255,255,255,.92)", background: "#b8dce9", color: "#315766", boxShadow: "0 4px 16px rgba(49,87,102,.22)", display: "grid", placeItems: "center" }}
+        >{launcherImage ? <img src={launcherImage} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", pointerEvents: "none" }} /> : <BookOpen size={27} />}</button>
+        {launcherPickerOpen ? <div role="dialog" aria-modal="true" aria-label="更换悬浮球图片" style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(18,35,42,.32)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 18 }} onClick={() => setLauncherPickerOpen(false)}>
+          <div style={{ width: "min(100%, 360px)", padding: 20, borderRadius: 22, background: "#f8fcfd", color: "#315766", display: "flex", flexDirection: "column", gap: 12, boxShadow: "0 12px 36px rgba(0,0,0,.18)" }} onClick={event => event.stopPropagation()}>
+            <strong>更换悬浮球图片</strong>
+            <span style={{ fontSize: 13, lineHeight: 1.6, color: "#6b8790" }}>选择图片后会自动居中裁剪，并显示为圆形。</span>
+            <button type="button" onClick={() => launcherFileRef.current?.click()} style={{ border: 0, borderRadius: 14, padding: 12, background: "#b8dce9", color: "#315766", fontWeight: 700 }}>选择图片</button>
+            <button type="button" onClick={() => setLauncherPickerOpen(false)} style={{ border: 0, borderRadius: 14, padding: 12, background: "#edf4f6", color: "#315766" }}>取消</button>
+            <input ref={launcherFileRef} type="file" accept="image/*" hidden onChange={event => { void handleLauncherImageChange(event.target.files?.[0]); }} />
+          </div>
+        </div> : null}
+      </> : null}
       {open ? (
         <div className="strict-learning-overlay" role="dialog" aria-modal="true" aria-label="学习中心">
           <div className="strict-learning-page">
