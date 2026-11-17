@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentAccount } from "@/lib/server/account-auth";
-import { encodeSupabaseFilter, supabaseRestFetch } from "@/lib/server/supabase-rest";
+import { supabaseRestFetch } from "@/lib/server/supabase-rest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
