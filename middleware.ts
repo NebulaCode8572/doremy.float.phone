@@ -49,7 +49,7 @@ const STATIC_ROUTE_PREFIXES = [
   "/xiaohongshu/",
 ];
 
-const STATIC_FILE_RE = /\\.(?:avif|bin|css|gif|glb|gltf|hdr|ico|jpeg|jpg|js|json|map|mjs|mp3|ogg|otf|png|svg|ttf|txt|wasm|wav|webmanifest|webp|woff|woff2)$/i;
+const STATIC_FILE_RE = /\.(?:avif|bin|css|gif|glb|gltf|hdr|ico|jpeg|jpg|js|json|map|mjs|mp3|ogg|otf|png|svg|ttf|txt|wasm|wav|webmanifest|webp|woff|woff2)$/i;
 
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname === prefix.slice(0, -1) || pathname.startsWith(prefix));
@@ -57,7 +57,7 @@ function isPublicRoute(pathname: string): boolean {
 
 function isSelfHostedTokenRoute(pathname: string): boolean {
   return SELF_HOSTED_TOKEN_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`),
+    (route) => pathname === route || pathname.startsWith(\`\${route}/\`),
   );
 }
 
@@ -101,7 +101,7 @@ export async function middleware(request: NextRequest) {
     }
 
     const url = request.nextUrl.clone();
-    const requestedPath = `${pathname}${request.nextUrl.search}`;
+    const requestedPath = \`\${pathname}\${request.nextUrl.search}\`;
     url.pathname = "/access";
     url.search = "";
     url.searchParams.set("next", requestedPath);
@@ -137,6 +137,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|.*\\\\.(?:avif|bin|css|gif|glb|gltf|hdr|ico|jpeg|jpg|js|json|map|mjs|mp3|ogg|otf|png|svg|ttf|txt|wasm|wav|webmanifest|webp|woff|woff2)$).*)",
+    "/((?!_next/static|_next/image|.*\\.(?:avif|bin|css|gif|glb|gltf|hdr|ico|jpeg|jpg|js|json|map|mjs|mp3|ogg|otf|png|svg|ttf|txt|wasm|wav|webmanifest|webp|woff|woff2)$).*)",
   ],
 };
