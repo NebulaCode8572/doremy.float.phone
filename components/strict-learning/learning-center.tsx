@@ -146,7 +146,8 @@ export function StrictLearningCenter() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [editingProfile, setEditingProfile] = useState(false);
   const [recallText, setRecallText] = useState("");
-  const [recallNotes, setRecallNotes] = useState("");
+  const [recallImages, setRecallImages] = useState<string[]>([]);
+  const recallImageInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<"sleep" | "focus" | "note" | null>(null);
   const [notice, setNotice] = useState("");
   const noteAttemptedRef = useRef("");
@@ -395,10 +396,10 @@ export function StrictLearningCenter() {
     const current = store.days[today];
     if (current?.recall) {
       setRecallText(current.recall.text);
-      setRecallNotes(current.recall.notes);
+      setRecallImages(current.recall.images || []);
     } else {
       setRecallText("");
-      setRecallNotes("");
+      setRecallImages([]);
     }
   }, [open, today, store.days]);
 
@@ -588,11 +589,11 @@ export function StrictLearningCenter() {
 
   const saveRecall = async () => {
     if (!recallText.trim()) { setNotice("请填写“今天学了什么？”。"); return; }
-    if (recallText.length > 20000 || recallNotes.length > 20000) {
-      setNotice("回忆内容和补充笔记各自不能超过 20000 个字符。");
+    if (recallText.length > 20000) {
+      setNotice("回忆内容不能超过 20000 个字符。");
       return;
     }
-    const recall = { text: recallText.trim(), notes: recallNotes.trim(), completedAt: Date.now() };
+    const recall = { text: recallText.trim(), images: recallImages, completedAt: Date.now() };
     updateDay({ recall });
     if (!supervisor) { setNotice("回忆已保存。选择监督 Char 后，可获得角色反馈。"); return; }
     const apiConfigs = loadApiConfigs();
@@ -602,13 +603,15 @@ export function StrictLearningCenter() {
     setBusy("note"); setNotice("回忆已保存，正在联系监督 Char…");
     try {
       await hydrateChatStorage();
+      let imageSummary = "";
+      if (recall.images.length) {
+        const visionResponse = await fetch("/api/vision-recall", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ images: recall.images }) });
+        const visionData = await visionResponse.json();
+        if (!visionResponse.ok || !visionData?.ok) throw new Error(visionData?.error || "回忆图片识别失败");
+        imageSummary = String(visionData.summary || "");
+      }
       const session = createOrGetSession(supervisor.id);
-      pushChatMessage({
-        sessionId: session.id,
-        role: "user",
-        content: `【学习中心·晚间主动回忆】\n今天学了什么：${recall.text}\n补充记录：${recall.notes || "无"}`,
-        origin: "custom_app",
-      });
+      pushChatMessage({ sessionId: session.id, role: "user", content: `【学习中心·晚间主动回忆】\n今天学了什么：${recall.text}\n学习资料图片识别摘要：${imageSummary || "无"}`, origin: "custom_app" });
       const context = loadChatMessages(session.id, 20)
         .filter(message => message.role === "user" || message.role === "assistant")
         .map(message => ({ role: message.role as "user" | "assistant", content: message.content }));
@@ -768,7 +771,7 @@ export function StrictLearningCenter() {
             </section>
 
             <section className="strict-message-card">
-              <div className="flex items-center gap-2"><Sparkles size={20} /><strong>留言板</strong><span className="ml-auto text-xs text-slate-500">每日更新</span></div>
+              <div className="flex items-center gap-2"><Sparkles size={20} /><strong>留言板</strong></div>
               <div className="mt-3 text-sm leading-7">{day.charNote?.date === today ? day.charNote.text : "今天的留言还没有写好。"}</div>
             </section>
 
@@ -793,12 +796,21 @@ export function StrictLearningCenter() {
             <section className="strict-task-card">
               <div className="flex items-center gap-3"><ClipboardList className="strict-task-icon" size={34} /><div className="flex-1"><strong>晚间主动回忆</strong><div className="text-xs text-slate-500 mt-1">不看笔记，回忆今天学到的内容。</div></div><span className="strict-status">{day.recall?.completedAt ? "已完成" : "未完成"}</span></div>
               <textarea value={recallText} onChange={event => setRecallText(event.target.value)} placeholder="今天学了什么？" className="strict-recall-input" rows={3} maxLength={20000} />
-              <textarea value={recallNotes} onChange={event => setRecallNotes(event.target.value)} placeholder="可选：补充笔记、易错点或资料说明" className="strict-recall-input mt-2" rows={2} maxLength={20000} />
+              <div className="mt-2">
+                 <button type="button" className="strict-upload-button" onClick={() => recallImageInputRef.current?.click()} disabled={busy !== null}><Upload size={18} />{recallImages.length ? `已添加 ${recallImages.length} 张资料图片` : "上传资料图片（可选）"}</button>
+                 <input ref={recallImageInputRef} type="file" accept="image/*" multiple hidden onChange={async event => { const files = Array.from(event.target.files || []); event.target.value = ""; if (recallImages.length + files.length > 3) { setNotice("最多上传 3 张资料图片。"); return; } try { const images = await Promise.all(files.map(readProfileImage)); setRecallImages(previous => [...previous, ...images].slice(0, 3)); } catch (error) { setNotice(error instanceof Error ? error.message : "图片读取失败。"); } }} />
+                 {recallImages.length ? <div className="mt-2 flex flex-wrap gap-2">{recallImages.map((src, index) => <div key={index} className="relative"><img src={src} alt={`资料图片 ${index + 1}`} className="h-20 w-20 rounded-xl object-cover" /><button type="button" aria-label={`删除第 ${index + 1} 张图片`} onClick={() => setRecallImages(previous => previous.filter((_, i) => i !== index))} className="absolute -right-2 -top-2 rounded-full bg-slate-700 p-1 text-white"><X size={13} /></button></div>)}</div> : null}
+               </div>
               {day.recall?.feedback ? <div className="strict-result"><strong>Char：</strong>{day.recall.feedback}</div> : null}
               <button type="button" onClick={() => void saveRecall()} disabled={busy !== null} className="strict-upload-button"><Check size={18} />{busy === "note" ? "Char 正在回复…" : "保存今日回忆"}</button>
             </section>
 
-            <section className="strict-audit-card"><Sparkles size={20} /><div className="min-w-0 flex-1"><strong>Char 审核状态</strong><p className="text-xs text-slate-600 mt-1">提交凭证后，识别结果和简短反馈会显示在对应任务卡片中。</p><div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-slate-500">本机保存：{persistenceError ? (persistenceError === "正在保存…" ? persistenceError : `失败：${persistenceError}`) : "已写入数据库"}</p><p className="text-xs text-slate-500">云端同步：{syncStatus}</p>{!syncConflict && (syncStatus.startsWith("云端同步失败") || syncStatus.startsWith("云同步不可用")) ? <button type="button" className="text-xs underline text-slate-600" onClick={() => setSyncKeyVersion(value => value + 1)}>重试云同步</button> : null}</div>{syncConflict ? <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="strict-save-button" onClick={() => { syncRevisionRef.current = syncConflict.revision; syncReadyRef.current = true; lastQueuedSnapshotRef.current = JSON.stringify(syncConflict.payload); setStore(syncConflict.payload); setSyncConflict(null); setSyncStatus("已载入云端版本"); }}>载入云端版本</button><button type="button" className="strict-save-button" onClick={() => { syncRevisionRef.current = syncConflict.revision; syncReadyRef.current = true; lastQueuedSnapshotRef.current = ""; setSyncConflict(null); setSyncStatus("准备将本机版本覆盖到云端"); setStore(previous => ({ ...previous })); }}>保留本机版本并覆盖云端</button></div> : null}</div></section>
+            <div className="px-2 py-1 text-xs text-slate-500">
+              <span>本机保存：{persistenceError ? (persistenceError === "正在保存…" ? persistenceError : `失败：${persistenceError}`) : "已写入数据库"}</span>
+              <span className="ml-3">云端同步：{syncStatus}</span>
+              {!syncConflict && (syncStatus.startsWith("云端同步失败") || syncStatus.startsWith("云同步不可用")) ? <button type="button" className="ml-2 underline" onClick={() => setSyncKeyVersion(value => value + 1)}>重试</button> : null}
+              {syncConflict ? <div className="mt-2 flex flex-wrap gap-2"><button type="button" className="strict-save-button" onClick={() => { syncRevisionRef.current = syncConflict.revision; syncReadyRef.current = true; lastQueuedSnapshotRef.current = JSON.stringify(syncConflict.payload); setStore(syncConflict.payload); setSyncConflict(null); setSyncStatus("已载入云端版本"); }}>载入云端版本</button><button type="button" className="strict-save-button" onClick={() => { syncRevisionRef.current = syncConflict.revision; syncReadyRef.current = true; lastQueuedSnapshotRef.current = ""; setSyncConflict(null); setSyncStatus("准备将本机版本覆盖到云端"); setStore(previous => ({ ...previous })); }}>保留本机版本并覆盖云端</button></div> : null}
+            </div>
             {notice ? <div className="strict-notice" role="status">{notice}</div> : null}
           </div>
           {editingProfile ? (
