@@ -8,6 +8,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { loadApiConfigs, loadBindingConfig, resolveBinding } from "@/lib/settings-storage";
 import { simpleLLMCall } from "@/lib/api-helpers";
+import { createOrGetSession, loadChatMessages, pushChatMessage } from "@/lib/chat-storage";
 
 type StrictProfile = { nickname: string; lineOne: string; lineTwo: string; avatar: string; banner: string };
 type StrictDay = {
@@ -275,15 +276,31 @@ export function StrictLearningCenter() {
     const binding = resolveBinding(loadBindingConfig(), supervisor.id, "chat");
     const config = apiConfigs.find(item => item.id === binding.apiConfigId);
     if (!config) { setNotice("回忆已保存，但当前 Char 没有可用的文本模型配置。"); return; }
-    setBusy("note"); setNotice("回忆已保存，Char 正在整理回应…");
+    setBusy("note"); setNotice("回忆已保存，正在联系监督 Char…");
     try {
+      const session = createOrGetSession(supervisor.id);
+      pushChatMessage({
+        sessionId: session.id,
+        role: "user",
+        content: `【学习中心·晚间主动回忆】\n今天学了什么：${recall.text}\n补充记录：${recall.notes || "无"}`,
+        origin: "custom_app",
+      });
+      const context = loadChatMessages(session.id, 20)
+        .filter(message => message.role === "user" || message.role === "assistant")
+        .map(message => ({ role: message.role as "user" | "assistant", content: message.content }));
       const result = await simpleLLMCall(config, [
-        { role: "system", content: `你正在以角色身份回应用户的晚间学习回忆。角色名：${supervisor.name}。角色人设：${supervisor.persona || supervisor.personality || "自然、简洁"}。保持角色语气，像陪伴者一样回应。不要判卷、不要纠正学科知识、不要给标准答案。只简短回应用户今天学了什么，指出一个值得肯定的努力或一个可继续留意的地方，最多三句话。` },
-        { role: "user", content: `今天学了什么：${recall.text}\n补充记录：${recall.notes || "无"}` },
+        { role: "system", content: `你正在以角色身份回应用户的晚间学习回忆。角色名：${supervisor.name}。角色人设：${supervisor.persona || supervisor.personality || "自然、简洁"}。这是角色与用户原有的聊天会话，请结合此前对话保持连续性。保持角色语气，像陪伴者一样回应。不要判卷、不要纠正学科知识、不要给标准答案。只简短回应用户今天学了什么，指出一个值得肯定的努力或一个可继续留意的地方，最多三句话。` },
+        ...context,
       ], { temperature: 0.75, max_tokens: 180 });
       if (result.error || !result.content?.trim()) throw new Error(result.error || "模型没有返回反馈");
+      pushChatMessage({
+        sessionId: session.id,
+        role: "assistant",
+        content: result.content.trim(),
+        origin: "custom_app",
+      });
       updateDay({ recall: { ...recall, feedback: result.content.trim() } });
-      setNotice("回忆已保存，Char 已回复。");
+      setNotice("回忆已保存，Char 已在原聊天记录中回复。");
     } catch (error) { setNotice(error instanceof Error ? `回忆已保存，但 Char 暂时无法回复：${error.message}` : "回忆已保存，但 Char 暂时无法回复。"); }
     finally { setBusy(null); }
   };
