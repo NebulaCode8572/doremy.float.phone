@@ -9,7 +9,7 @@ export const maxDuration = 60;
 
 const MAX_IMAGE_CHARS = 12_000_000;
 const SYSTEM_PROMPT = `你是学习凭证识别器。只提取图片中明确可见的信息，不猜测、不补全。必须只返回 JSON 对象，不要 Markdown。
-字段：{"kind":"sleep|focus","recordDate":"YYYY-MM-DD或空字符串","sleepStart":"HH:mm或空字符串","wakeTime":"HH:mm或空字符串","sleepDurationMinutes":整数或null,"focusDurationMinutes":整数或null,"phoneLockDate":"YYYY-MM-DD或空字符串","phoneLockTime":"HH:mm或空字符串","deviceVisible":布尔值,"phoneLockVisible":布尔值,"confidence":"high|medium|low","notes":"简短说明"}。
+字段：{"kind":"sleep|focus","recordDate":"YYYY-MM-DD（睡眠报告对应的起床日期）或空字符串","sleepStart":"HH:mm或空字符串","wakeTime":"HH:mm或空字符串","sleepDurationMinutes":整数或null,"focusDurationMinutes":整数或null,"phoneLockDate":"YYYY-MM-DD或空字符串","phoneLockTime":"HH:mm或空字符串","deviceVisible":布尔值,"phoneLockVisible":布尔值,"confidence":"high|medium|low","notes":"简短说明"}。
 kind=sleep 时识别睡眠报告；kind=focus 时识别手环今日累计专注时长。专注时长必须是“今日累计”数值，不得把单个番茄钟时段相加。若图片同时有手机锁屏，提取日期和时间。无法辨认的字段留空或 null。`;
 
 export async function POST(request: Request) {
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: [
-            { type: "text", text: kind === "focus" ? "识别手环今日累计专注时长，并检查是否同时出现手机锁屏日期和时间。" : "识别这张手环睡眠报告中的昨晚睡眠数据。" },
+            { type: "text", text: kind === "focus" ? "识别手环今日累计专注时长，并检查是否同时出现手机锁屏日期和时间。" : "识别这张手环睡眠报告中的昨晚睡眠数据，并提取报告对应的起床日期（不是入睡日期）。" },
             { type: "image_url", image_url: { url: imageDataUrl } },
           ] },
         ],
