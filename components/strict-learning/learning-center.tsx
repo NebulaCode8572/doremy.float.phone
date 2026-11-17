@@ -12,26 +12,11 @@ import { createOrGetSession, hydrateChatStorage, loadChatMessages, pushChatMessa
 import { useAccount } from "@/lib/account-context";
 import { getStrictLearningStoreKey, migrateLegacyStrictLearningStore } from "@/lib/strict-learning-storage";
 import { getStrictLearningSyncKey } from "@/lib/strict-learning-sync-client";
+import { DEFAULT_STRICT_STORE, normalizeStrictLearningStore, type StrictDay, type StrictProfile, type StrictStore } from "@/lib/strict-learning-schema";
 
-type StrictProfile = { nickname: string; lineOne: string; lineTwo: string; avatar: string; banner: string };
-type StrictDay = {
-  date: string;
-  sleep?: { status: string; result?: Record<string, unknown>; feedback?: string };
-  focus?: { status: string; minutes?: number; result?: Record<string, unknown>; feedback?: string; pendingMinutes?: number; pendingResult?: Record<string, unknown> };
-  recall?: { text: string; notes: string; completedAt: number; feedback?: string };
-  charNote?: { date: string; characterId: string; text: string };
-};
-type StrictStore = { enabled: boolean; supervisorId: string; profile: StrictProfile; days: Record<string, StrictDay>; streak: { count: number; lastCheckinDate: string; boatUnlocked: boolean }; sleepRules: { bedtimeDeadline: string; wakeFrom: string; wakeUntil: string; minSleepHours: string } };
 type VisionResult = Record<string, unknown>;
 
-const DEFAULT_STORE: StrictStore = {
-  enabled: false,
-  supervisorId: "",
-  profile: { nickname: "小玉", lineOne: "@白衣魔法使", lineTwo: "把今天过成值得骄傲的一天。", avatar: "", banner: "" },
-  days: {},
-  streak: { count: 0, lastCheckinDate: "", boatUnlocked: false },
-  sleepRules: { bedtimeDeadline: "", wakeFrom: "", wakeUntil: "", minSleepHours: "" },
-};
+const DEFAULT_STORE = DEFAULT_STRICT_STORE;
 const todayKey = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -186,16 +171,12 @@ export function StrictLearningCenter() {
       let initialStore = DEFAULT_STORE;
       if (raw) {
         try {
-          const parsed = JSON.parse(raw) as Partial<StrictStore>;
-          initialStore = {
-            ...DEFAULT_STORE,
-            ...parsed,
-            profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
-            days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
-            streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
-            sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
-          };
-        } catch { /* retain defaults */ }
+          initialStore = normalizeStrictLearningStore(JSON.parse(raw));
+        } catch (error) {
+          throw new Error(error instanceof Error
+            ? "本机学习记录无法安全读取（" + error.message + "）。原记录已保留，没有用空白数据覆盖。"
+            : "本机学习记录无法安全读取。原记录已保留，没有用空白数据覆盖。");
+        }
       }
 
       const syncKey = getStrictLearningSyncKey();
@@ -222,15 +203,7 @@ export function StrictLearningCenter() {
             initialStore.streak.boatUnlocked
           );
           if (remote.payload && typeof remote.payload === "object") {
-            const parsed = remote.payload as Partial<StrictStore>;
-            const remoteStore: StrictStore = {
-              ...DEFAULT_STORE,
-              ...parsed,
-              profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
-              days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
-              streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
-              sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
-            };
+            const remoteStore = normalizeStrictLearningStore(remote.payload);
             if (localHasData && stableStringify(initialStore) !== stableStringify(remoteStore)) {
               syncReadyRef.current = false;
               setSyncConflict({ payload: remoteStore, revision: Number(remote.revision || 0) });
@@ -251,15 +224,7 @@ export function StrictLearningCenter() {
               const saved = await upload.json();
               if (cancelled || generation !== syncGenerationRef.current) return;
               if (upload.status === 409 && saved.payload && typeof saved.payload === "object") {
-                const parsedRemote = saved.payload as Partial<StrictStore>;
-                const remoteStore: StrictStore = {
-                  ...DEFAULT_STORE,
-                  ...parsedRemote,
-                  profile: { ...DEFAULT_STORE.profile, ...(parsedRemote.profile || {}) },
-                  days: parsedRemote.days && typeof parsedRemote.days === "object" ? parsedRemote.days : {},
-                  streak: { ...DEFAULT_STORE.streak, ...(parsedRemote.streak || {}) },
-                  sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsedRemote.sleepRules || {}) },
-                };
+                const remoteStore = normalizeStrictLearningStore(saved.payload);
                 syncReadyRef.current = false;
                 setSyncConflict({ payload: remoteStore, revision: Number(saved.revision || 0) });
                 setSyncStatus("首次备份时发现其他设备已写入云端，请选择保留哪一份");
@@ -290,7 +255,9 @@ export function StrictLearningCenter() {
       setLoaded(true);
     })().catch(() => {
       if (!cancelled) {
-        setLoadError("学习记录加载失败。请检查本机存储状态后重试。");
+        setLoadError(error instanceof Error
+          ? error.message
+          : "学习记录加载失败。请检查本机存储状态后重试。");
       }
     });
 
@@ -322,16 +289,9 @@ export function StrictLearningCenter() {
       if (response.status === 409) {
         syncReadyRef.current = false;
         if (data.payload && typeof data.payload === "object") {
-          const parsed = data.payload as Partial<StrictStore>;
+          const remoteStore = normalizeStrictLearningStore(data.payload);
           setSyncConflict({
-            payload: {
-              ...DEFAULT_STORE,
-              ...parsed,
-              profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
-              days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
-              streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
-              sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
-            },
+            payload: remoteStore,
             revision: Number(data.revision || 0),
           });
         }
@@ -353,15 +313,7 @@ export function StrictLearningCenter() {
       const raw = kvGet(storeKey);
       if (!raw) return;
       try {
-        const parsed = JSON.parse(raw) as Partial<StrictStore>;
-        setStore(previous => ({
-          ...previous,
-          ...parsed,
-          profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
-          days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
-          streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
-          sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
-        }));
+        setStore(normalizeStrictLearningStore(JSON.parse(raw)));
       } catch { /* ignore malformed external updates */ }
     };
     window.addEventListener("strict-learning-updated", refresh);
