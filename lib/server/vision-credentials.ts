@@ -62,7 +62,7 @@ async function resolvePublicEndpoint(baseUrl: string): Promise<{ url: URL; addre
   if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
     throw new Error("Base URL 必须是无凭证、无查询参数的 HTTPS 地址");
   }
-  const host = url.hostname.replace(/^\\[|\\]$/g, "").toLowerCase().replace(/\\.$/, "");
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.$/, "");
   if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) {
     throw new Error("Base URL 不能指向本机或内网地址");
   }
@@ -80,9 +80,9 @@ async function resolvePublicEndpoint(baseUrl: string): Promise<{ url: URL; addre
 
 export async function callVisionProvider(baseUrl: string, apiKey: string, payload: unknown): Promise<{ ok: boolean; status: number; text: string }> {
   const { url, addresses } = await resolvePublicEndpoint(baseUrl);
-  const host = url.hostname.replace(/^\\[|\\]$/g, "").toLowerCase().replace(/\\.$/, "");
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.$/, "");
   const pinnedLookup = ((hostname: string, options: { all?: boolean; family?: number }, callback: (...args: any[]) => void) => {
-    if (hostname.toLowerCase().replace(/\\.$/, "") !== host) {
+    if (hostname.toLowerCase().replace(/\.$/, "") !== host) {
       const error = Object.assign(new Error("Unexpected provider hostname"), { code: "EAI_AGAIN" });
       callback(error);
       return;
@@ -97,7 +97,7 @@ export async function callVisionProvider(baseUrl: string, apiKey: string, payloa
     else callback(null, matching[0].address, matching[0].family);
   }) as never;
   const dispatcher = new Agent({ connect: { lookup: pinnedLookup } });
-  const endpoint = `${url.toString().replace(/\\/+$/, "").replace(/\\/chat\\/completions$/i, "")}/chat/completions`;
+  const endpoint = `${url.toString().replace(/\/+$/, "").replace(/\/chat\/completions$/i, "")}/chat/completions`;
   try {
     const response = await fetch(endpoint, {
       method: "POST",
