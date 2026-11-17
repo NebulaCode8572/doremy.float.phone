@@ -86,6 +86,7 @@ export function StrictLearningCenter() {
   const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
   const lastQueuedSnapshotRef = useRef("");
   const [syncStatus, setSyncStatus] = useState("仅保存在本机");
+  const [syncKeyVersion, setSyncKeyVersion] = useState(0);
   const [syncConflict, setSyncConflict] = useState<{ payload: StrictStore; revision: number } | null>(null);
   const [profileDraft, setProfileDraft] = useState<StrictProfile>(DEFAULT_STORE.profile);
 
@@ -96,6 +97,12 @@ export function StrictLearningCenter() {
   const streakGap = dayDistance(store.streak.lastCheckinDate, today);
   const currentStreak = streakGap >= 0 && streakGap <= 1 ? store.streak.count : 0;
   const focusMinutes = day.focus?.minutes || 0;
+
+  useEffect(() => {
+    const handleSyncKeyUpdated = () => setSyncKeyVersion(version => version + 1);
+    window.addEventListener("strict-learning-sync-key-updated", handleSyncKeyUpdated);
+    return () => window.removeEventListener("strict-learning-sync-key-updated", handleSyncKeyUpdated);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,7 +215,7 @@ export function StrictLearningCenter() {
     });
 
     return () => { cancelled = true; };
-  }, [account.id]);
+  }, [account.id, syncKeyVersion]);
 
   useEffect(() => {
     if (!loaded || loadedAccountId !== account.id) return;
