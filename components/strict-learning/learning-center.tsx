@@ -408,7 +408,8 @@ export function StrictLearningCenter() {
 
             <section className="strict-task-card">
               <div className="flex items-start gap-3"><Moon className="strict-task-icon" size={34} /><div className="min-w-0 flex-1"><div className="flex items-center justify-between"><strong>睡眠报告</strong><span className="strict-status">{day.sleep?.status === "approved" ? "已审核" : day.sleep?.status === "recognized" ? "待规则审核" : day.sleep?.status === "not-met" ? "未达标" : day.sleep?.status === "date-mismatch" ? "日期不符" : day.sleep?.status === "needs-reupload" ? "请重新上传" : "待提交"}</span></div><p className="text-xs text-slate-500 mt-1">上传手环睡眠截图，识别昨晚信息。</p></div></div>
-              {day.sleep?.result ? <div className="strict-result">入睡 {String(day.sleep.result.sleepStart || "—")} · 起床 {String(day.sleep.result.wakeTime || "—")} · 睡眠 {formatMinutes(day.sleep.result.sleepDurationMinutes)}</div> : null}\n              {day.sleep?.feedback ? <div className="strict-result"><strong>Char：</strong>{day.sleep.feedback}</div> : null}
+              {day.sleep?.result ? <div className="strict-result">入睡 {String(day.sleep.result.sleepStart || "—")} · 起床 {String(day.sleep.result.wakeTime || "—")} · 睡眠 {formatMinutes(day.sleep.result.sleepDurationMinutes)}</div> : null}
+              {day.sleep?.feedback ? <div className="strict-result"><strong>Char：</strong>{day.sleep.feedback}</div> : null}
               <label className="strict-upload-button"><Upload size={18} />{busy === "sleep" ? "正在识别…" : "上传睡眠报告"}<input type="file" accept="image/*" disabled={busy !== null} onChange={event => { void submitEvidence("sleep", event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>
             </section>
 
@@ -416,7 +417,8 @@ export function StrictLearningCenter() {
               <div className="flex items-start gap-3"><Timer className="strict-task-icon" size={36} /><div className="min-w-0 flex-1"><div className="flex items-center justify-between"><strong>专注学习</strong><span className="strict-status">{day.focus?.status === "approved" ? "已审核" : day.focus?.status === "needs-confirmation" ? "待核对" : day.focus?.status === "date-mismatch" ? "日期不符" : day.focus?.status === "needs-reupload" ? "请重新上传" : "待审核"}</span></div><p className="text-xs text-slate-500 mt-1">手环番茄钟 + 手机锁屏同框。</p></div></div>
               <div className="mt-3 text-sm font-medium">{formatMinutes(focusMinutes)} / 08:00</div>
               <div className="strict-progress-track"><div className="strict-progress-fill" style={{ width: `${Math.min(100, focusMinutes / 480 * 100)}%` }} /></div>
-              {day.focus?.result ? <div className="strict-result">识别到今日累计专注 {formatMinutes(day.focus.result.focusDurationMinutes)} · 锁屏 {String(day.focus.result.phoneLockDate || "—")} {String(day.focus.result.phoneLockTime || "")}</div> : null}\n              {day.focus?.feedback ? <div className="strict-result"><strong>Char：</strong>{day.focus.feedback}</div> : null}
+              {day.focus?.result ? <div className="strict-result">识别到今日累计专注 {formatMinutes(day.focus.result.focusDurationMinutes)} · 锁屏 {String(day.focus.result.phoneLockDate || "—")} {String(day.focus.result.phoneLockTime || "")}</div> : null}
+              {day.focus?.feedback ? <div className="strict-result"><strong>Char：</strong>{day.focus.feedback}</div> : null}
               {day.focus?.status === "needs-confirmation" && day.focus.result ? <button type="button" className="strict-upload-button" onClick={() => { const minutes = Number(day.focus?.result?.focusDurationMinutes); if (Number.isFinite(minutes) && minutes >= 0) { updateDay({ focus: { status: "approved", minutes, result: day.focus?.result } }); setNotice(`已确认并更新为 ${formatMinutes(minutes)}，采用覆盖而非累加。`); } }}>确认并以新截图覆盖记录</button> : null}
               <label className="strict-upload-button"><Camera size={18} />{busy === "focus" ? "正在识别…" : "拍摄学习凭证"}<input type="file" accept="image/*" capture="environment" disabled={busy !== null} onChange={event => { void submitEvidence("focus", event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>
             </section>
@@ -425,7 +427,8 @@ export function StrictLearningCenter() {
               <div className="flex items-center gap-3"><ClipboardList className="strict-task-icon" size={34} /><div className="flex-1"><strong>晚间主动回忆</strong><div className="text-xs text-slate-500 mt-1">不看笔记，回忆今天学到的内容。</div></div><span className="strict-status">{day.recall?.completedAt ? "已完成" : "未完成"}</span></div>
               <textarea value={recallText} onChange={event => setRecallText(event.target.value)} placeholder="今天学了什么？" className="strict-recall-input" rows={3} />
               <textarea value={recallNotes} onChange={event => setRecallNotes(event.target.value)} placeholder="可选：补充笔记、易错点或资料说明" className="strict-recall-input mt-2" rows={2} />
-              {day.recall?.feedback ? <div className="strict-result"><strong>Char：</strong>{day.recall.feedback}</div> : null}\n              <button type="button" onClick={() => void saveRecall()} disabled={busy !== null} className="strict-upload-button"><Check size={18} />{busy === "note" ? "Char 正在回复…" : "保存今日回忆"}</button>
+              {day.recall?.feedback ? <div className="strict-result"><strong>Char：</strong>{day.recall.feedback}</div> : null}
+              <button type="button" onClick={() => void saveRecall()} disabled={busy !== null} className="strict-upload-button"><Check size={18} />{busy === "note" ? "Char 正在回复…" : "保存今日回忆"}</button>
             </section>
 
             <section className="strict-audit-card"><Sparkles size={20} /><div><strong>Char 审核状态</strong><p className="text-xs text-slate-600 mt-1">提交凭证后，识别结果和简短反馈会显示在对应任务卡片中。</p></div></section>
