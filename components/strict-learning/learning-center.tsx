@@ -143,7 +143,6 @@ export function StrictLearningCenter() {
           setNotice("未能识别今日累计专注时长，请上传更清晰的截图。");
           return;
         }
-        const oldMinutes = store.days[today]?.focus?.minutes || 0;
         if (oldMinutes > 0 && newMinutes < oldMinutes) {
           updateDay({ focus: { status: "needs-confirmation", minutes: oldMinutes, result } });
           setNotice(`新截图识别为 ${formatMinutes(newMinutes)}，低于已审核的 ${formatMinutes(oldMinutes)}。请核对后再提交，系统暂不覆盖旧记录。`);
