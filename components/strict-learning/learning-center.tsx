@@ -250,11 +250,17 @@ export function StrictLearningCenter() {
     if (!config) { setNotice("当前 Char 没有可用的文本模型配置，请先检查配置绑定。"); return; }
     setBusy("note"); setNotice("");
     try {
+      const session = createOrGetSession(supervisor.id);
+      const context = loadChatMessages(session.id, 20)
+        .filter(message => message.role === "user" || message.role === "assistant")
+        .map(message => ({ role: message.role as "user" | "assistant", content: message.content }));
       const result = await simpleLLMCall(config, [
-        { role: "system", content: `你正在以角色身份给用户写一条每日学习留言。保持角色性格和说话方式。角色名：${supervisor.name}。角色人设：${supervisor.persona || supervisor.personality || "保持自然、简洁"}。只写一两句话，像熟悉的角色对用户说话，不要像老师训话，不要使用标题或列表。` },
+        { role: "system", content: `你正在以角色身份给用户写一条每日学习留言。保持角色性格和说话方式。角色名：${supervisor.name}。角色人设：${supervisor.persona || supervisor.personality || "保持自然、简洁"}。结合此前聊天上下文，写一两句话，像熟悉的角色对用户说话，不要像老师训话，不要使用标题或列表。` },
+        ...context,
         { role: "user", content: `今天是 ${today}。请写一条今天专属的学习督促或鼓励留言，不要复用泛泛的口号。` },
       ], { temperature: 0.85, max_tokens: 120 });
       if (result.error || !result.content?.trim()) throw new Error(result.error || "模型没有返回留言");
+      pushChatMessage({ sessionId: session.id, role: "assistant", content: result.content.trim(), origin: "custom_app" });
       updateDay({ charNote: { date: today, characterId: supervisor.id, text: result.content.trim() } });
     } catch (error) { setNotice(error instanceof Error ? error.message : "生成留言失败"); }
     finally { setBusy(null); }
