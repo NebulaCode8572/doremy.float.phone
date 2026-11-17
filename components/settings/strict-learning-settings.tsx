@@ -32,7 +32,6 @@ export function StrictLearningSettings() {
         setWakeFrom(store.sleepRules?.wakeFrom || "");
         setWakeUntil(store.sleepRules?.wakeUntil || "");
         setMinSleepHours(store.sleepRules?.minSleepHours || "");
-        setMinSleepHours(store.sleepRules?.minSleepHours || "");
       } catch { /* defaults */ }
     }
     setCharacters(loadCharacters());
