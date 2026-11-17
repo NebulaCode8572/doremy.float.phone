@@ -53,6 +53,8 @@ function migrateLegacyKey(lsKey: string): void {
     if (raw === null) return;
     const decoded = decodeLocalStorageValue(raw);
     kvDb.entries.get(lsKey).then(existing => {
+        if (localStorage.getItem(lsKey) !== raw) return;
+        if (!decoded.isFallback && _cache.has(lsKey) && _cache.get(lsKey) !== decoded.value) return;
         if (!decoded.isFallback && existing && existing.value !== decoded.value) {
             // An unmarked, differing value is an old mirror, not proof of a
             // failed recent write. Preserve it rather than overwriting IDB.
@@ -63,8 +65,6 @@ function migrateLegacyKey(lsKey: string): void {
             removeLegacyLocalStorageKeyIfRaw(lsKey, raw);
             return;
         }
-        if (localStorage.getItem(lsKey) !== raw) return;
-        if (!decoded.isFallback && _cache.has(lsKey) && _cache.get(lsKey) !== decoded.value) return;
         return kvDb.entries.put({ key: lsKey, value: decoded.value }).then(() => {
             if (localStorage.getItem(lsKey) === raw) {
                 _cache.set(lsKey, decoded.value);
@@ -315,9 +315,9 @@ export async function kvMoveIfAbsent(
         outcome = { moved: true, value: source.value };
     });
 
-    _cache.delete(sourceKey);
+    if (outcome.moved) _cache.delete(sourceKey);
     if (outcome.value !== null) _cache.set(targetKey, outcome.value);
-    else _cache.delete(targetKey);
+    else if (outcome.moved) _cache.delete(targetKey);
 
     if (outcome.moved && isManagedLegacyKey(sourceKey)) removeLegacyLocalStorageKeyIfValue(sourceKey, outcome.value ?? "");
     return outcome;
