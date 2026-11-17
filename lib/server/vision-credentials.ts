@@ -108,7 +108,28 @@ export async function callVisionProvider(baseUrl: string, apiKey: string, payloa
       signal: AbortSignal.timeout(45_000),
       dispatcher,
     } as RequestInit & { dispatcher: Agent });
-    const text = await response.text();
+    const reader = response.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > 1_000_000) {
+          await reader.cancel().catch(() => undefined);
+          return { ok: false, status: 502, text: "视觉模型响应超过大小限制" };
+        }
+        chunks.push(value);
+      }
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const text = new TextDecoder().decode(bytes);
     return { ok: response.ok, status: response.status, text };
   } finally {
     await dispatcher.close();
