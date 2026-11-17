@@ -34,12 +34,13 @@ const todayKey = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 };
+const isDateKey = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const dayDistance = (from: string, to: string) => {
   if (!from || !to) return Number.POSITIVE_INFINITY;
   const parse = (value: string) => Date.UTC(Number(value.slice(0, 4)), Number(value.slice(5, 7)) - 1, Number(value.slice(8, 10)));
   return Math.round((parse(to) - parse(from)) / 86400000);
 };
-const clockMinutes = (value: unknown) => { const match = typeof value === "string" ? /^(\d{2}):(\d{2})$/.exec(value) : null; return match ? Number(match[1]) * 60 + Number(match[2]) : null; };
+const clockMinutes = (value: unknown) => { const match = typeof value === "string" ? /^(\d{2}):(\d{2})$/.exec(value) : null; if (!match) return null; const hours = Number(match[1]); const minutes = Number(match[2]); return hours <= 23 && minutes <= 59 ? hours * 60 + minutes : null; };
 const beforeBedtimeDeadline = (actual: number, deadline: number) => (actual < 720 ? actual + 1440 : actual) <= (deadline < 720 ? deadline + 1440 : deadline);
 const formatMinutes = (value: unknown) => {
   const minutes = Number(value);
@@ -215,7 +216,7 @@ export function StrictLearningCenter() {
       if (!response.ok) throw new Error(data.error || "识别失败");
       const result = data.result as VisionResult;
       if (kind === "focus") {
-        if (result.deviceVisible !== true || result.phoneLockVisible !== true || !result.phoneLockDate || !result.phoneLockTime) {
+        if (result.deviceVisible !== true || result.phoneLockVisible !== true || !isDateKey(result.phoneLockDate) || clockMinutes(result.phoneLockTime) === null) {
           recordFocusAttempt({ status: "needs-reupload", result });
           setNotice("没有同时确认手环累计时长和手机锁屏日期时间，请重新拍摄同框凭证。");
           return;
@@ -226,8 +227,8 @@ export function StrictLearningCenter() {
           setNotice(`锁屏日期识别为 ${String(result.phoneLockDate)}，与今天（${today}）不一致。请核对设备日期后再提交。`);
           return;
         }
-        const newMinutes = Number(result.focusDurationMinutes);
-        if (!Number.isFinite(newMinutes) || newMinutes < 0) {
+        const newMinutes = result.focusDurationMinutes;
+        if (typeof newMinutes !== "number" || !Number.isInteger(newMinutes) || newMinutes < 0 || newMinutes > 1440) {
           recordFocusAttempt({ status: "needs-reupload", result });
           setNotice("未能识别今日累计专注时长，请上传更清晰的截图。");
           return;
@@ -241,14 +242,14 @@ export function StrictLearningCenter() {
         updateDay({ focus: { status: "approved", minutes: newMinutes, result, feedback } });
         setNotice(`已审核：今日累计专注 ${formatMinutes(newMinutes)}。记录已更新，不会重复累加。`);
       } else {
-        const sleepMinutes = Number(result.sleepDurationMinutes);
-        if (!result.sleepStart || !result.wakeTime || !Number.isFinite(sleepMinutes) || sleepMinutes <= 0 || sleepMinutes > 1440) {
+        const sleepMinutes = result.sleepDurationMinutes;
+        if (clockMinutes(result.sleepStart) === null || clockMinutes(result.wakeTime) === null || typeof sleepMinutes !== "number" || !Number.isInteger(sleepMinutes) || sleepMinutes <= 0 || sleepMinutes > 1440) {
           recordSleepAttempt({ status: "needs-reupload", result });
           setNotice("睡眠时间信息不完整，请重新上传完整睡眠报告。");
           return;
         }
-        const sleepDate = String(result.recordDate || "");
-        if (sleepDate !== today) {
+        const sleepDate = result.recordDate;
+        if (!isDateKey(sleepDate) || sleepDate !== today) {
           recordSleepAttempt({ status: "date-mismatch", result });
           setNotice(sleepDate ? `报告日期为 ${sleepDate}，与今天 ${today} 不一致，暂不通过审核。` : "未能识别报告对应的起床日期，请上传包含日期的完整睡眠报告。");
           return;
