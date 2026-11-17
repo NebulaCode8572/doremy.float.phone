@@ -206,9 +206,6 @@ function normalizeDay(key: string, value: unknown): StrictDay {
     if (typeof day.recall.text !== "string" || day.recall.text.length > 20000) {
       throw new Error("回忆内容格式无效：" + key);
     }
-    if (typeof day.recall.notes !== "string" || day.recall.notes.length > 20000) {
-      throw new Error("补充笔记格式无效：" + key);
-    }
     assertString(day.recall, "feedback", 4000, `${key} 的角色反馈`);
     if (day.recall.images !== undefined && (!Array.isArray(day.recall.images) || day.recall.images.length > 3 || day.recall.images.some((image) => typeof image !== "string" || image.length > 500000))) throw new Error(`${key} 的回忆资料图片格式无效`);
     if (typeof day.recall.completedAt !== "number" || !Number.isFinite(day.recall.completedAt) || day.recall.completedAt < 0) {
