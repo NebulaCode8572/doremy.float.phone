@@ -37,7 +37,7 @@ export function registerDynamicPrefix(prefix: string): void {
     if (_hydrated) migrateLegacyPrefix(prefix);
 }
 
-const LOCAL_STORAGE_FALLBACK_PREFIX = "\\u0000KV_FALLBACK_V1\\u0000";
+const LOCAL_STORAGE_FALLBACK_PREFIX = "__KV_FALLBACK_V1__:";
 
 function decodeLocalStorageValue(raw: string): { value: string; isFallback: boolean } {
     return raw.startsWith(LOCAL_STORAGE_FALLBACK_PREFIX)
@@ -63,6 +63,8 @@ function migrateLegacyKey(lsKey: string): void {
             removeLegacyLocalStorageKeyIfRaw(lsKey, raw);
             return;
         }
+        if (localStorage.getItem(lsKey) !== raw) return;
+        if (!decoded.isFallback && _cache.has(lsKey) && _cache.get(lsKey) !== decoded.value) return;
         return kvDb.entries.put({ key: lsKey, value: decoded.value }).then(() => {
             if (localStorage.getItem(lsKey) === raw) {
                 _cache.set(lsKey, decoded.value);
@@ -169,7 +171,7 @@ export function hydrateKvDb(): Promise<void> {
         // IndexedDB batch succeeds; a failed write leaves the old copy intact
         // and retryable on the next hydration attempt.
         const batch: { key: string; value: string }[] = [];
-        const removeKeys = new Set<string>();
+        const removeKeys = new Map<string, string>();
 
         const queueLegacyValue = (key: string, raw: string) => {
             const decoded = decodeLocalStorageValue(raw);
@@ -178,14 +180,14 @@ export function hydrateKvDb(): Promise<void> {
                 // A marked value is a known failed-write recovery copy and
                 // takes precedence over the older IndexedDB value.
                 if (existing !== decoded.value) batch.push({ key, value: decoded.value });
-                removeKeys.add(key);
+                removeKeys.set(key, raw);
                 return;
             }
             if (existing === undefined) {
                 batch.push({ key, value: decoded.value });
-                removeKeys.add(key);
+                removeKeys.set(key, raw);
             } else if (existing === decoded.value) {
-                removeKeys.add(key);
+                removeKeys.set(key, raw);
             }
             // If an unmarked legacy mirror differs from an existing IDB value,
             // leave it untouched as a recovery copy; never overwrite IDB with
@@ -210,9 +212,8 @@ export function hydrateKvDb(): Promise<void> {
             await kvDb.entries.bulkPut(batch);
             for (const { key, value } of batch) _cache.set(key, value);
         }
-        for (const k of removeKeys) {
-            const raw = localStorage.getItem(k);
-            if (raw !== null) removeLegacyLocalStorageKeyIfRaw(k, raw);
+        for (const [key, raw] of removeKeys) {
+            removeLegacyLocalStorageKeyIfRaw(key, raw);
         }
     })().then(() => {
         _hydrated = true;
@@ -318,7 +319,7 @@ export async function kvMoveIfAbsent(
     if (outcome.value !== null) _cache.set(targetKey, outcome.value);
     else _cache.delete(targetKey);
 
-    if (outcome.moved && isManagedLegacyKey(sourceKey)) removeLegacyLocalStorageKey(sourceKey);
+    if (outcome.moved && isManagedLegacyKey(sourceKey)) removeLegacyLocalStorageKeyIfValue(sourceKey, outcome.value ?? "");
     return outcome;
 }
 
