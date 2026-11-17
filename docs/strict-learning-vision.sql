@@ -13,4 +13,6 @@ create table if not exists public.app_user_vision_settings (
 );
 
 alter table public.app_user_vision_settings enable row level security;
+revoke all on public.app_user_vision_settings from anon, authenticated;
+grant all on public.app_user_vision_settings to service_role;
 -- No client policies: access is only through the server's Supabase service-role client.
