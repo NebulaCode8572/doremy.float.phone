@@ -246,9 +246,8 @@ export async function kvMoveIfAbsent(
     await kvDb.transaction("rw", kvDb.entries, async () => {
         const target = await kvDb.entries.get(targetKey);
         if (target) {
-            // A previous migration already assigned the legacy value. Remove any
-            // leftover source so a later account cannot claim the same data.
-            await kvDb.entries.delete(sourceKey);
+            // Never discard the source when a destination already exists.
+            // The caller can preserve or reconcile the two copies explicitly.
             outcome = { moved: false, value: target.value };
             return;
         }
