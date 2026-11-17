@@ -5,6 +5,7 @@ import { SettingsContext } from "@/components/phone-settings-app";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { useAccount } from "@/lib/account-context";
 import { getStrictLearningStoreKey, migrateLegacyStrictLearningStore } from "@/lib/strict-learning-storage";
+import { getStrictLearningSyncKey, saveStrictLearningSyncKey } from "@/lib/strict-learning-sync-client";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 
@@ -24,6 +25,8 @@ export function StrictLearningSettings() {
   const [loaded, setLoaded] = useState(false);
   const [loadedAccountId, setLoadedAccountId] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [syncKeyDraft, setSyncKeyDraft] = useState("");
+  const [syncKeySaved, setSyncKeySaved] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,6 +39,8 @@ export function StrictLearningSettings() {
     setWakeFrom("");
     setWakeUntil("");
     setMinSleepHours("");
+    setSyncKeyDraft(getStrictLearningSyncKey());
+    setSyncKeySaved(Boolean(getStrictLearningSyncKey()));
     setSubpageTitle("严格学习模式");
 
     void (async () => {
@@ -91,6 +96,38 @@ export function StrictLearningSettings() {
           <button type="button" role="switch" aria-checked={enabled} onClick={() => { const next = !enabled; setEnabled(next); persist({ enabled: next }); }} className={`relative h-7 w-12 rounded-full transition-colors ${enabled ? "bg-sky-500" : "bg-gray-300"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-6" : "translate-x-1"}`} /></button>
         </div>
       </section>
+      {account.id === "local_user" ? (
+        <section className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-card)] p-4">
+          <div className="text-sm font-semibold text-[var(--c-text-title)]">严格模式云同步</div>
+          <p className="mt-1 text-xs leading-5 text-[var(--c-text-secondary)]">在每台设备输入同一共享密钥一次，即可同步学习记录。密钥只保存在当前设备，不会上传到学习记录中。</p>
+          <label className="mt-3 flex flex-col gap-2 text-sm">
+            <span className="font-medium">云同步共享密钥</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={syncKeyDraft}
+              onChange={event => { setSyncKeyDraft(event.target.value); setSyncKeySaved(false); }}
+              placeholder="粘贴服务端配置的共享密钥"
+              className="ui-input w-full"
+            />
+          </label>
+          <div className="mt-3 flex items-center gap-2">
+            <button type="button" className="ui-button" onClick={() => {
+              if (syncKeyDraft.trim().length < 32) return;
+              saveStrictLearningSyncKey(syncKeyDraft);
+              setSyncKeyDraft(syncKeyDraft.trim());
+              setSyncKeySaved(true);
+            }}>保存密钥</button>
+            <button type="button" className="ui-button" onClick={() => {
+              saveStrictLearningSyncKey("");
+              setSyncKeyDraft("");
+              setSyncKeySaved(false);
+            }}>清除</button>
+            <span className="text-xs text-[var(--c-text-secondary)]">{syncKeySaved ? "已保存在本机" : syncKeyDraft.trim().length > 0 && syncKeyDraft.trim().length < 32 ? "密钥至少需要 32 个字符" : "尚未保存"}</span>
+          </div>
+          <p className="mt-3 text-xs leading-5 text-[var(--c-text-secondary)]">服务端还需配置环境变量 STRICT_LEARNING_SYNC_SECRET，且其值必须与这里填写的密钥完全一致。保存后重新打开学习中心以开始同步。</p>
+        </section>
+      ) : null}
       <label className="flex flex-col gap-2 text-sm">
         <span className="font-medium">监督 Char</span>
         <select value={supervisorId} onChange={event => { setSupervisorId(event.target.value); persist({ supervisorId: event.target.value }); }} className="ui-select">
