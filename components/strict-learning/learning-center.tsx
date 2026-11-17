@@ -13,8 +13,8 @@ import { createOrGetSession, hydrateChatStorage, loadChatMessages, pushChatMessa
 type StrictProfile = { nickname: string; lineOne: string; lineTwo: string; avatar: string; banner: string };
 type StrictDay = {
   date: string;
-  sleep?: { status: string; result?: Record<string, unknown> };
-  focus?: { status: string; minutes?: number; result?: Record<string, unknown> };
+  sleep?: { status: string; result?: Record<string, unknown>; feedback?: string };
+  focus?: { status: string; minutes?: number; result?: Record<string, unknown>; feedback?: string };
   recall?: { text: string; notes: string; completedAt: number; feedback?: string };
   charNote?: { date: string; characterId: string; text: string };
 };
@@ -161,6 +161,37 @@ export function StrictLearningCenter() {
     } catch { setNotice("图片读取失败。"); }
   };
 
+  const askCharToReviewEvidence = async (kind: "sleep" | "focus", result: VisionResult, verdict: string): Promise<string> => {
+    if (!supervisor) return "";
+    const apiConfigs = loadApiConfigs();
+    const binding = resolveBinding(loadBindingConfig(), supervisor.id, "chat");
+    const config = apiConfigs.find(item => item.id === binding.apiConfigId);
+    if (!config) return "";
+    try {
+      await hydrateChatStorage();
+      const session = createOrGetSession(supervisor.id);
+      const fields = kind === "sleep"
+        ? { reportWakeDate: result.recordDate, sleepStart: result.sleepStart, wakeTime: result.wakeTime, sleepDurationMinutes: result.sleepDurationMinutes }
+        : { todayCumulativeFocusMinutes: result.focusDurationMinutes, phoneLockDate: result.phoneLockDate, phoneLockTime: result.phoneLockTime };
+      pushChatMessage({
+        sessionId: session.id,
+        role: "user",
+        content: `【学习中心·${kind === "sleep" ? "睡眠报告" : "专注学习"}审核】\n识别数据：${JSON.stringify(fields)}\n规则审核结论：${verdict}\n请基于这些文字数据简短回应，不要改变审核结论，也不要推测未识别的信息。`,
+        origin: "custom_app",
+      });
+      const context = loadChatMessages(session.id, 16)
+        .filter(message => message.role === "user" || message.role === "assistant")
+        .map(message => ({ role: message.role as "user" | "assistant", content: message.content }));
+      const response = await simpleLLMCall(config, [
+        { role: "system", content: `你正在以角色身份给用户反馈学习凭证审核。角色名：${supervisor.name}。角色人设：${supervisor.persona || supervisor.personality || "自然、简洁"}。请尊重系统给出的规则审核结论，不得改判；只针对已提供的识别文字数据简短回应，不要假装看过原图，不要编造数据。保持角色语气，最多两句话。` },
+        ...context,
+      ], { temperature: 0.65, max_tokens: 120 });
+      if (response.error || !response.content?.trim()) return "";
+      pushChatMessage({ sessionId: session.id, role: "assistant", content: response.content.trim(), origin: "custom_app" });
+      return response.content.trim();
+    } catch { return ""; }
+  };
+
   const submitEvidence = async (kind: "sleep" | "focus", file?: File) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) { setNotice("请上传图片凭证。"); return; }
@@ -198,7 +229,8 @@ export function StrictLearningCenter() {
           setNotice(`新截图识别为 ${formatMinutes(newMinutes)}，低于已审核的 ${formatMinutes(oldMinutes)}。请核对后再提交，系统暂不覆盖旧记录。`);
           return;
         }
-        updateDay({ focus: { status: "approved", minutes: newMinutes, result } });
+        const feedback = await askCharToReviewEvidence("focus", result, newMinutes >= 480 ? "审核通过，今日累计专注达到 8 小时目标。" : "凭证有效，但今日累计专注尚未达到 8 小时目标。");
+        updateDay({ focus: { status: "approved", minutes: newMinutes, result, feedback } });
         setNotice(`已审核：今日累计专注 ${formatMinutes(newMinutes)}。记录已更新，不会重复累加。`);
       } else {
         const sleepMinutes = Number(result.sleepDurationMinutes);
@@ -228,10 +260,12 @@ export function StrictLearningCenter() {
         const wakeOk = wake !== null && ((wakeFrom as number) <= (wakeUntil as number) ? wake >= (wakeFrom as number) && wake <= (wakeUntil as number) : wake >= (wakeFrom as number) || wake <= (wakeUntil as number));
         const durationOk = minSleepHours === null || (Number.isFinite(minSleepHours) && minSleepHours >= 1 && minSleepHours <= 24 && sleepMinutes >= minSleepHours * 60);
         if (bedtimeOk && wakeOk && durationOk) {
-          updateDay({ sleep: { status: "approved", result } });
+          const feedback = await askCharToReviewEvidence("sleep", result, "审核通过，睡眠时间符合已配置规则。");
+          updateDay({ sleep: { status: "approved", result, feedback } });
           setNotice(`睡眠审核通过：入睡 ${String(result.sleepStart)}，起床 ${String(result.wakeTime)}。`);
         } else {
-          updateDay({ sleep: { status: "not-met", result } });
+          const feedback = await askCharToReviewEvidence("sleep", result, "未达标，识别数据未满足已配置的睡眠规则。");
+          updateDay({ sleep: { status: "not-met", result, feedback } });
           setNotice(`睡眠记录已识别，但未达到设定时间：入睡需不晚于 ${store.sleepRules.bedtimeDeadline}，起床需在 ${store.sleepRules.wakeFrom}–${store.sleepRules.wakeUntil}${store.sleepRules.minSleepHours ? `，睡眠不少于 ${store.sleepRules.minSleepHours} 小时` : ""}。`);
         }
       }
@@ -374,7 +408,7 @@ export function StrictLearningCenter() {
 
             <section className="strict-task-card">
               <div className="flex items-start gap-3"><Moon className="strict-task-icon" size={34} /><div className="min-w-0 flex-1"><div className="flex items-center justify-between"><strong>睡眠报告</strong><span className="strict-status">{day.sleep?.status === "approved" ? "已审核" : day.sleep?.status === "recognized" ? "待规则审核" : day.sleep?.status === "not-met" ? "未达标" : day.sleep?.status === "date-mismatch" ? "日期不符" : day.sleep?.status === "needs-reupload" ? "请重新上传" : "待提交"}</span></div><p className="text-xs text-slate-500 mt-1">上传手环睡眠截图，识别昨晚信息。</p></div></div>
-              {day.sleep?.result ? <div className="strict-result">入睡 {String(day.sleep.result.sleepStart || "—")} · 起床 {String(day.sleep.result.wakeTime || "—")} · 睡眠 {formatMinutes(day.sleep.result.sleepDurationMinutes)}</div> : null}
+              {day.sleep?.result ? <div className="strict-result">入睡 {String(day.sleep.result.sleepStart || "—")} · 起床 {String(day.sleep.result.wakeTime || "—")} · 睡眠 {formatMinutes(day.sleep.result.sleepDurationMinutes)}</div> : null}\n              {day.sleep?.feedback ? <div className="strict-result"><strong>Char：</strong>{day.sleep.feedback}</div> : null}
               <label className="strict-upload-button"><Upload size={18} />{busy === "sleep" ? "正在识别…" : "上传睡眠报告"}<input type="file" accept="image/*" disabled={busy !== null} onChange={event => { void submitEvidence("sleep", event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>
             </section>
 
@@ -382,7 +416,7 @@ export function StrictLearningCenter() {
               <div className="flex items-start gap-3"><Timer className="strict-task-icon" size={36} /><div className="min-w-0 flex-1"><div className="flex items-center justify-between"><strong>专注学习</strong><span className="strict-status">{day.focus?.status === "approved" ? "已审核" : day.focus?.status === "needs-confirmation" ? "待核对" : day.focus?.status === "date-mismatch" ? "日期不符" : day.focus?.status === "needs-reupload" ? "请重新上传" : "待审核"}</span></div><p className="text-xs text-slate-500 mt-1">手环番茄钟 + 手机锁屏同框。</p></div></div>
               <div className="mt-3 text-sm font-medium">{formatMinutes(focusMinutes)} / 08:00</div>
               <div className="strict-progress-track"><div className="strict-progress-fill" style={{ width: `${Math.min(100, focusMinutes / 480 * 100)}%` }} /></div>
-              {day.focus?.result ? <div className="strict-result">识别到今日累计专注 {formatMinutes(day.focus.result.focusDurationMinutes)} · 锁屏 {String(day.focus.result.phoneLockDate || "—")} {String(day.focus.result.phoneLockTime || "")}</div> : null}
+              {day.focus?.result ? <div className="strict-result">识别到今日累计专注 {formatMinutes(day.focus.result.focusDurationMinutes)} · 锁屏 {String(day.focus.result.phoneLockDate || "—")} {String(day.focus.result.phoneLockTime || "")}</div> : null}\n              {day.focus?.feedback ? <div className="strict-result"><strong>Char：</strong>{day.focus.feedback}</div> : null}
               {day.focus?.status === "needs-confirmation" && day.focus.result ? <button type="button" className="strict-upload-button" onClick={() => { const minutes = Number(day.focus?.result?.focusDurationMinutes); if (Number.isFinite(minutes) && minutes >= 0) { updateDay({ focus: { status: "approved", minutes, result: day.focus?.result } }); setNotice(`已确认并更新为 ${formatMinutes(minutes)}，采用覆盖而非累加。`); } }}>确认并以新截图覆盖记录</button> : null}
               <label className="strict-upload-button"><Camera size={18} />{busy === "focus" ? "正在识别…" : "拍摄学习凭证"}<input type="file" accept="image/*" capture="environment" disabled={busy !== null} onChange={event => { void submitEvidence("focus", event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>
             </section>
