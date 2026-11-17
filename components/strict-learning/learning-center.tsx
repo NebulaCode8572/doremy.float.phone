@@ -17,7 +17,7 @@ type StrictDay = {
   recall?: { text: string; notes: string; completedAt: number };
   charNote?: { date: string; characterId: string; text: string };
 };
-type StrictStore = { enabled: boolean; supervisorId: string; profile: StrictProfile; days: Record<string, StrictDay>; streak: { count: number; lastCheckinDate: string; boatUnlocked: boolean } };
+type StrictStore = { enabled: boolean; supervisorId: string; profile: StrictProfile; days: Record<string, StrictDay>; streak: { count: number; lastCheckinDate: string; boatUnlocked: boolean }; sleepRules: { bedtimeDeadline: string; wakeFrom: string; wakeUntil: string } };
 type VisionResult = Record<string, unknown>;
 
 const STORE_KEY = "strict_learning_center_v1";
@@ -27,6 +27,7 @@ const DEFAULT_STORE: StrictStore = {
   profile: { nickname: "小玉", lineOne: "@白衣魔法使", lineTwo: "把今天过成值得骄傲的一天。", avatar: "", banner: "" },
   days: {},
   streak: { count: 0, lastCheckinDate: "", boatUnlocked: false },
+  sleepRules: { bedtimeDeadline: "", wakeFrom: "", wakeUntil: "" },
 };
 const todayKey = () => {
   const now = new Date();
@@ -37,6 +38,8 @@ const dayDistance = (from: string, to: string) => {
   const parse = (value: string) => Date.UTC(Number(value.slice(0, 4)), Number(value.slice(5, 7)) - 1, Number(value.slice(8, 10)));
   return Math.round((parse(to) - parse(from)) / 86400000);
 };
+const clockMinutes = (value: unknown) => { const match = typeof value === "string" ? /^(\\d{2}):(\\d{2})$/.exec(value) : null; return match ? Number(match[1]) * 60 + Number(match[2]) : null; };
+const beforeBedtimeDeadline = (actual: number, deadline: number) => (actual < 720 ? actual + 1440 : actual) <= (deadline < 720 ? deadline + 1440 : deadline);
 const formatMinutes = (value: unknown) => {
   const minutes = Number(value);
   if (!Number.isFinite(minutes) || minutes < 0) return "—";
@@ -68,7 +71,8 @@ export function StrictLearningCenter() {
   const day = store.days[today] || { date: today };
   const supervisor = useMemo(() => characters.find(character => character.id === store.supervisorId) || null, [characters, store.supervisorId]);
   const completed = Number(day.sleep?.status === "approved") + Number(day.focus?.status === "approved" && (day.focus?.minutes || 0) >= 480) + Number(Boolean(day.recall?.completedAt));
-  const currentStreak = dayDistance(store.streak.lastCheckinDate, today) <= 1 ? store.streak.count : 0;
+  const streakGap = dayDistance(store.streak.lastCheckinDate, today);
+  const currentStreak = streakGap >= 0 && streakGap <= 1 ? store.streak.count : 0;
   const focusMinutes = day.focus?.minutes || 0;
 
   useEffect(() => {
@@ -82,6 +86,7 @@ export function StrictLearningCenter() {
           profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
           days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
           streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
+          sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
         });
       } catch { /* retain defaults */ }
     }
@@ -181,8 +186,31 @@ export function StrictLearningCenter() {
           setNotice("睡眠时间信息不完整，请重新上传完整睡眠报告。");
           return;
         }
-        updateDay({ sleep: { status: "recognized", result } });
-        setNotice(`已识别睡眠报告：${formatMinutes(sleepMinutes)}。达标规则尚未配置，暂不计入完成项。`);
+        const sleepDate = String(result.recordDate || "");
+        if (sleepDate !== today) {
+          updateDay({ sleep: { status: "date-mismatch", result } });
+          setNotice(sleepDate ? `报告日期为 ${sleepDate}，与今天 ${today} 不一致，暂不通过审核。` : "未能识别报告对应的起床日期，请上传包含日期的完整睡眠报告。");
+          return;
+        }
+        const bedtime = clockMinutes(result.sleepStart);
+        const wake = clockMinutes(result.wakeTime);
+        const deadline = clockMinutes(store.sleepRules.bedtimeDeadline);
+        const wakeFrom = clockMinutes(store.sleepRules.wakeFrom);
+        const wakeUntil = clockMinutes(store.sleepRules.wakeUntil);
+        if ([deadline, wakeFrom, wakeUntil].some(value => value === null)) {
+          updateDay({ sleep: { status: "recognized", result } });
+          setNotice("睡眠数据已识别。请先在系统设置中填写入睡截止时间和起床时间范围，再进行达标审核。");
+          return;
+        }
+        const bedtimeOk = bedtime !== null && beforeBedtimeDeadline(bedtime, deadline as number);
+        const wakeOk = wake !== null && wake >= (wakeFrom as number) && wake <= (wakeUntil as number);
+        if (bedtimeOk && wakeOk) {
+          updateDay({ sleep: { status: "approved", result } });
+          setNotice(`睡眠审核通过：入睡 ${String(result.sleepStart)}，起床 ${String(result.wakeTime)}。`);
+        } else {
+          updateDay({ sleep: { status: "not-met", result } });
+          setNotice(`睡眠记录已识别，但未达到设定时间：入睡需不晚于 ${store.sleepRules.bedtimeDeadline}，起床需在 ${store.sleepRules.wakeFrom}–${store.sleepRules.wakeUntil}。`);
+        }
       }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "凭证审核失败");
@@ -282,7 +310,7 @@ export function StrictLearningCenter() {
             </section>
 
             <section className="strict-task-card">
-              <div className="flex items-start gap-3"><Moon className="strict-task-icon" size={34} /><div className="min-w-0 flex-1"><div className="flex items-center justify-between"><strong>睡眠报告</strong><span className="strict-status">{day.sleep?.status === "approved" ? "已审核" : day.sleep?.status === "recognized" ? "待规则审核" : day.sleep?.status === "needs-reupload" ? "请重新上传" : "待提交"}</span></div><p className="text-xs text-slate-500 mt-1">上传手环睡眠截图，识别昨晚信息。</p></div></div>
+              <div className="flex items-start gap-3"><Moon className="strict-task-icon" size={34} /><div className="min-w-0 flex-1"><div className="flex items-center justify-between"><strong>睡眠报告</strong><span className="strict-status">{day.sleep?.status === "approved" ? "已审核" : day.sleep?.status === "recognized" ? "待规则审核" : day.sleep?.status === "not-met" ? "未达标" : day.sleep?.status === "date-mismatch" ? "日期不符" : day.sleep?.status === "needs-reupload" ? "请重新上传" : "待提交"}</span></div><p className="text-xs text-slate-500 mt-1">上传手环睡眠截图，识别昨晚信息。</p></div></div>
               {day.sleep?.result ? <div className="strict-result">入睡 {String(day.sleep.result.sleepStart || "—")} · 起床 {String(day.sleep.result.wakeTime || "—")} · 睡眠 {formatMinutes(day.sleep.result.sleepDurationMinutes)}</div> : null}
               <label className="strict-upload-button"><Upload size={18} />{busy === "sleep" ? "正在识别…" : "上传睡眠报告"}<input type="file" accept="image/*" disabled={busy !== null} onChange={event => { void submitEvidence("sleep", event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>
             </section>
