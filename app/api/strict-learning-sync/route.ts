@@ -79,7 +79,7 @@ export async function PUT(request: Request) {
     if (typeof expectedRevision !== "number" || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
       return NextResponse.json({ error: "同步版本号无效" }, { status: 400 });
     }
-    let payload;
+    let payload: ReturnType<typeof normalizeStrictLearningStore>;
     try {
       payload = normalizeStrictLearningStore(body.payload);
     } catch (error) {
