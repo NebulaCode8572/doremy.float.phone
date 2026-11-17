@@ -463,6 +463,12 @@ export function StrictLearningCenter() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "识别失败");
       const result = data.result as VisionResult;
+      if (result.confidence === "low") {
+        if (kind === "focus") recordFocusAttempt({ status: "needs-reupload", result });
+        else recordSleepAttempt({ status: "needs-reupload", result });
+        setNotice("图片中的关键数据识别置信度较低，暂不通过审核。请上传更清晰、信息完整的截图。");
+        return;
+      }
       if (kind === "focus") {
         if (result.deviceVisible !== true || result.phoneLockVisible !== true || !isDateKey(result.phoneLockDate) || clockMinutes(result.phoneLockTime) === null) {
           recordFocusAttempt({ status: "needs-reupload", result });
