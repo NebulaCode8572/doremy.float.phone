@@ -288,6 +288,10 @@ export function StrictLearningCenter() {
     syncQueueRef.current = syncQueueRef.current.then(async () => {
       // Do not report a cloud snapshot as synced before its local write settles.
       await persistenceQueueRef.current;
+      // A newer local snapshot may have been queued while this task waited for
+      // IndexedDB. Never upload this older closure after the newer snapshot;
+      // its own effect has queued the corresponding cloud write.
+      if (persistenceSnapshotRef.current !== snapshot) return;
       if (!syncReadyRef.current || generation !== syncGenerationRef.current) return;
       const response = await fetch("/api/strict-learning-sync", {
         method: "PUT",
