@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import { Agent } from "undici";
+import { Agent, fetch as undiciFetch } from "undici";
 import { encodeSupabaseFilter, supabaseRestFetch } from "@/lib/server/supabase-rest";
 
 const TABLE = "app_user_vision_settings";
@@ -99,7 +99,7 @@ export async function callVisionProvider(baseUrl: string, apiKey: string, payloa
   const dispatcher = new Agent({ connect: { lookup: pinnedLookup } });
   const endpoint = `${url.toString().replace(/\/+$/, "").replace(/\/chat\/completions$/i, "")}/chat/completions`;
   try {
-    const response = await fetch(endpoint, {
+    const response = await undiciFetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify(payload),
@@ -107,7 +107,7 @@ export async function callVisionProvider(baseUrl: string, apiKey: string, payloa
       redirect: "error",
       signal: AbortSignal.timeout(45_000),
       dispatcher,
-    } as RequestInit & { dispatcher: Agent });
+    });
     const reader = response.body?.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;
