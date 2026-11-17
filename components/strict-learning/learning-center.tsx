@@ -64,6 +64,7 @@ export function StrictLearningCenter() {
   const [store, setStore] = useState<StrictStore>(DEFAULT_STORE);
   const [loaded, setLoaded] = useState(false);
   const [loadedAccountId, setLoadedAccountId] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [characters, setCharacters] = useState<Character[]>([]);
   const [editingProfile, setEditingProfile] = useState(false);
   const [recallText, setRecallText] = useState("");
@@ -85,6 +86,7 @@ export function StrictLearningCenter() {
     let cancelled = false;
     setLoaded(false);
     setLoadedAccountId("");
+    setLoadError("");
     setOpen(false);
     setStore(DEFAULT_STORE);
     setRecallText("");
@@ -112,7 +114,7 @@ export function StrictLearningCenter() {
       setLoaded(true);
     })().catch(() => {
       if (!cancelled) {
-        setNotice("学习记录迁移失败，请重新打开学习中心。");
+        setLoadError("学习记录加载失败。请检查本机存储状态后重试。");
       }
     });
 
@@ -381,7 +383,9 @@ export function StrictLearningCenter() {
     finally { setBusy(null); }
   };
 
-  if (!loaded || loadedAccountId !== account.id) return null;
+  if (!loaded || loadedAccountId !== account.id) {
+    return loadError ? <div role="alert" className="p-4 text-sm text-red-700">{loadError}</div> : null;
+  }
   return (
     <>
       {store.enabled ? <button
