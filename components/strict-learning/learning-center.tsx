@@ -99,6 +99,26 @@ export function StrictLearningCenter() {
   }, [loaded, store]);
 
   useEffect(() => {
+    const refresh = () => {
+      const raw = kvGet(STORE_KEY);
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw) as Partial<StrictStore>;
+        setStore(previous => ({
+          ...previous,
+          ...parsed,
+          profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
+          days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
+          streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
+          sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
+        }));
+      } catch { /* ignore malformed external updates */ }
+    };
+    window.addEventListener("strict-learning-updated", refresh);
+    return () => window.removeEventListener("strict-learning-updated", refresh);
+  }, []);
+
+  useEffect(() => {
     if (!loaded || completed !== 3 || store.streak.lastCheckinDate === today) return;
     setStore(previous => {
       if (previous.streak.lastCheckinDate === today) return previous;
