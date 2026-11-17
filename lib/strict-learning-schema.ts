@@ -40,9 +40,41 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isDateKey(value: unknown): value is string {
   return typeof value === "string"
-    && /^\\d{4}-\\d{2}-\\d{2}$/.test(value)
+    && /^\d{4}-\d{2}-\d{2}$/.test(value)
     && !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
     && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+}
+
+function assertSafeJsonTree(input: unknown): void {
+  const stack: Array<{ value: unknown; depth: number }> = [{ value: input, depth: 0 }];
+  let visited = 0;
+  while (stack.length) {
+    const current = stack.pop()!;
+    visited += 1;
+    if (visited > 100000 || current.depth > 16) throw new Error("学习记录结构过于复杂");
+    const value = current.value;
+    if (value === null || typeof value === "boolean") continue;
+    if (typeof value === "string") {
+      if (value.length > 8000000) throw new Error("学习记录文本字段过长");
+      continue;
+    }
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) throw new Error("学习记录包含无效数字");
+      continue;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) stack.push({ value: item, depth: current.depth + 1 });
+      continue;
+    }
+    if (isRecord(value)) {
+      for (const [key, item] of Object.entries(value)) {
+        if (key.length > 256) throw new Error("学习记录字段名称过长");
+        stack.push({ value: item, depth: current.depth + 1 });
+      }
+      continue;
+    }
+    throw new Error("学习记录包含不支持的数据");
+  }
 }
 
 function assertString(record: Record<string, unknown>, key: string, maxLength: number, label: string): void {
@@ -122,6 +154,7 @@ function normalizeDay(key: string, value: unknown): StrictDay {
  */
 export function normalizeStrictLearningStore(input: unknown): StrictStore {
   if (!isRecord(input)) throw new Error("学习记录必须是 JSON 对象");
+  assertSafeJsonTree(input);
   const source = input;
 
   if (source.enabled !== undefined && typeof source.enabled !== "boolean") throw new Error("学习中心开关格式无效");
