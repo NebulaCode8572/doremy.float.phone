@@ -11,6 +11,7 @@ import { simpleLLMCall } from "@/lib/api-helpers";
 import { createOrGetSession, hydrateChatStorage, loadChatMessages, pushChatMessage } from "@/lib/chat-storage";
 import { useAccount } from "@/lib/account-context";
 import { getStrictLearningStoreKey, migrateLegacyStrictLearningStore } from "@/lib/strict-learning-storage";
+import { getStrictLearningSyncKey } from "@/lib/strict-learning-sync-client";
 
 type StrictProfile = { nickname: string; lineOne: string; lineTwo: string; avatar: string; banner: string };
 type StrictDay = {
@@ -72,6 +73,11 @@ export function StrictLearningCenter() {
   const [busy, setBusy] = useState<"sleep" | "focus" | "note" | null>(null);
   const [notice, setNotice] = useState("");
   const noteAttemptedRef = useRef("");
+  const syncRevisionRef = useRef(0);
+  const syncReadyRef = useRef(false);
+  const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const lastQueuedSnapshotRef = useRef("");
+  const [syncStatus, setSyncStatus] = useState("仅保存在本机");
   const [profileDraft, setProfileDraft] = useState<StrictProfile>(DEFAULT_STORE.profile);
 
   const today = todayKey();
@@ -84,6 +90,10 @@ export function StrictLearningCenter() {
 
   useEffect(() => {
     let cancelled = false;
+    syncReadyRef.current = false;
+    syncRevisionRef.current = 0;
+    lastQueuedSnapshotRef.current = "";
+    setSyncStatus("云端同步准备中");
     setLoaded(false);
     setLoadedAccountId("");
     setLoadError("");
@@ -96,19 +106,82 @@ export function StrictLearningCenter() {
       const activeStoreKey = await migrateLegacyStrictLearningStore(account.id);
       if (cancelled) return;
       const raw = kvGet(activeStoreKey);
+      let initialStore = DEFAULT_STORE;
       if (raw) {
         try {
           const parsed = JSON.parse(raw) as Partial<StrictStore>;
-          setStore({
+          initialStore = {
             ...DEFAULT_STORE,
             ...parsed,
             profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
             days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
             streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
             sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
-          });
+          };
         } catch { /* retain defaults */ }
       }
+
+      const syncKey = getStrictLearningSyncKey();
+      if (account.id === "local_user" && syncKey) {
+        try {
+          const response = await fetch("/api/strict-learning-sync", {
+            headers: { Authorization: `Bearer ${syncKey}` },
+            cache: "no-store",
+          });
+          const remote = await response.json();
+          if (!response.ok) throw new Error(remote.error || "云端读取失败");
+          syncRevisionRef.current = Number(remote.revision || 0);
+          const localHasData = Boolean(
+            initialStore.enabled || initialStore.supervisorId ||
+            Object.keys(initialStore.days || {}).length ||
+            initialStore.profile.nickname !== DEFAULT_STORE.profile.nickname ||
+            initialStore.profile.lineOne !== DEFAULT_STORE.profile.lineOne ||
+            initialStore.profile.lineTwo !== DEFAULT_STORE.profile.lineTwo ||
+            initialStore.profile.avatar || initialStore.profile.banner
+          );
+          if (remote.payload && typeof remote.payload === "object") {
+            if (localHasData) {
+              syncReadyRef.current = false;
+              setSyncStatus("云端与本机均有记录，已暂停自动覆盖；请先保留本机数据并处理冲突");
+            } else {
+              const parsed = remote.payload as Partial<StrictStore>;
+              initialStore = {
+                ...DEFAULT_STORE,
+                ...parsed,
+                profile: { ...DEFAULT_STORE.profile, ...(parsed.profile || {}) },
+                days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
+                streak: { ...DEFAULT_STORE.streak, ...(parsed.streak || {}) },
+                sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsed.sleepRules || {}) },
+              };
+              setSyncStatus("已从云端载入");
+              syncReadyRef.current = true;
+            }
+          } else {
+            syncReadyRef.current = true;
+            if (localHasData) {
+              const upload = await fetch("/api/strict-learning-sync", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${syncKey}` },
+                body: JSON.stringify({ expectedRevision: 0, payload: initialStore }),
+              });
+              const saved = await upload.json();
+              if (!upload.ok) throw new Error(saved.error || "首次云端备份失败");
+              syncRevisionRef.current = Number(saved.revision || 1);
+              setSyncStatus("已完成首次云端备份");
+            } else {
+              setSyncStatus("云同步已连接，等待学习记录");
+            }
+          }
+        } catch (error) {
+          syncReadyRef.current = false;
+          setSyncStatus(error instanceof Error ? `云同步不可用：${error.message}` : "云同步不可用，记录仍保存在本机");
+        }
+      } else {
+        setSyncStatus(account.id === "local_user" ? "请先在严格学习设置中填写共享密钥" : "当前账号模式不支持此云同步");
+      }
+      lastQueuedSnapshotRef.current = JSON.stringify(initialStore);
+      if (cancelled) return;
+      setStore(initialStore);
       setCharacters(loadCharacters());
       setLoadedAccountId(account.id);
       setLoaded(true);
@@ -122,7 +195,37 @@ export function StrictLearningCenter() {
   }, [account.id]);
 
   useEffect(() => {
-    if (loaded && loadedAccountId === account.id) kvSet(storeKey, JSON.stringify(store));
+    if (!loaded || loadedAccountId !== account.id) return;
+    const snapshot = JSON.stringify(store);
+    kvSet(storeKey, snapshot);
+    if (!syncReadyRef.current || account.id !== "local_user" || snapshot === lastQueuedSnapshotRef.current) return;
+    lastQueuedSnapshotRef.current = snapshot;
+    const syncKey = getStrictLearningSyncKey();
+    if (!syncKey) {
+      syncReadyRef.current = false;
+      setSyncStatus("请先在严格学习设置中填写共享密钥");
+      return;
+    }
+    syncQueueRef.current = syncQueueRef.current.then(async () => {
+      if (!syncReadyRef.current) return;
+      const response = await fetch("/api/strict-learning-sync", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${syncKey}` },
+        body: JSON.stringify({ expectedRevision: syncRevisionRef.current, payload: store }),
+      });
+      const data = await response.json();
+      if (response.status === 409) {
+        syncReadyRef.current = false;
+        setSyncStatus("检测到其他设备更新，已暂停覆盖；请重新打开学习中心载入云端版本");
+        return;
+      }
+      if (!response.ok) throw new Error(data.error || "云端同步失败");
+      syncRevisionRef.current = Number(data.revision || syncRevisionRef.current);
+      setSyncStatus("已同步到云端");
+    }).catch(error => {
+      syncReadyRef.current = false;
+      setSyncStatus(error instanceof Error ? `云端同步失败：${error.message}` : "云端同步失败");
+    });
   }, [loaded, loadedAccountId, account.id, store, storeKey]);
 
   useEffect(() => {
@@ -468,7 +571,7 @@ export function StrictLearningCenter() {
               <button type="button" onClick={() => void saveRecall()} disabled={busy !== null} className="strict-upload-button"><Check size={18} />{busy === "note" ? "Char 正在回复…" : "保存今日回忆"}</button>
             </section>
 
-            <section className="strict-audit-card"><Sparkles size={20} /><div><strong>Char 审核状态</strong><p className="text-xs text-slate-600 mt-1">提交凭证后，识别结果和简短反馈会显示在对应任务卡片中。</p></div></section>
+            <section className="strict-audit-card"><Sparkles size={20} /><div><strong>Char 审核状态</strong><p className="text-xs text-slate-600 mt-1">提交凭证后，识别结果和简短反馈会显示在对应任务卡片中。</p><p className="text-xs text-slate-500 mt-1">云端同步：{syncStatus}</p></div></section>
             {notice ? <div className="strict-notice" role="status">{notice}</div> : null}
           </div>
           {editingProfile ? (
