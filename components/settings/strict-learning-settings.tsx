@@ -25,6 +25,7 @@ export function StrictLearningSettings() {
   const [loadedAccountId, setLoadedAccountId] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     setLoaded(false);
     setLoadedAccountId("");
     setEnabled(false);
@@ -34,23 +35,34 @@ export function StrictLearningSettings() {
     setWakeUntil("");
     setMinSleepHours("");
     setSubpageTitle("严格学习模式");
-    const activeStoreKey = migrateLegacyStrictLearningStore(account.id);
-    const raw = kvGet(activeStoreKey);
-    if (raw) {
-      try {
-        const store = JSON.parse(raw) as Store;
-        setEnabled(store.enabled === true);
-        setSupervisorId(typeof store.supervisorId === "string" ? store.supervisorId : "");
-        setBedtimeDeadline(store.sleepRules?.bedtimeDeadline || "");
-        setWakeFrom(store.sleepRules?.wakeFrom || "");
-        setWakeUntil(store.sleepRules?.wakeUntil || "");
-        setMinSleepHours(store.sleepRules?.minSleepHours || "");
-      } catch { /* defaults */ }
-    }
-    setCharacters(loadCharacters());
-    setLoadedAccountId(account.id);
-    setLoaded(true);
-    return () => setSubpageTitle(null);
+
+    void (async () => {
+      const activeStoreKey = await migrateLegacyStrictLearningStore(account.id);
+      if (cancelled) return;
+      const raw = kvGet(activeStoreKey);
+      if (raw) {
+        try {
+          const store = JSON.parse(raw) as Store;
+          setEnabled(store.enabled === true);
+          setSupervisorId(typeof store.supervisorId === "string" ? store.supervisorId : "");
+          setBedtimeDeadline(store.sleepRules?.bedtimeDeadline || "");
+          setWakeFrom(store.sleepRules?.wakeFrom || "");
+          setWakeUntil(store.sleepRules?.wakeUntil || "");
+          setMinSleepHours(store.sleepRules?.minSleepHours || "");
+        } catch { /* defaults */ }
+      }
+      setCharacters(loadCharacters());
+      setLoadedAccountId(account.id);
+      setLoaded(true);
+    })().catch(() => {
+      // Keep the page hidden on migration failure rather than risk showing
+      // or writing another account's legacy record.
+    });
+
+    return () => {
+      cancelled = true;
+      setSubpageTitle(null);
+    };
   }, [account.id, setSubpageTitle]);
 
   const persist = (updates: Partial<Store>) => {
