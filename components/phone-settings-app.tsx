@@ -323,6 +323,8 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                 return <ApiSettings />;
             case "vision":
                 return <VisionApiSettings />;
+            case "strictLearning":
+                return <StrictLearningSettings />;
             case "voice":
                 return <VoiceSettings />;
             case "imageGeneration":
