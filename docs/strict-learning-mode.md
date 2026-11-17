@@ -37,7 +37,7 @@
 
 ## 部署准备
 1. 在 xfloat Supabase SQL Editor 执行 `docs/strict-learning-vision.sql` 和 `docs/strict-learning-sync.sql`。
-2. 在 Next.js 服务端环境变量中设置 `VISION_CREDENTIAL_ENCRYPTION_KEY`。可用 `openssl rand -hex 32` 生成 32 字节密钥；不要提交到 Git。
+2. 在 Next.js 服务端环境变量中设置 `VISION_CREDENTIAL_ENCRYPTION_KEY`。可用 `openssl rand -hex 32` 生成 32 字节密钥；不要提交到 Git。 请妥善备份并长期保留；更换密钥前必须先用旧密钥解密并重新加密已有 API Key，否则已保存的视觉 API Key 将无法读取。
 3. 生成严格模式云同步共享密钥：`openssl rand -base64 32`。将完整结果设置为托管平台的服务端环境变量 `STRICT_LEARNING_SYNC_SECRET`；不要添加 `NEXT_PUBLIC_` 前缀，不要提交到 Git。修改环境变量后需要重新部署服务端。
 4. 确保已配置服务端 Supabase URL 和 Service Role Key。
 5. 部署后进入「系统设置 → 严格学习模式」，在「严格模式云同步」中粘贴共享密钥并保存，再点「测试连接」确认服务端密钥与 Supabase 连接正常。其他设备也输入同一密钥一次；密钥只保存在各自设备的浏览器本地存储中。
