@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
+import { SettingsContext } from "@/components/phone-settings-app";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
@@ -9,12 +10,14 @@ const STORE_KEY = "strict_learning_center_v1";
 type Store = { enabled?: boolean; supervisorId?: string; profile?: Record<string, unknown>; days?: Record<string, unknown> };
 
 export function StrictLearningSettings() {
+  const { setSubpageTitle } = useContext(SettingsContext);
   const [enabled, setEnabled] = useState(false);
   const [supervisorId, setSupervisorId] = useState("");
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    setSubpageTitle("严格学习模式");
     const raw = kvGet(STORE_KEY);
     if (raw) {
       try {
@@ -25,7 +28,8 @@ export function StrictLearningSettings() {
     }
     setCharacters(loadCharacters());
     setLoaded(true);
-  }, []);
+    return () => setSubpageTitle(null);
+  }, [setSubpageTitle]);
 
   const persist = (updates: Partial<Store>) => {
     const raw = kvGet(STORE_KEY);
