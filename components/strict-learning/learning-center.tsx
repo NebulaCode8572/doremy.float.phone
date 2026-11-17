@@ -9,6 +9,8 @@ import type { Character } from "@/lib/character-types";
 import { loadApiConfigs, loadBindingConfig, resolveBinding } from "@/lib/settings-storage";
 import { simpleLLMCall } from "@/lib/api-helpers";
 import { createOrGetSession, hydrateChatStorage, loadChatMessages, pushChatMessage } from "@/lib/chat-storage";
+import { useAccount } from "@/lib/account-context";
+import { getStrictLearningStoreKey, migrateLegacyStrictLearningStore } from "@/lib/strict-learning-storage";
 
 type StrictProfile = { nickname: string; lineOne: string; lineTwo: string; avatar: string; banner: string };
 type StrictDay = {
@@ -21,7 +23,6 @@ type StrictDay = {
 type StrictStore = { enabled: boolean; supervisorId: string; profile: StrictProfile; days: Record<string, StrictDay>; streak: { count: number; lastCheckinDate: string; boatUnlocked: boolean }; sleepRules: { bedtimeDeadline: string; wakeFrom: string; wakeUntil: string; minSleepHours: string } };
 type VisionResult = Record<string, unknown>;
 
-const STORE_KEY = "strict_learning_center_v1";
 const DEFAULT_STORE: StrictStore = {
   enabled: false,
   supervisorId: "",
@@ -57,6 +58,8 @@ function readImage(file: File): Promise<string> {
 }
 
 export function StrictLearningCenter() {
+  const { account } = useAccount();
+  const storeKey = useMemo(() => getStrictLearningStoreKey(account.id), [account.id]);
   const [open, setOpen] = useState(false);
   const [store, setStore] = useState<StrictStore>(DEFAULT_STORE);
   const [loaded, setLoaded] = useState(false);
@@ -78,7 +81,9 @@ export function StrictLearningCenter() {
   const focusMinutes = day.focus?.minutes || 0;
 
   useEffect(() => {
-    const raw = kvGet(STORE_KEY);
+    setLoaded(false);
+    const activeStoreKey = migrateLegacyStrictLearningStore(account.id);
+    const raw = kvGet(activeStoreKey);
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as Partial<StrictStore>;
@@ -94,15 +99,15 @@ export function StrictLearningCenter() {
     }
     setCharacters(loadCharacters());
     setLoaded(true);
-  }, []);
+  }, [account.id]);
 
   useEffect(() => {
-    if (loaded) kvSet(STORE_KEY, JSON.stringify(store));
-  }, [loaded, store]);
+    if (loaded) kvSet(storeKey, JSON.stringify(store));
+  }, [loaded, store, storeKey]);
 
   useEffect(() => {
     const refresh = () => {
-      const raw = kvGet(STORE_KEY);
+      const raw = kvGet(storeKey);
       if (!raw) return;
       try {
         const parsed = JSON.parse(raw) as Partial<StrictStore>;
@@ -118,7 +123,7 @@ export function StrictLearningCenter() {
     };
     window.addEventListener("strict-learning-updated", refresh);
     return () => window.removeEventListener("strict-learning-updated", refresh);
-  }, []);
+  }, [storeKey]);
 
   useEffect(() => {
     if (!loaded || completed !== 3 || store.streak.lastCheckinDate === today) return;
