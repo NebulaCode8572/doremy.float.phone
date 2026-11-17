@@ -16,12 +16,23 @@ const PUBLIC_ROUTE_PREFIXES = [
   // iPhone Shortcuts does not share the PWA's login cookies. These handlers
   // validate either the bridge token or a short-lived per-command ticket.
   "/shortcut-run/",
+  "/personal-shortcut-run/",
   "/api/push/bridge-wake/",
   "/api/push/shortcut-commands/result/",
   "/api/push/shortcut-commands/media/",
   // 个人云的离线生成把「代发触发邮件」外包给站点，同样没有登录 cookie，
   // 凭 bridge_token 认账号（见该路由内的说明）。
   "/api/push/shortcut-commands/deliver-email/",
+];
+
+// Self-hosted mode has its own site-wide passcode. These existing external
+// bridge routes deliberately do not use the browser cookie; each route must
+// validate its own bridge token, one-time ticket, or constrained redirect URL.
+const SELF_HOSTED_TOKEN_ROUTES = [
+  "/shortcut-run",
+  "/personal-shortcut-run",
+  "/api/push/bridge-wake",
+  "/api/push/shortcut-commands/deliver-email",
 ];
 
 const STATIC_ROUTE_PREFIXES = [
@@ -38,10 +49,16 @@ const STATIC_ROUTE_PREFIXES = [
   "/xiaohongshu/",
 ];
 
-const STATIC_FILE_RE = /\.(?:avif|bin|css|gif|glb|gltf|hdr|ico|jpeg|jpg|js|json|map|mjs|mp3|ogg|otf|png|svg|ttf|txt|wasm|wav|webmanifest|webp|woff|woff2)$/i;
+const STATIC_FILE_RE = /\\.(?:avif|bin|css|gif|glb|gltf|hdr|ico|jpeg|jpg|js|json|map|mjs|mp3|ogg|otf|png|svg|ttf|txt|wasm|wav|webmanifest|webp|woff|woff2)$/i;
 
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname === prefix.slice(0, -1) || pathname.startsWith(prefix));
+}
+
+function isSelfHostedTokenRoute(pathname: string): boolean {
+  return SELF_HOSTED_TOKEN_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
 }
 
 function isStaticRoute(pathname: string): boolean {
@@ -60,12 +77,13 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (isSelfHostedModeEnabled()) {
-    // Only the access page and its verification endpoint remain public in
-    // single-user self-hosted mode. Static assets are served without a cookie.
+    // The access page, its verification endpoint, static assets, and the
+    // narrowly scoped token-authenticated bridge routes remain cookie-free.
     if (
       pathname === "/access" ||
       pathname === "/api/access/verify" ||
-      isStaticAssetRoute(pathname)
+      isStaticAssetRoute(pathname) ||
+      isSelfHostedTokenRoute(pathname)
     ) {
       return NextResponse.next();
     }
@@ -119,6 +137,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|.*\\.(?:avif|bin|css|gif|glb|gltf|hdr|ico|jpeg|jpg|js|json|map|mjs|mp3|ogg|otf|png|svg|ttf|txt|wasm|wav|webmanifest|webp|woff|woff2)$).*)",
+    "/((?!_next/static|_next/image|.*\\\\.(?:avif|bin|css|gif|glb|gltf|hdr|ico|jpeg|jpg|js|json|map|mjs|mp3|ogg|otf|png|svg|ttf|txt|wasm|wav|webmanifest|webp|woff|woff2)$).*)",
   ],
 };
