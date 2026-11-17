@@ -120,7 +120,7 @@ function assertVisionResult(value: unknown, label: string, expectedKind: "sleep"
   for (const key of ["sleepStart", "wakeTime", "phoneLockTime"]) {
     const field = value[key];
     if (field !== undefined && field !== null && field !== "" &&
-      (typeof field !== "string" || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(field))) {
+      (typeof field !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(field))) {
       throw new Error(`${label}中的时间无效`);
     }
   }
@@ -237,7 +237,7 @@ export function normalizeStrictLearningStore(input: unknown): StrictStore {
   for (const key of ["bedtimeDeadline", "wakeFrom", "wakeUntil"]) {
     const value = rulesInput[key];
     if (value !== undefined && value !== "" &&
-      (typeof value !== "string" || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(value))) {
+      (typeof value !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value))) {
       throw new Error("睡眠规则时间格式无效");
     }
   }
