@@ -43,11 +43,14 @@ function migrateLegacyKey(lsKey: string): void {
     if (typeof window === "undefined") return;
     const raw = localStorage.getItem(lsKey);
     if (raw === null) return;
-    if (_cache.get(lsKey) !== raw) {
-        _cache.set(lsKey, raw);
-        kvDb.entries.put({ key: lsKey, value: raw }).catch(() => {});
-    }
-    localStorage.removeItem(lsKey);
+    _cache.set(lsKey, raw);
+    // Keep the legacy copy until IndexedDB confirms the write. If the write
+    // fails, the next hydration can retry from localStorage.
+    kvDb.entries.put({ key: lsKey, value: raw }).then(() => {
+        removeLegacyLocalStorageKeyIfValue(lsKey, raw);
+    }).catch(() => {
+        // Preserve localStorage as the recovery copy.
+    });
 }
 
 function migrateLegacyPrefix(prefix: string): void {
@@ -119,25 +122,32 @@ export function hydrateKvDb(): Promise<void> {
     if (_hydrated || typeof window === "undefined") return Promise.resolve();
     if (_hydratePromise) return _hydratePromise;
     _hydratePromise = (async () => {
-        // Load existing IDB data into cache
+        // Load existing IDB data into cache and track what is actually
+        // persisted. The in-memory cache may contain values from a previous
+        // failed hydration attempt, so it must not decide whether migration
+        // data can safely be removed from localStorage.
         const all = await kvDb.entries.toArray();
+        const persisted = new Map<string, string>();
         for (const { key, value } of all) {
+            persisted.set(key, value);
             if (!_cache.has(key)) _cache.set(key, value);
         }
 
-        // Migrate from localStorage
+        // Migrate from localStorage. Cache updates are delayed until the
+        // IndexedDB batch succeeds; a failed write leaves the old copy intact
+        // and retryable on the next hydration attempt.
         const batch: { key: string; value: string }[] = [];
         const removeKeys = new Set<string>();
+
+        const queueLegacyValue = (key: string, raw: string) => {
+            if (persisted.get(key) !== raw) batch.push({ key, value: raw });
+            removeKeys.add(key);
+        };
 
         // Fixed keys
         for (const lsKey of _fixedKeys) {
             const raw = localStorage.getItem(lsKey);
-            if (raw === null) continue;
-            if (_cache.get(lsKey) !== raw) {
-                batch.push({ key: lsKey, value: raw });
-                _cache.set(lsKey, raw);
-            }
-            removeKeys.add(lsKey);
+            if (raw !== null) queueLegacyValue(lsKey, raw);
         }
 
         // Dynamic prefix keys
@@ -145,16 +155,13 @@ export function hydrateKvDb(): Promise<void> {
             const k = localStorage.key(i);
             if (!k || !matchesDynamicPrefix(k)) continue;
             const raw = localStorage.getItem(k);
-            if (raw !== null) {
-                if (_cache.get(k) !== raw) {
-                    batch.push({ key: k, value: raw });
-                    _cache.set(k, raw);
-                }
-                removeKeys.add(k);
-            }
+            if (raw !== null) queueLegacyValue(k, raw);
         }
 
-        if (batch.length > 0) await kvDb.entries.bulkPut(batch);
+        if (batch.length > 0) {
+            await kvDb.entries.bulkPut(batch);
+            for (const { key, value } of batch) _cache.set(key, value);
+        }
         for (const k of removeKeys) localStorage.removeItem(k);
     })().then(() => {
         _hydrated = true;
