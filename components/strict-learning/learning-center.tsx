@@ -38,7 +38,7 @@ const dayDistance = (from: string, to: string) => {
   const parse = (value: string) => Date.UTC(Number(value.slice(0, 4)), Number(value.slice(5, 7)) - 1, Number(value.slice(8, 10)));
   return Math.round((parse(to) - parse(from)) / 86400000);
 };
-const clockMinutes = (value: unknown) => { const match = typeof value === "string" ? /^(\\d{2}):(\\d{2})$/.exec(value) : null; return match ? Number(match[1]) * 60 + Number(match[2]) : null; };
+const clockMinutes = (value: unknown) => { const match = typeof value === "string" ? /^(\d{2}):(\d{2})$/.exec(value) : null; return match ? Number(match[1]) * 60 + Number(match[2]) : null; };
 const beforeBedtimeDeadline = (actual: number, deadline: number) => (actual < 720 ? actual + 1440 : actual) <= (deadline < 720 ? deadline + 1440 : deadline);
 const formatMinutes = (value: unknown) => {
   const minutes = Number(value);
@@ -246,10 +246,26 @@ export function StrictLearningCenter() {
     void generateDailyNote();
   }, [open, supervisor?.id, busy, day.charNote?.date, day.charNote?.characterId, today]);
 
-  const saveRecall = () => {
+  const saveRecall = async () => {
     if (!recallText.trim()) { setNotice("请填写“今天学了什么？”。"); return; }
-    updateDay({ recall: { text: recallText.trim(), notes: recallNotes.trim(), completedAt: Date.now() } });
-    setNotice("晚间主动回忆已记录。");
+    const recall = { text: recallText.trim(), notes: recallNotes.trim(), completedAt: Date.now() };
+    updateDay({ recall });
+    if (!supervisor) { setNotice("回忆已保存。选择监督 Char 后，可获得角色反馈。"); return; }
+    const apiConfigs = loadApiConfigs();
+    const binding = resolveBinding(loadBindingConfig(), supervisor.id, "chat");
+    const config = apiConfigs.find(item => item.id === binding.apiConfigId);
+    if (!config) { setNotice("回忆已保存，但当前 Char 没有可用的文本模型配置。"); return; }
+    setBusy("note"); setNotice("回忆已保存，Char 正在整理回应…");
+    try {
+      const result = await simpleLLMCall(config, [
+        { role: "system", content: `你正在以角色身份回应用户的晚间学习回忆。角色名：${supervisor.name}。角色人设：${supervisor.persona || supervisor.personality || "自然、简洁"}。保持角色语气，像陪伴者一样回应。不要判卷、不要纠正学科知识、不要给标准答案。只简短回应用户今天学了什么，指出一个值得肯定的努力或一个可继续留意的地方，最多三句话。` },
+        { role: "user", content: `今天学了什么：${recall.text}\n补充记录：${recall.notes || "无"}` },
+      ], { temperature: 0.75, max_tokens: 180 });
+      if (result.error || !result.content?.trim()) throw new Error(result.error || "模型没有返回反馈");
+      updateDay({ recall: { ...recall, feedback: result.content.trim() } });
+      setNotice("回忆已保存，Char 已回复。");
+    } catch (error) { setNotice(error instanceof Error ? `回忆已保存，但 Char 暂时无法回复：${error.message}` : "回忆已保存，但 Char 暂时无法回复。"); }
+    finally { setBusy(null); }
   };
 
   if (!loaded) return null;
