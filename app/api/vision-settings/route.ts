@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentAccount } from "@/lib/server/account-auth";
 import { loadVisionSettings, saveVisionSettings } from "@/lib/server/vision-credentials";
 import { getSupabaseServerConfig } from "@/lib/server/supabase-rest";
+import { readLimitedJson } from "@/lib/server/read-limited-json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,8 +27,9 @@ export async function PUT(request: Request) {
   try {
     const auth = await accountFrom(request);
     if (auth.response) return auth.response;
-    const body = await request.json().catch(() => ({}));
-    const record = body && typeof body === "object" ? body as Record<string, unknown> : {};
+    const parsedBody = await readLimitedJson(request, 32_768);
+    if (!parsedBody.ok) return NextResponse.json({ error: parsedBody.error }, { status: parsedBody.status });
+    const record = parsedBody.value;
     const settings = await saveVisionSettings(auth.account!.id, {
       provider: typeof record.provider === "string" ? record.provider : "openai-compatible",
       baseUrl: typeof record.baseUrl === "string" ? record.baseUrl : "",
