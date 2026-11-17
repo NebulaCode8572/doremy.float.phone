@@ -253,7 +253,6 @@ export function StrictLearningCenter() {
     setBusy("note"); setNotice("");
     try {
       await hydrateChatStorage();
-      await hydrateChatStorage();
       const session = createOrGetSession(supervisor.id);
       const context = loadChatMessages(session.id, 20)
         .filter(message => message.role === "user" || message.role === "assistant")
@@ -288,6 +287,7 @@ export function StrictLearningCenter() {
     if (!config) { setNotice("回忆已保存，但当前 Char 没有可用的文本模型配置。"); return; }
     setBusy("note"); setNotice("回忆已保存，正在联系监督 Char…");
     try {
+      await hydrateChatStorage();
       const session = createOrGetSession(supervisor.id);
       pushChatMessage({
         sessionId: session.id,
