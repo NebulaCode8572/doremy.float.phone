@@ -22,8 +22,17 @@ export function StrictLearningSettings() {
   const [wakeUntil, setWakeUntil] = useState("");
   const [minSleepHours, setMinSleepHours] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [loadedAccountId, setLoadedAccountId] = useState("");
 
   useEffect(() => {
+    setLoaded(false);
+    setLoadedAccountId("");
+    setEnabled(false);
+    setSupervisorId("");
+    setBedtimeDeadline("");
+    setWakeFrom("");
+    setWakeUntil("");
+    setMinSleepHours("");
     setSubpageTitle("严格学习模式");
     const activeStoreKey = migrateLegacyStrictLearningStore(account.id);
     const raw = kvGet(activeStoreKey);
@@ -39,6 +48,7 @@ export function StrictLearningSettings() {
       } catch { /* defaults */ }
     }
     setCharacters(loadCharacters());
+    setLoadedAccountId(account.id);
     setLoaded(true);
     return () => setSubpageTitle(null);
   }, [account.id, setSubpageTitle]);
@@ -55,7 +65,7 @@ export function StrictLearningSettings() {
     window.dispatchEvent(new CustomEvent("strict-learning-updated"));
   };
 
-  if (!loaded) return null;
+  if (!loaded || loadedAccountId !== account.id) return null;
   return (
     <div className="flex flex-col gap-4 px-1 pb-8">
       <section className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-card)] p-4">
