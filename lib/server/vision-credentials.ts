@@ -48,8 +48,11 @@ function isPublicIp(address: string): boolean {
     if (groups.length !== 8 || groups.some(part => !Number.isInteger(part) || part < 0 || part > 0xffff)) return false;
     const first = groups[0];
     if (first < 0x2000 || first > 0x3fff) return false;
-    if (first === 0x2001 && [0x0000, 0x0010, 0x0020, 0x0db8].includes(groups[1])) return false;
-    if (first === 0x2002) return false;
+    // Reject the IANA special-purpose 2001::/23 space (including the
+    // benchmarking prefix 2001:2::/48), plus documentation and 6to4 ranges.
+    if (first === 0x2001 && groups[1] <= 0x01ff) return false;
+    if (first === 0x2001 && groups[1] === 0x0db8) return false;
+    if (first === 0x2002 || first === 0x3fff) return false;
     return true;
   }
   return false;
