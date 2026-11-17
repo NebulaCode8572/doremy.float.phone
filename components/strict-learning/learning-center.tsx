@@ -82,6 +82,7 @@ export function StrictLearningCenter() {
   const [notice, setNotice] = useState("");
   const noteAttemptedRef = useRef("");
   const syncRevisionRef = useRef(0);
+  const syncGenerationRef = useRef(0);
   const syncReadyRef = useRef(false);
   const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
   const lastQueuedSnapshotRef = useRef("");
@@ -106,6 +107,7 @@ export function StrictLearningCenter() {
 
   useEffect(() => {
     let cancelled = false;
+    const generation = ++syncGenerationRef.current;
     syncReadyRef.current = false;
     syncRevisionRef.current = 0;
     lastQueuedSnapshotRef.current = "";
@@ -188,16 +190,34 @@ export function StrictLearningCenter() {
                 body: JSON.stringify({ expectedRevision: 0, payload: initialStore }),
               });
               const saved = await upload.json();
-              if (!upload.ok) throw new Error(saved.error || "首次云端备份失败");
-              syncRevisionRef.current = Number(saved.revision || 1);
-              setSyncStatus("已完成首次云端备份");
+              if (upload.status === 409 && saved.payload && typeof saved.payload === "object") {
+                const parsedRemote = saved.payload as Partial<StrictStore>;
+                const remoteStore: StrictStore = {
+                  ...DEFAULT_STORE,
+                  ...parsedRemote,
+                  profile: { ...DEFAULT_STORE.profile, ...(parsedRemote.profile || {}) },
+                  days: parsedRemote.days && typeof parsedRemote.days === "object" ? parsedRemote.days : {},
+                  streak: { ...DEFAULT_STORE.streak, ...(parsedRemote.streak || {}) },
+                  sleepRules: { ...DEFAULT_STORE.sleepRules, ...(parsedRemote.sleepRules || {}) },
+                };
+                syncReadyRef.current = false;
+                setSyncConflict({ payload: remoteStore, revision: Number(saved.revision || 0) });
+                setSyncStatus("首次备份时发现其他设备已写入云端，请选择保留哪一份");
+              } else if (!upload.ok) {
+                throw new Error(saved.error || "首次云端备份失败");
+              } else {
+                syncRevisionRef.current = Number(saved.revision || 1);
+                setSyncStatus("已完成首次云端备份");
+              }
             } else {
               setSyncStatus("云同步已连接，等待学习记录");
             }
           }
         } catch (error) {
-          syncReadyRef.current = false;
-          setSyncStatus(error instanceof Error ? `云同步不可用：${error.message}` : "云同步不可用，记录仍保存在本机");
+          if (!cancelled && generation === syncGenerationRef.current) {
+            syncReadyRef.current = false;
+            setSyncStatus(error instanceof Error ? `云同步不可用：${error.message}` : "云同步不可用，记录仍保存在本机");
+          }
         }
       } else {
         setSyncStatus(account.id === "local_user" ? "请先在严格学习设置中填写共享密钥" : "当前账号模式不支持此云同步");
@@ -224,19 +244,21 @@ export function StrictLearningCenter() {
     if (!syncReadyRef.current || account.id !== "local_user" || snapshot === lastQueuedSnapshotRef.current) return;
     lastQueuedSnapshotRef.current = snapshot;
     const syncKey = getStrictLearningSyncKey();
+    const generation = syncGenerationRef.current;
     if (!syncKey) {
       syncReadyRef.current = false;
       setSyncStatus("请先在严格学习设置中填写共享密钥");
       return;
     }
     syncQueueRef.current = syncQueueRef.current.then(async () => {
-      if (!syncReadyRef.current) return;
+      if (!syncReadyRef.current || generation !== syncGenerationRef.current) return;
       const response = await fetch("/api/strict-learning-sync", {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${syncKey}` },
         body: JSON.stringify({ expectedRevision: syncRevisionRef.current, payload: store }),
       });
       const data = await response.json();
+      if (generation !== syncGenerationRef.current) return;
       if (response.status === 409) {
         syncReadyRef.current = false;
         if (data.payload && typeof data.payload === "object") {
@@ -260,6 +282,7 @@ export function StrictLearningCenter() {
       syncRevisionRef.current = Number(data.revision || syncRevisionRef.current);
       setSyncStatus("已同步到云端");
     }).catch(error => {
+      if (generation !== syncGenerationRef.current) return;
       syncReadyRef.current = false;
       setSyncStatus(error instanceof Error ? `云端同步失败：${error.message}` : "云端同步失败");
     });
