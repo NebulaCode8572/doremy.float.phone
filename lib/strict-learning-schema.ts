@@ -188,7 +188,7 @@ function normalizeDay(key: string, value: unknown): StrictDay {
     assertOptionalInteger(day.focus, "minutes", 0, 1440, `${key} 的专注时长`);
     assertOptionalInteger(day.focus, "pendingMinutes", 0, 1440, `${key} 的待确认专注时长`);
     assertVisionResult(day.focus.pendingResult, `${key} 的待确认识别结果`, "focus");
-    if (day.focus.pendingResult !== undefined) {
+    if (day.focus.pendingResult != null) {
       if (day.focus.pendingResult.phoneLockDate !== key ||
         day.focus.pendingResult.deviceVisible !== true || day.focus.pendingResult.phoneLockVisible !== true ||
         day.focus.pendingResult.focusDurationMinutes !== day.focus.pendingMinutes) {
