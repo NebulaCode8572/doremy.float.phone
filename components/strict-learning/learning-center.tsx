@@ -212,7 +212,6 @@ export function StrictLearningCenter() {
     setOpen(false);
     setStore(DEFAULT_STORE);
     setRecallText("");
-    setRecallNotes("");
 
     void (async () => {
       const activeStoreKey = await migrateLegacyStrictLearningStore(account.id);
