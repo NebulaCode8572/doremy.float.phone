@@ -60,7 +60,7 @@ export function StrictLearningCenter() {
   const today = todayKey();
   const day = store.days[today] || { date: today };
   const supervisor = useMemo(() => characters.find(character => character.id === store.supervisorId) || null, [characters, store.supervisorId]);
-  const completed = Number(day.sleep?.status === "approved") + Number(day.focus?.status === "approved") + Number(Boolean(day.recall?.completedAt));
+  const completed = Number(day.sleep?.status === "approved") + Number(day.focus?.status === "approved" && (day.focus?.minutes || 0) >= 480) + Number(Boolean(day.recall?.completedAt));
   const focusMinutes = day.focus?.minutes || 0;
 
   useEffect(() => {
@@ -197,12 +197,12 @@ export function StrictLearningCenter() {
   if (!loaded) return null;
   return (
     <>
-      <button
+      {store.enabled ? <button
         type="button"
         aria-label="打开学习中心"
         onClick={() => setOpen(true)}
         style={{ position: "fixed", right: 16, bottom: "calc(28px + env(safe-area-inset-bottom))", zIndex: 1200, width: 58, height: 58, borderRadius: 999, border: "2px solid rgba(255,255,255,.92)", background: "#b8dce9", color: "#315766", boxShadow: "0 4px 16px rgba(49,87,102,.22)", display: "grid", placeItems: "center" }}
-      ><BookOpen size={27} /></button>
+      ><BookOpen size={27} /></button> : null}
       {open ? (
         <div className="strict-learning-overlay" role="dialog" aria-modal="true" aria-label="学习中心">
           <div className="strict-learning-page">
