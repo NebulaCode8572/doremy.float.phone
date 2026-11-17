@@ -189,9 +189,13 @@ function normalizeDay(key: string, value: unknown): StrictDay {
     assertOptionalInteger(day.focus, "pendingMinutes", 0, 1440, `${key} 的待确认专注时长`);
     assertVisionResult(day.focus.pendingResult, `${key} 的待确认识别结果`, "focus");
     if (day.focus.pendingResult != null) {
-      if (day.focus.pendingResult.phoneLockDate !== key ||
-        day.focus.pendingResult.deviceVisible !== true || day.focus.pendingResult.phoneLockVisible !== true ||
-        day.focus.pendingResult.focusDurationMinutes !== day.focus.pendingMinutes) {
+      if (!isRecord(day.focus.pendingResult)) {
+        throw new Error(`${key} 的待确认识别结果格式无效`);
+      }
+      const pendingResult = day.focus.pendingResult;
+      if (pendingResult.phoneLockDate !== key ||
+        pendingResult.deviceVisible !== true || pendingResult.phoneLockVisible !== true ||
+        pendingResult.focusDurationMinutes !== day.focus.pendingMinutes) {
         throw new Error(`${key} 的待确认专注记录与凭证数据不一致`);
       }
     }
