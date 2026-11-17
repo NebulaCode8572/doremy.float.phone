@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { getCurrentAccount } from "@/lib/server/account-auth";
 import { supabaseRestFetch } from "@/lib/server/supabase-rest";
+import { readLimitedJson } from "@/lib/server/read-limited-json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,21 +56,9 @@ export async function PUT(request: Request) {
   try {
     const denied = await authorize(request);
     if (denied) return denied;
-    const declaredLength = Number(request.headers.get("content-length") || 0);
-    if (Number.isFinite(declaredLength) && declaredLength > 2_000_000) {
-      return NextResponse.json({ error: "学习记录超过云同步大小限制" }, { status: 413 });
-    }
-    const rawBody = await request.text();
-    if (Buffer.byteLength(rawBody, "utf8") > 2_000_000) {
-      return NextResponse.json({ error: "学习记录超过云同步大小限制" }, { status: 413 });
-    }
-    let body: Record<string, unknown> | null = null;
-    try {
-      const parsed: unknown = JSON.parse(rawBody);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) body = parsed as Record<string, unknown>;
-    } catch {
-      return NextResponse.json({ error: "请求内容不是有效 JSON" }, { status: 400 });
-    }
+    const parsedBody = await readLimitedJson(request, 2_000_000);
+    if (!parsedBody.ok) return NextResponse.json({ error: parsedBody.error === "请求内容超过大小限制" ? "学习记录超过云同步大小限制" : parsedBody.error }, { status: parsedBody.status });
+    const body = parsedBody.value;
     const expectedRevision = Number(body?.expectedRevision);
     const payload = body?.payload;
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
