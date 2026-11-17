@@ -54,7 +54,7 @@
 - 为兼容不携带网页 Cookie 的外部快捷指令/推送流程，以下入口仍可无站点 Cookie 访问，但各自必须通过独立校验：`/shortcut-run` 使用短时命令 ticket，`/personal-shortcut-run` 只允许跳转到受限格式的 Supabase 函数 URL，`/api/push/bridge-wake` 使用 `bridge_token`，`/api/push/shortcut-commands/deliver-email` 使用 `bridge_token`、动作白名单和个人云源站校验。其他应用 API 仍要求有效站点 Cookie。
 - 两个公开 POST 桥接入口均限制请求体：`bridge-wake` 为 4 KB，`deliver-email` 为 16 KB；免 Cookie 不等于免校验或无限制访问。
 - 修改访问口令后，旧 Cookie 在有效期内仍然有效；若要立即撤销所有已登录设备，请同时轮换 `SELF_HOSTED_ACCESS_PASSWORD` 和 `SELF_HOSTED_ACCESS_SECRET` 并重新部署。
-- 站点口令是联网时网页/API 的入口保护，不会加密浏览器本机 IndexedDB 或 PWA 已缓存的离线内容；服务工作线程可能在离线时提供先前缓存的页面。共用设备时仍应使用设备锁屏和独立浏览器资料，不要把站点口令当作本机数据加密或离线访问锁。
+- 站点口令保护联网时的网页/API。PWA 只缓存公开静态资源，不缓存受保护的页面导航；离线时无法打开受保护的应用页面。浏览器本机 IndexedDB 仍不会被站点口令加密，共用设备时仍应使用设备锁屏和独立浏览器资料。
 - 访问口令只控制站点访问，不创建账号、不注册、不改变固定的 `local_user` 身份。严格模式云同步仍使用独立的 `STRICT_LEARNING_SYNC_SECRET`；视觉 API Key 仍使用独立的 `VISION_CREDENTIAL_ENCRYPTION_KEY` 加密。
 
 ## 当前阶段边界
