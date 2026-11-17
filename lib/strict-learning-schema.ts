@@ -1,0 +1,161 @@
+export type StrictProfile = {
+  nickname: string;
+  lineOne: string;
+  lineTwo: string;
+  avatar: string;
+  banner: string;
+};
+
+export type StrictDay = {
+  date: string;
+  sleep?: { status: "recognized" | "approved" | "not-met" | "date-mismatch" | "needs-reupload"; result?: Record<string, unknown>; feedback?: string };
+  focus?: { status: "approved" | "date-mismatch" | "needs-reupload"; minutes?: number; result?: Record<string, unknown>; feedback?: string; pendingMinutes?: number; pendingResult?: Record<string, unknown> };
+  recall?: { text: string; notes: string; completedAt: number; feedback?: string };
+  charNote?: { date: string; characterId: string; text: string };
+  [key: string]: unknown;
+};
+
+export type StrictStore = {
+  enabled: boolean;
+  supervisorId: string;
+  profile: StrictProfile;
+  days: Record<string, StrictDay>;
+  streak: { count: number; lastCheckinDate: string; boatUnlocked: boolean };
+  sleepRules: { bedtimeDeadline: string; wakeFrom: string; wakeUntil: string; minSleepHours: string };
+  [key: string]: unknown;
+};
+
+export const DEFAULT_STRICT_STORE: StrictStore = {
+  enabled: false,
+  supervisorId: "",
+  profile: { nickname: "小玉", lineOne: "@白衣魔法使", lineTwo: "把今天过成值得骄傲的一天。", avatar: "", banner: "" },
+  days: {},
+  streak: { count: 0, lastCheckinDate: "", boatUnlocked: false },
+  sleepRules: { bedtimeDeadline: "", wakeFrom: "", wakeUntil: "", minSleepHours: "" },
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isDateKey(value: unknown): value is string {
+  return typeof value === "string"
+    && /^\\d{4}-\\d{2}-\\d{2}$/.test(value)
+    && !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
+    && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+}
+
+function assertString(record: Record<string, unknown>, key: string, maxLength: number, label: string): void {
+  const value = record[key];
+  if (value !== undefined && (typeof value !== "string" || value.length > maxLength)) {
+    throw new Error(`${label}格式无效`);
+  }
+}
+
+function assertOptionalInteger(record: Record<string, unknown>, key: string, min: number, max: number, label: string): void {
+  const value = record[key];
+  if (value !== undefined && (typeof value !== "number" || !Number.isSafeInteger(value) || value < min || value > max)) {
+    throw new Error(`${label}格式无效`);
+  }
+}
+
+function assertResult(value: unknown, label: string): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) throw new Error(`${label}格式无效`);
+  for (const [key, item] of Object.entries(value)) {
+    if (key.length > 80) throw new Error(`${label}字段过长`);
+    if (item !== null && typeof item !== "string" && typeof item !== "number" && typeof item !== "boolean") {
+      throw new Error(`${label}包含不支持的数据`);
+    }
+    if (typeof item === "string" && item.length > 4000) throw new Error(`${label}字段过长`);
+    if (typeof item === "number" && !Number.isFinite(item)) throw new Error(`${label}包含无效数字`);
+  }
+}
+
+function normalizeDay(key: string, value: unknown): StrictDay {
+  if (!isDateKey(key) || !isRecord(value) || value.date !== key) {
+    throw new Error(`学习记录日期 ${key} 格式无效`);
+  }
+  const day = value;
+  if (day.sleep !== undefined) {
+    if (!isRecord(day.sleep) || !["recognized", "approved", "not-met", "date-mismatch", "needs-reupload"].includes(String(day.sleep.status))) {
+      throw new Error(`${key} 的睡眠记录格式无效`);
+    }
+    assertResult(day.sleep.result, `${key} 的睡眠识别结果`);
+    assertString(day.sleep, "feedback", 4000, `${key} 的睡眠反馈`);
+  }
+  if (day.focus !== undefined) {
+    if (!isRecord(day.focus) || !["approved", "date-mismatch", "needs-reupload"].includes(String(day.focus.status))) {
+      throw new Error(`${key} 的专注记录格式无效`);
+    }
+    assertOptionalInteger(day.focus, "minutes", 0, 1440, `${key} 的专注时长`);
+    assertOptionalInteger(day.focus, "pendingMinutes", 0, 1440, `${key} 的待确认专注时长`);
+    assertResult(day.focus.result, `${key} 的专注识别结果`);
+    assertResult(day.focus.pendingResult, `${key} 的待确认识别结果`);
+    assertString(day.focus, "feedback", 4000, `${key} 的专注反馈`);
+  }
+  if (day.recall !== undefined) {
+    if (!isRecord(day.recall)) throw new Error(`${key} 的回忆记录格式无效`);
+    assertString(day.recall, "text", 20000, `${key} 的回忆内容`);
+    assertString(day.recall, "notes", 20000, `${key} 的补充笔记`);
+    assertString(day.recall, "feedback", 4000, `${key} 的角色反馈`);
+    if (typeof day.recall.completedAt !== "number" || !Number.isFinite(day.recall.completedAt) || day.recall.completedAt < 0) {
+      throw new Error(`${key} 的回忆完成时间无效`);
+    }
+  }
+  if (day.charNote !== undefined) {
+    if (!isRecord(day.charNote) || !isDateKey(day.charNote.date) || typeof day.charNote.characterId !== "string" || day.charNote.characterId.length > 256 || typeof day.charNote.text !== "string" || day.charNote.text.length > 4000) {
+      throw new Error(`${key} 的每日留言格式无效`);
+    }
+  }
+  return day as unknown as StrictDay;
+}
+
+/**
+ * Validate and normalize persisted or remote learning data.
+ * Invalid data is rejected rather than replaced with defaults, so callers can
+ * stop before writing a blank snapshot over the original record.
+ */
+export function normalizeStrictLearningStore(input: unknown): StrictStore {
+  if (!isRecord(input)) throw new Error("学习记录必须是 JSON 对象");
+  const source = input;
+
+  if (source.enabled !== undefined && typeof source.enabled !== "boolean") throw new Error("学习中心开关格式无效");
+  assertString(source, "supervisorId", 256, "监督角色");
+
+  const profileInput = source.profile === undefined ? {} : source.profile;
+  if (!isRecord(profileInput)) throw new Error("个人资料格式无效");
+  assertString(profileInput, "nickname", 80, "昵称");
+  assertString(profileInput, "lineOne", 200, "个人资料第一行");
+  assertString(profileInput, "lineTwo", 200, "个人资料第二行");
+  assertString(profileInput, "avatar", 600000, "头像");
+  assertString(profileInput, "banner", 600000, "顶部横幅");
+
+  const daysInput = source.days === undefined ? {} : source.days;
+  if (!isRecord(daysInput) || Object.keys(daysInput).length > 5000) throw new Error("每日学习记录格式无效");
+  const days: Record<string, StrictDay> = {};
+  for (const [key, value] of Object.entries(daysInput)) days[key] = normalizeDay(key, value);
+
+  const streakInput = source.streak === undefined ? {} : source.streak;
+  if (!isRecord(streakInput)) throw new Error("连续学习记录格式无效");
+  assertOptionalInteger(streakInput, "count", 0, 1000000, "连续学习天数");
+  if (streakInput.lastCheckinDate !== undefined && streakInput.lastCheckinDate !== "" && !isDateKey(streakInput.lastCheckinDate)) {
+    throw new Error("最近打卡日期格式无效");
+  }
+  if (streakInput.boatUnlocked !== undefined && typeof streakInput.boatUnlocked !== "boolean") throw new Error("奖励状态格式无效");
+
+  const rulesInput = source.sleepRules === undefined ? {} : source.sleepRules;
+  if (!isRecord(rulesInput)) throw new Error("睡眠规则格式无效");
+  for (const key of ["bedtimeDeadline", "wakeFrom", "wakeUntil", "minSleepHours"]) {
+    assertString(rulesInput, key, 32, "睡眠规则");
+  }
+
+  return {
+    ...DEFAULT_STRICT_STORE,
+    ...source,
+    profile: { ...DEFAULT_STRICT_STORE.profile, ...profileInput } as StrictProfile,
+    days,
+    streak: { ...DEFAULT_STRICT_STORE.streak, ...streakInput } as StrictStore["streak"],
+    sleepRules: { ...DEFAULT_STRICT_STORE.sleepRules, ...rulesInput } as StrictStore["sleepRules"],
+  };
+}
