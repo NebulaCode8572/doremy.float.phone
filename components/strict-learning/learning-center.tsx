@@ -407,7 +407,7 @@ export function StrictLearningCenter() {
     try {
       const dataUrl = await readProfileImage(file);
       setProfileDraft(previous => ({ ...previous, [kind]: dataUrl }));
-    } catch { setNotice("图片读取失败。"); }
+    } catch (error) { setNotice(error instanceof Error ? error.message : "图片读取失败。"); }
   };
 
   const askCharToReviewEvidence = async (kind: "sleep" | "focus", result: VisionResult, verdict: string): Promise<string> => {
