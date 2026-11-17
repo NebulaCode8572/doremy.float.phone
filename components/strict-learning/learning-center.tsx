@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Camera, Check, ClipboardList, Moon, Pencil, Sparkles, Timer, Upload, X } from "lucide-react";
 import "./learning-center.css";
 import { kvGet, kvSet } from "@/lib/kv-db";
@@ -55,6 +55,7 @@ export function StrictLearningCenter() {
   const [recallNotes, setRecallNotes] = useState("");
   const [busy, setBusy] = useState<"sleep" | "focus" | "note" | null>(null);
   const [notice, setNotice] = useState("");
+  const noteAttemptedRef = useRef("");
   const [profileDraft, setProfileDraft] = useState<StrictProfile>(DEFAULT_STORE.profile);
 
   const today = todayKey();
@@ -192,6 +193,13 @@ export function StrictLearningCenter() {
     } catch (error) { setNotice(error instanceof Error ? error.message : "生成留言失败"); }
     finally { setBusy(null); }
   };
+
+  useEffect(() => {
+    const attemptKey = supervisor ? `${today}:${supervisor.id}` : "";
+    if (!open || !attemptKey || busy !== null || day.charNote?.date === today && day.charNote.characterId === supervisor?.id || noteAttemptedRef.current === attemptKey) return;
+    noteAttemptedRef.current = attemptKey;
+    void generateDailyNote();
+  }, [open, supervisor?.id, busy, day.charNote?.date, day.charNote?.characterId, today]);
 
   const saveRecall = () => {
     if (!recallText.trim()) { setNotice("请填写“今天学了什么？”。"); return; }
