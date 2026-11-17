@@ -253,7 +253,7 @@ export function StrictLearningCenter() {
       setCharacters(loadCharacters());
       setLoadedAccountId(account.id);
       setLoaded(true);
-    })().catch(() => {
+    })().catch((error) => {
       if (!cancelled) {
         setLoadError(error instanceof Error
           ? error.message
