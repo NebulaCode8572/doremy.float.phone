@@ -98,7 +98,10 @@ export async function middleware(request: NextRequest) {
 
     const accessCookie = request.cookies.get(SELF_HOSTED_ACCESS_COOKIE)?.value ?? "";
     if (await verifySelfHostedAccessCookieValue(accessCookie)) {
-      return NextResponse.next();
+      // Protected application documents must never enter browser or PWA caches.
+      return NextResponse.next({
+        headers: { "Cache-Control": "private, no-store, max-age=0" },
+      });
     }
 
     if (isApiRoute(pathname)) {
