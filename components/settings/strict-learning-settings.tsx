@@ -5,6 +5,7 @@ import { SettingsContext } from "@/components/phone-settings-app";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { useAccount } from "@/lib/account-context";
 import { getStrictLearningStoreKey, migrateLegacyStrictLearningStore } from "@/lib/strict-learning-storage";
+import { normalizeStrictLearningStore } from "@/lib/strict-learning-schema";
 import { getStrictLearningSyncKey, saveStrictLearningSyncKey } from "@/lib/strict-learning-sync-client";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
@@ -52,23 +53,26 @@ export function StrictLearningSettings() {
       if (cancelled) return;
       const raw = kvGet(activeStoreKey);
       if (raw) {
-        try {
-          const store = JSON.parse(raw) as Store;
-          setEnabled(store.enabled === true);
-          setSupervisorId(typeof store.supervisorId === "string" ? store.supervisorId : "");
-          setBedtimeDeadline(store.sleepRules?.bedtimeDeadline || "");
-          setWakeFrom(store.sleepRules?.wakeFrom || "");
-          setWakeUntil(store.sleepRules?.wakeUntil || "");
-          setMinSleepHours(store.sleepRules?.minSleepHours || "");
-        } catch { /* defaults */ }
+        const store = normalizeStrictLearningStore(JSON.parse(raw));
+        setEnabled(store.enabled === true);
+        setSupervisorId(typeof store.supervisorId === "string" ? store.supervisorId : "");
+        setBedtimeDeadline(store.sleepRules?.bedtimeDeadline || "");
+        setWakeFrom(store.sleepRules?.wakeFrom || "");
+        setWakeUntil(store.sleepRules?.wakeUntil || "");
+        setMinSleepHours(store.sleepRules?.minSleepHours || "");
       }
       setCharacters(loadCharacters());
       setLoadedAccountId(account.id);
       setLoaded(true);
-    })().catch(() => {
-      if (!cancelled) setLoadError("学习记录加载失败，请检查本机存储状态后重试。");
-      // Keep the page hidden on migration failure rather than risk showing
-      // or writing another account's legacy record.
+    })().catch(error => {
+      if (!cancelled) {
+        setLoaded(false);
+        setLoadError(error instanceof Error
+          ? `学习记录无法安全读取（${error.message}）。原记录已保留，没有用空白数据覆盖。`
+          : "学习记录加载失败。原记录已保留，没有用空白数据覆盖。");
+      }
+      // Keep the page hidden on migration or validation failure rather than
+      // risk writing defaults over the original record.
     });
 
     return () => {
@@ -80,7 +84,17 @@ export function StrictLearningSettings() {
   const persist = (updates: Partial<Store>) => {
     const raw = kvGet(storeKey);
     let current: Store = {};
-    if (raw) { try { current = JSON.parse(raw) as Store; } catch { current = {}; } }
+    if (raw) {
+      try {
+        current = normalizeStrictLearningStore(JSON.parse(raw));
+      } catch (error) {
+        setLoaded(false);
+        setLoadError(error instanceof Error
+          ? `学习记录无法安全读取（${error.message}）。已停止保存，原记录仍保留。`
+          : "学习记录无法安全读取。已停止保存，原记录仍保留。");
+        return;
+      }
+    }
     const next: Store = { ...current, enabled, supervisorId, ...updates };
     if (updates.sleepRules) {
       next.sleepRules = { ...(current.sleepRules || {}), ...updates.sleepRules };
