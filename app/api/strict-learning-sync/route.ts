@@ -55,7 +55,21 @@ export async function PUT(request: Request) {
   try {
     const denied = await authorize(request);
     if (denied) return denied;
-    const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+    const declaredLength = Number(request.headers.get("content-length") || 0);
+    if (Number.isFinite(declaredLength) && declaredLength > 2_000_000) {
+      return NextResponse.json({ error: "学习记录超过云同步大小限制" }, { status: 413 });
+    }
+    const rawBody = await request.text();
+    if (Buffer.byteLength(rawBody, "utf8") > 2_000_000) {
+      return NextResponse.json({ error: "学习记录超过云同步大小限制" }, { status: 413 });
+    }
+    let body: Record<string, unknown> | null = null;
+    try {
+      const parsed: unknown = JSON.parse(rawBody);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) body = parsed as Record<string, unknown>;
+    } catch {
+      return NextResponse.json({ error: "请求内容不是有效 JSON" }, { status: 400 });
+    }
     const expectedRevision = Number(body?.expectedRevision);
     const payload = body?.payload;
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
@@ -63,9 +77,6 @@ export async function PUT(request: Request) {
     }
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
       return NextResponse.json({ error: "学习记录格式无效" }, { status: 400 });
-    }
-    if (JSON.stringify(payload).length > 2_000_000) {
-      return NextResponse.json({ error: "学习记录超过云同步大小限制" }, { status: 413 });
     }
     const result = await supabaseRestFetch<WriteRow[]>("rpc/strict_learning_sync_write", {
       method: "POST",
