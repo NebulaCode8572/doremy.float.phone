@@ -44,6 +44,7 @@ export async function POST(request: Request) {
         ],
       }),
       cache: "no-store",
+      redirect: "error",
     });
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
