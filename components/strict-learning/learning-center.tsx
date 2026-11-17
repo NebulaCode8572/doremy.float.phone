@@ -190,18 +190,9 @@ export function StrictLearningCenter() {
           if (cancelled || generation !== syncGenerationRef.current) return;
           if (!response.ok) throw new Error(remote.error || "云端读取失败");
           syncRevisionRef.current = Number(remote.revision || 0);
-          const localHasData = Boolean(
-            initialStore.enabled || initialStore.supervisorId ||
-            Object.keys(initialStore.days || {}).length ||
-            initialStore.profile.nickname !== DEFAULT_STORE.profile.nickname ||
-            initialStore.profile.lineOne !== DEFAULT_STORE.profile.lineOne ||
-            initialStore.profile.lineTwo !== DEFAULT_STORE.profile.lineTwo ||
-            initialStore.profile.avatar || initialStore.profile.banner ||
-            initialStore.sleepRules.bedtimeDeadline || initialStore.sleepRules.wakeFrom ||
-            initialStore.sleepRules.wakeUntil || initialStore.sleepRules.minSleepHours ||
-            initialStore.streak.count > 0 || initialStore.streak.lastCheckinDate ||
-            initialStore.streak.boatUnlocked
-          );
+          // Compare the full normalized snapshot so future schema fields
+          // cannot be silently dropped merely because this list was not updated.
+          const localHasData = stableStringify(initialStore) !== stableStringify(DEFAULT_STORE);
           if (remote.payload && typeof remote.payload === "object") {
             const remoteStore = normalizeStrictLearningStore(remote.payload);
             if (localHasData && stableStringify(initialStore) !== stableStringify(remoteStore)) {
