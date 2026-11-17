@@ -572,15 +572,14 @@ export function MascotFloat() {
     };
 
     if (state === "animating_in") {
-      setFloatPos(null);
       setAnimStyle({
         position: "absolute",
-        left: defaultFloatLeft,
-        top: defaultFloatTop,
+        left: currentFloatLeft,
+        top: currentFloatTop,
         width: MASCOT_FLOAT_WIDTH,
         height: MASCOT_FLOAT_HEIGHT,
         opacity: 0.9,
-        transform: transformFrom(widgetCenter.x, widgetCenter.y, defaultFloatLeft, defaultFloatTop, scaleFromWidget),
+        transform: transformFrom(widgetCenter.x, widgetCenter.y, currentFloatLeft, currentFloatTop, scaleFromWidget),
         transition: "none",
         zIndex: 9999,
       });
@@ -589,8 +588,8 @@ export function MascotFloat() {
         requestAnimationFrame(() => {
           setAnimStyle({
             position: "absolute",
-            left: defaultFloatLeft,
-            top: defaultFloatTop,
+            left: currentFloatLeft,
+            top: currentFloatTop,
             width: MASCOT_FLOAT_WIDTH,
             height: MASCOT_FLOAT_HEIGHT,
             opacity: 1,
