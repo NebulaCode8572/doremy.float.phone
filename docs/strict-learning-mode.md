@@ -34,13 +34,15 @@
 - API Key 由服务端使用 AES-256-GCM 加密后存入 Supabase；浏览器只拿到非敏感配置摘要。
 
 ## 部署准备
-1. 在 Supabase SQL Editor 执行 `docs/strict-learning-vision.sql`。
+1. 在 xfloat Supabase SQL Editor 执行 `docs/strict-learning-vision.sql` 和 `docs/strict-learning-sync.sql`。
 2. 在 Next.js 服务端环境变量中设置 `VISION_CREDENTIAL_ENCRYPTION_KEY`。可用 `openssl rand -hex 32` 生成 32 字节密钥；不要提交到 Git。
-3. 确保已配置服务端 Supabase URL 和 Service Role Key。
-4. 部署后进入「系统设置 → 视觉模型 API」填写接口、模型和 API Key，保存后测试连接。
+3. 生成严格模式云同步共享密钥：`openssl rand -base64 32`。将完整结果设置为托管平台的服务端环境变量 `STRICT_LEARNING_SYNC_SECRET`；不要添加 `NEXT_PUBLIC_` 前缀，不要提交到 Git。修改环境变量后需要重新部署服务端。
+4. 确保已配置服务端 Supabase URL 和 Service Role Key。
+5. 部署后进入「系统设置 → 严格学习模式」，在「严格模式云同步」中粘贴共享密钥并保存。其他设备也输入同一密钥一次；密钥只保存在各自设备的浏览器本地存储中。
+6. 进入「系统设置 → 视觉模型 API」填写接口、模型和 API Key，保存后测试连接。
 
 ## 当前阶段边界
 - 每日留言、凭证审核反馈和晚间回忆内容/回复均写入监督角色的原有聊天会话，并以近期聊天记录作为生成上下文；学习中心直接调用绑定文本模型，尚未接入聊天页完整的工具调用与插件编排流程。
 - 凭证图片只发送给全局视觉服务；Char 收到的只有视觉服务提取出的文字字段和规则审核结论。
-- 当前识别和记录使用本机 KV，未做云端同步、跨设备去重或后台审计队列。
+- 学习记录保存在本机 KV，并可通过受共享密钥保护的服务端接口同步到 xfloat。固定身份为 `local_user`，不需要注册或登录。云端写入采用 revision compare-and-swap；检测到两台设备同时修改时暂停自动覆盖，并提供选择载入云端版本或保留本机版本覆盖云端。该方案不提供自动字段级合并。
 - 本分支未执行完整 Next.js build，也未进行真实视觉 API 或 Android 设备测试。GitHub Actions 在仓库层面处于平台禁用状态，不能据此推断构建通过。
