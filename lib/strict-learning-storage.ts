@@ -1,7 +1,12 @@
-import { kvGet, kvRemove, kvSet } from "@/lib/kv-db";
+import { kvMoveIfAbsent, registerDynamicPrefix, registerKvMigration } from "@/lib/kv-db";
 
 const LEGACY_STORE_KEY = "strict_learning_center_v1";
 const STORE_KEY_PREFIX = "strict_learning_center_v1:";
+
+// Register before/after KV hydration so legacy localStorage data is imported
+// into IndexedDB before the account-scoped atomic move runs.
+registerKvMigration(LEGACY_STORE_KEY);
+registerDynamicPrefix(STORE_KEY_PREFIX);
 
 /** Each signed-in app account gets an isolated local learning record. */
 export function getStrictLearningStoreKey(accountId: string): string {
@@ -14,13 +19,10 @@ export function getStrictLearningStoreKey(accountId: string): string {
  * assigned only to the first account that opens the feature after this update;
  * subsequent accounts receive their own empty store.
  */
-export function migrateLegacyStrictLearningStore(accountId: string): string {
+export async function migrateLegacyStrictLearningStore(accountId: string): Promise<string> {
   const scopedKey = getStrictLearningStoreKey(accountId);
-  if (kvGet(scopedKey) !== null) return scopedKey;
-  const legacy = kvGet(LEGACY_STORE_KEY);
-  if (legacy !== null) {
-    kvSet(scopedKey, legacy);
-    kvRemove(LEGACY_STORE_KEY);
-  }
+  // IndexedDB transactions serialize across tabs: only the first account can
+  // claim the legacy record, and no second account can copy it concurrently.
+  await kvMoveIfAbsent(LEGACY_STORE_KEY, scopedKey);
   return scopedKey;
 }
