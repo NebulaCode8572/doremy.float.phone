@@ -62,11 +62,16 @@ function isSelfHostedTokenRoute(pathname: string): boolean {
 }
 
 function isStaticRoute(pathname: string): boolean {
-  return STATIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix)) || STATIC_FILE_RE.test(pathname);
+  return !pathname.startsWith("/api/") && (
+    STATIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix)) || STATIC_FILE_RE.test(pathname)
+  );
 }
 
 function isStaticAssetRoute(pathname: string): boolean {
-  return pathname.startsWith("/_next/") || STATIC_FILE_RE.test(pathname);
+  if (pathname.startsWith("/api/")) return false;
+  return pathname.startsWith("/_next/") ||
+    STATIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
+    STATIC_FILE_RE.test(pathname);
 }
 
 function isApiRoute(pathname: string): boolean {
