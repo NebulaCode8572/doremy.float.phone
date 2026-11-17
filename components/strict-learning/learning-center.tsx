@@ -63,6 +63,7 @@ export function StrictLearningCenter() {
   const [open, setOpen] = useState(false);
   const [store, setStore] = useState<StrictStore>(DEFAULT_STORE);
   const [loaded, setLoaded] = useState(false);
+  const [loadedAccountId, setLoadedAccountId] = useState("");
   const [characters, setCharacters] = useState<Character[]>([]);
   const [editingProfile, setEditingProfile] = useState(false);
   const [recallText, setRecallText] = useState("");
@@ -82,6 +83,11 @@ export function StrictLearningCenter() {
 
   useEffect(() => {
     setLoaded(false);
+    setLoadedAccountId("");
+    setOpen(false);
+    setStore(DEFAULT_STORE);
+    setRecallText("");
+    setRecallNotes("");
     const activeStoreKey = migrateLegacyStrictLearningStore(account.id);
     const raw = kvGet(activeStoreKey);
     if (raw) {
@@ -98,12 +104,13 @@ export function StrictLearningCenter() {
       } catch { /* retain defaults */ }
     }
     setCharacters(loadCharacters());
+    setLoadedAccountId(account.id);
     setLoaded(true);
   }, [account.id]);
 
   useEffect(() => {
-    if (loaded) kvSet(storeKey, JSON.stringify(store));
-  }, [loaded, store, storeKey]);
+    if (loaded && loadedAccountId === account.id) kvSet(storeKey, JSON.stringify(store));
+  }, [loaded, loadedAccountId, account.id, store, storeKey]);
 
   useEffect(() => {
     const refresh = () => {
@@ -363,7 +370,7 @@ export function StrictLearningCenter() {
     finally { setBusy(null); }
   };
 
-  if (!loaded) return null;
+  if (!loaded || loadedAccountId !== account.id) return null;
   return (
     <>
       {store.enabled ? <button
