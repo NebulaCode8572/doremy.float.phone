@@ -8,7 +8,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { loadApiConfigs, loadBindingConfig, resolveBinding } from "@/lib/settings-storage";
 import { simpleLLMCall } from "@/lib/api-helpers";
-import { createOrGetSession, loadChatMessages, pushChatMessage } from "@/lib/chat-storage";
+import { createOrGetSession, hydrateChatStorage, loadChatMessages, pushChatMessage } from "@/lib/chat-storage";
 
 type StrictProfile = { nickname: string; lineOne: string; lineTwo: string; avatar: string; banner: string };
 type StrictDay = {
@@ -252,6 +252,8 @@ export function StrictLearningCenter() {
     if (!config) { setNotice("当前 Char 没有可用的文本模型配置，请先检查配置绑定。"); return; }
     setBusy("note"); setNotice("");
     try {
+      await hydrateChatStorage();
+      await hydrateChatStorage();
       const session = createOrGetSession(supervisor.id);
       const context = loadChatMessages(session.id, 20)
         .filter(message => message.role === "user" || message.role === "assistant")
