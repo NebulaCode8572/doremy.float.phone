@@ -222,7 +222,9 @@ export function hydrateKvDb(): Promise<void> {
         });
         if (safeBatch.length > 0) {
             await kvDb.transaction("rw", kvDb.entries, () => kvDb.entries.bulkPut(safeBatch));
-            for (const { key, value } of safeBatch) _cache.set(key, value);
+            for (const { key, value } of safeBatch) {
+                if (localStorage.getItem(key) === removeKeys.get(key)) _cache.set(key, value);
+            }
         }
         for (const [key, raw] of removeKeys) {
             removeLegacyLocalStorageKeyIfRaw(key, raw);
