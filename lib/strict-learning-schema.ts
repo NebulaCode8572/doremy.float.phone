@@ -113,6 +113,7 @@ function normalizeDay(key: string, value: unknown): StrictDay {
     if (!isRecord(day.sleep) || !["recognized", "approved", "not-met", "date-mismatch", "needs-reupload"].includes(String(day.sleep.status))) {
       throw new Error(`${key} 的睡眠记录格式无效`);
     }
+    if (!isRecord(day.sleep.result)) throw new Error(`${key} 缺少睡眠凭证识别结果`);
     assertResult(day.sleep.result, `${key} 的睡眠识别结果`);
     assertString(day.sleep, "feedback", 4000, `${key} 的睡眠反馈`);
   }
@@ -120,9 +121,16 @@ function normalizeDay(key: string, value: unknown): StrictDay {
     if (!isRecord(day.focus) || !["approved", "date-mismatch", "needs-reupload"].includes(String(day.focus.status))) {
       throw new Error(`${key} 的专注记录格式无效`);
     }
+    if (!isRecord(day.focus.result)) throw new Error(`${key} 缺少专注凭证识别结果`);
+    assertResult(day.focus.result, `${key} 的专注识别结果`);
+    if (day.focus.status === "approved" && day.focus.minutes === undefined) {
+      throw new Error(`${key} 的已审核专注记录缺少时长`);
+    }
+    if ((day.focus.pendingMinutes === undefined) !== (day.focus.pendingResult === undefined)) {
+      throw new Error(`${key} 的待确认专注记录不完整`);
+    }
     assertOptionalInteger(day.focus, "minutes", 0, 1440, `${key} 的专注时长`);
     assertOptionalInteger(day.focus, "pendingMinutes", 0, 1440, `${key} 的待确认专注时长`);
-    assertResult(day.focus.result, `${key} 的专注识别结果`);
     assertResult(day.focus.pendingResult, `${key} 的待确认识别结果`);
     assertString(day.focus, "feedback", 4000, `${key} 的专注反馈`);
   }
