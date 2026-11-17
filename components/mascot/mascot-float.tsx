@@ -982,7 +982,6 @@ export function MascotFloat() {
     if (dragState.current.moved) {
       const el = floatRef.current;
       const shell = el?.closest("[data-ui='phone-screen']") as HTMLElement | null;
-      const shellRect = shell?.getBoundingClientRect();
       const maxLeft = Math.max(0, (shell?.clientWidth ?? 390) - MASCOT_FLOAT_WIDTH);
       const maxTop = Math.max(0, (shell?.clientHeight ?? 844) - MASCOT_FLOAT_HEIGHT);
       const left = clampNumber(dragState.current.startLeft + dx, 0, maxLeft);
