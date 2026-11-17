@@ -234,7 +234,7 @@ export function StrictLearningCenter() {
         setNotice(`已审核：今日累计专注 ${formatMinutes(newMinutes)}。记录已更新，不会重复累加。`);
       } else {
         const sleepMinutes = Number(result.sleepDurationMinutes);
-        if (!result.sleepStart || !result.wakeTime || !Number.isFinite(sleepMinutes)) {
+        if (!result.sleepStart || !result.wakeTime || !Number.isFinite(sleepMinutes) || sleepMinutes <= 0 || sleepMinutes > 1440) {
           updateDay({ sleep: { status: "needs-reupload", result } });
           setNotice("睡眠时间信息不完整，请重新上传完整睡眠报告。");
           return;
