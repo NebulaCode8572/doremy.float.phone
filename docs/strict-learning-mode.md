@@ -48,6 +48,7 @@
 - 在托管平台的**服务端环境变量**中设置 `SELF_HOSTED_ACCESS_PASSWORD` 和 `SELF_HOSTED_ACCESS_SECRET`。建议分别生成：`openssl rand -base64 32`（访问口令）和 `openssl rand -hex 32`（Cookie 签名密钥）。访问口令和签名密钥都至少 32 个字符；两者都不能添加 `NEXT_PUBLIC_` 前缀，也不要提交到 Git。
 - 访问口令只在进入站点时验证一次。服务端发放 HttpOnly、SameSite=Lax Cookie，有效期 30 天；浏览器 JavaScript 无法读取口令 Cookie。所有应用页面和 API 都要求有效 Cookie；访问页、口令验证接口和静态资源例外。
 - 为兼容不携带网页 Cookie 的外部快捷指令/推送流程，以下入口仍可无站点 Cookie 访问，但各自必须通过独立校验：`/shortcut-run` 使用短时命令 ticket，`/personal-shortcut-run` 只允许跳转到受限格式的 Supabase 函数 URL，`/api/push/bridge-wake` 使用 `bridge_token`，`/api/push/shortcut-commands/deliver-email` 使用 `bridge_token`、动作白名单和个人云源站校验。其他应用 API 仍要求有效站点 Cookie。
+- 两个公开 POST 桥接入口均限制请求体：`bridge-wake` 为 4 KB，`deliver-email` 为 16 KB；免 Cookie 不等于免校验或无限制访问。
 - 修改访问口令后，旧 Cookie 在有效期内仍然有效；若要立即撤销所有已登录设备，请同时轮换 `SELF_HOSTED_ACCESS_PASSWORD` 和 `SELF_HOSTED_ACCESS_SECRET` 并重新部署。
 - 站点口令是网页/API 的入口保护，不会加密浏览器本机 IndexedDB 或 PWA 已缓存的离线内容；共用设备时仍应使用设备锁屏和独立浏览器资料，不要把站点口令当作本机数据加密。
 - 访问口令只控制站点访问，不创建账号、不注册、不改变固定的 `local_user` 身份。严格模式云同步仍使用独立的 `STRICT_LEARNING_SYNC_SECRET`；视觉 API Key 仍使用独立的 `VISION_CREDENTIAL_ENCRYPTION_KEY` 加密。
