@@ -527,6 +527,10 @@ export function StrictLearningCenter() {
 
   const saveRecall = async () => {
     if (!recallText.trim()) { setNotice("请填写“今天学了什么？”。"); return; }
+    if (recallText.length > 20000 || recallNotes.length > 20000) {
+      setNotice("回忆内容和补充笔记各自不能超过 20000 个字符。");
+      return;
+    }
     const recall = { text: recallText.trim(), notes: recallNotes.trim(), completedAt: Date.now() };
     updateDay({ recall });
     if (!supervisor) { setNotice("回忆已保存。选择监督 Char 后，可获得角色反馈。"); return; }
@@ -643,8 +647,8 @@ export function StrictLearningCenter() {
 
             <section className="strict-task-card">
               <div className="flex items-center gap-3"><ClipboardList className="strict-task-icon" size={34} /><div className="flex-1"><strong>晚间主动回忆</strong><div className="text-xs text-slate-500 mt-1">不看笔记，回忆今天学到的内容。</div></div><span className="strict-status">{day.recall?.completedAt ? "已完成" : "未完成"}</span></div>
-              <textarea value={recallText} onChange={event => setRecallText(event.target.value)} placeholder="今天学了什么？" className="strict-recall-input" rows={3} />
-              <textarea value={recallNotes} onChange={event => setRecallNotes(event.target.value)} placeholder="可选：补充笔记、易错点或资料说明" className="strict-recall-input mt-2" rows={2} />
+              <textarea value={recallText} onChange={event => setRecallText(event.target.value)} placeholder="今天学了什么？" className="strict-recall-input" rows={3} maxLength={20000} />
+              <textarea value={recallNotes} onChange={event => setRecallNotes(event.target.value)} placeholder="可选：补充笔记、易错点或资料说明" className="strict-recall-input mt-2" rows={2} maxLength={20000} />
               {day.recall?.feedback ? <div className="strict-result"><strong>Char：</strong>{day.recall.feedback}</div> : null}
               <button type="button" onClick={() => void saveRecall()} disabled={busy !== null} className="strict-upload-button"><Check size={18} />{busy === "note" ? "Char 正在回复…" : "保存今日回忆"}</button>
             </section>
@@ -656,9 +660,9 @@ export function StrictLearningCenter() {
             <div className="strict-edit-backdrop" onClick={() => setEditingProfile(false)}>
               <div className="strict-edit-sheet" onClick={event => event.stopPropagation()}>
                 <div className="flex items-center justify-between"><strong>编辑个人资料</strong><button type="button" onClick={() => setEditingProfile(false)}><X size={20} /></button></div>
-                <label className="strict-edit-label">昵称<input value={profileDraft.nickname} onChange={event => updateProfile("nickname", event.target.value)} /></label>
-                <label className="strict-edit-label">第一行文字<input value={profileDraft.lineOne} onChange={event => updateProfile("lineOne", event.target.value)} /></label>
-                <label className="strict-edit-label">第二行文字<input value={profileDraft.lineTwo} onChange={event => updateProfile("lineTwo", event.target.value)} /></label>
+                <label className="strict-edit-label">昵称<input maxLength={200} value={profileDraft.nickname} onChange={event => updateProfile("nickname", event.target.value)} /></label>
+                <label className="strict-edit-label">第一行文字<input maxLength={2000} value={profileDraft.lineOne} onChange={event => updateProfile("lineOne", event.target.value)} /></label>
+                <label className="strict-edit-label">第二行文字<input maxLength={2000} value={profileDraft.lineTwo} onChange={event => updateProfile("lineTwo", event.target.value)} /></label>
                 <label className="strict-upload-button">上传头像<input type="file" accept="image/*" onChange={event => { void uploadImage("avatar", event.target.files?.[0]); }} /></label>
                 <label className="strict-upload-button">上传顶部横幅<input type="file" accept="image/*" onChange={event => { void uploadImage("banner", event.target.files?.[0]); }} /></label>
                 <button type="button" className="strict-save-button" onClick={() => { setStore(previous => ({ ...previous, profile: profileDraft })); setEditingProfile(false); }}>保存资料</button>
