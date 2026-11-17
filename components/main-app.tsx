@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
 
 import { AccountGate } from "@/components/auth/account-gate";
+import { ChatPluginBootstrap } from "@/components/chat-plugin-bootstrap";
+import { ChatReasoningVisibilityController } from "@/components/chat-reasoning-visibility-controller";
 import { CloudBackupScheduler } from "@/components/cloud-backup-scheduler";
 import { RealityBridgeScheduler } from "@/components/reality-bridge-scheduler";
 import { WidgetScheduler } from "@/components/widget/widget-scheduler";
@@ -314,6 +316,8 @@ export function MainApp() {
 
   return (
     <AccountGate>
+      <ChatPluginBootstrap />
+      <ChatReasoningVisibilityController />
       {!splashDismissed ? (
         <SplashScreen ready={hydrated} onEnter={() => setSplashDismissed(true)} />
       ) : (
