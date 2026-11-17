@@ -52,7 +52,9 @@ function migrateLegacyKey(lsKey: string): void {
     const raw = localStorage.getItem(lsKey);
     if (raw === null) return;
     const decoded = decodeLocalStorageValue(raw);
-    kvDb.entries.get(lsKey).then(existing => {
+    let applied = false;
+    kvDb.transaction("rw", kvDb.entries, async () => {
+        const existing = await kvDb.entries.get(lsKey);
         if (localStorage.getItem(lsKey) !== raw) return;
         if (!decoded.isFallback && _cache.has(lsKey) && _cache.get(lsKey) !== decoded.value) return;
         if (!decoded.isFallback && existing && existing.value !== decoded.value) {
@@ -60,17 +62,15 @@ function migrateLegacyKey(lsKey: string): void {
             // failed recent write. Preserve it rather than overwriting IDB.
             return;
         }
-        if (existing?.value === decoded.value) {
+        if (existing?.value !== decoded.value) {
+            await kvDb.entries.put({ key: lsKey, value: decoded.value });
+        }
+        applied = true;
+    }).then(() => {
+        if (applied && localStorage.getItem(lsKey) === raw) {
             _cache.set(lsKey, decoded.value);
             removeLegacyLocalStorageKeyIfRaw(lsKey, raw);
-            return;
         }
-        return kvDb.entries.put({ key: lsKey, value: decoded.value }).then(() => {
-            if (localStorage.getItem(lsKey) === raw) {
-                _cache.set(lsKey, decoded.value);
-                removeLegacyLocalStorageKeyIfRaw(lsKey, raw);
-            }
-        });
     }).catch(() => {
         // Preserve localStorage as the recovery copy.
     });
