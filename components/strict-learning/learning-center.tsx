@@ -222,8 +222,8 @@ export function StrictLearningCenter() {
             <button type="button" onClick={() => setOpen(false)} className="strict-close-float" aria-label="关闭学习中心"><X size={19} /></button>
 
             <section className="strict-profile">
-              <div className="strict-crt" style={store.profile.banner ? { backgroundImage: `url(${store.profile.banner})` } : undefined}>
-                <div className="strict-crt-screen">
+              <div className="strict-crt">
+                <div className="strict-crt-screen" style={store.profile.banner ? { backgroundImage: `url(${store.profile.banner})` } : undefined}>
                   <div className="strict-crt-status"><span>9:41</span><span>▮▮▮　◉　▰</span></div>
                   <div className="strict-crt-quote">今天也向前走了一点。</div>
                   <div className="strict-crt-bottom"><span>↳<br />{today}</span><span className="strict-crt-face">૮ ˶ᵔ ᵕ ᵔ˶ ა</span></div>
