@@ -12,7 +12,7 @@ function getSigningSecret(): string {
 }
 
 export function isSelfHostedAccessConfigured(): boolean {
-  return getAccessPassword().length >= 16 && getSigningSecret().length >= 32;
+  return getAccessPassword().length >= 32 && getSigningSecret().length >= 32;
 }
 
 function bytesToBase64Url(bytes: ArrayBuffer): string {

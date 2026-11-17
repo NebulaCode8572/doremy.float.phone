@@ -43,7 +43,7 @@
 
 ## 单用户部署的访问边界
 - 当部署启用 `NEXT_PUBLIC_SELF_HOSTED_MODE=true` 时，应用会跳过账号登录，并把服务端请求固定映射到 `local_user`。该模式要求额外配置站点共享访问口令；没有有效配置时会停留在访问页，不会退回到公开访问。
-- 在托管平台的**服务端环境变量**中设置 `SELF_HOSTED_ACCESS_PASSWORD` 和 `SELF_HOSTED_ACCESS_SECRET`。建议分别生成：`openssl rand -base64 32`（访问口令）和 `openssl rand -hex 32`（Cookie 签名密钥）。访问口令至少 16 个字符，签名密钥至少 32 个字符；两者都不能添加 `NEXT_PUBLIC_` 前缀，也不要提交到 Git。
+- 在托管平台的**服务端环境变量**中设置 `SELF_HOSTED_ACCESS_PASSWORD` 和 `SELF_HOSTED_ACCESS_SECRET`。建议分别生成：`openssl rand -base64 32`（访问口令）和 `openssl rand -hex 32`（Cookie 签名密钥）。访问口令和签名密钥都至少 32 个字符；两者都不能添加 `NEXT_PUBLIC_` 前缀，也不要提交到 Git。
 - 访问口令只在进入站点时验证一次。服务端发放 HttpOnly、SameSite=Lax Cookie，有效期 30 天；浏览器 JavaScript 无法读取口令 Cookie。所有应用页面和 API 都要求有效 Cookie，只有访问页、口令验证接口和静态资源例外。
 - 修改访问口令后，旧 Cookie 在有效期内仍然有效；若要立即撤销所有已登录设备，请同时轮换 `SELF_HOSTED_ACCESS_PASSWORD` 和 `SELF_HOSTED_ACCESS_SECRET` 并重新部署。
 - 访问口令只控制站点访问，不创建账号、不注册、不改变固定的 `local_user` 身份。严格模式云同步仍使用独立的 `STRICT_LEARNING_SYNC_SECRET`；视觉 API Key 仍使用独立的 `VISION_CREDENTIAL_ENCRYPTION_KEY` 加密。

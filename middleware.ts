@@ -48,6 +48,10 @@ function isStaticRoute(pathname: string): boolean {
   return STATIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix)) || STATIC_FILE_RE.test(pathname);
 }
 
+function isStaticAssetRoute(pathname: string): boolean {
+  return pathname.startsWith("/_next/") || STATIC_FILE_RE.test(pathname);
+}
+
 function isApiRoute(pathname: string): boolean {
   return pathname.startsWith("/api/");
 }
@@ -61,7 +65,7 @@ export async function middleware(request: NextRequest) {
     if (
       pathname === "/access" ||
       pathname === "/api/access/verify" ||
-      isStaticRoute(pathname)
+      isStaticAssetRoute(pathname)
     ) {
       return NextResponse.next();
     }
