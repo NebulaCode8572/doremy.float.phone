@@ -104,6 +104,46 @@ function assertResult(value: unknown, label: string): void {
   }
 }
 
+function assertVisionResult(value: unknown, label: string, expectedKind: "sleep" | "focus"): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) throw new Error(`${label}格式无效`);
+  assertResult(value, label);
+  if (value.kind !== undefined && value.kind !== expectedKind) {
+    throw new Error(`${label}类型不匹配`);
+  }
+  for (const key of ["recordDate", "phoneLockDate"]) {
+    const field = value[key];
+    if (field !== undefined && field !== null && field !== "" && !isDateKey(field)) {
+      throw new Error(`${label}中的日期无效`);
+    }
+  }
+  for (const key of ["sleepStart", "wakeTime", "phoneLockTime"]) {
+    const field = value[key];
+    if (field !== undefined && field !== null && field !== "" &&
+      (typeof field !== "string" || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(field))) {
+      throw new Error(`${label}中的时间无效`);
+    }
+  }
+  for (const key of ["sleepDurationMinutes", "focusDurationMinutes"]) {
+    const field = value[key];
+    if (field !== undefined && field !== null &&
+      (typeof field !== "number" || !Number.isInteger(field) || field < 0 || field > 1440)) {
+      throw new Error(`${label}中的时长无效`);
+    }
+  }
+  for (const key of ["deviceVisible", "phoneLockVisible"]) {
+    if (value[key] !== undefined && typeof value[key] !== "boolean") {
+      throw new Error(`${label}中的凭证可见状态无效`);
+    }
+  }
+  if (value.confidence !== undefined && !["high", "medium", "low"].includes(String(value.confidence))) {
+    throw new Error(`${label}的置信度无效`);
+  }
+  if (value.notes !== undefined && (typeof value.notes !== "string" || value.notes.length > 300)) {
+    throw new Error(`${label}的说明过长或格式无效`);
+  }
+}
+
 function normalizeDay(key: string, value: unknown): StrictDay {
   if (!isDateKey(key) || !isRecord(value) || value.date !== key) {
     throw new Error(`学习记录日期 ${key} 格式无效`);
@@ -114,7 +154,7 @@ function normalizeDay(key: string, value: unknown): StrictDay {
       throw new Error(`${key} 的睡眠记录格式无效`);
     }
     if (!isRecord(day.sleep.result)) throw new Error(`${key} 缺少睡眠凭证识别结果`);
-    assertResult(day.sleep.result, `${key} 的睡眠识别结果`);
+    assertVisionResult(day.sleep.result, `${key} 的睡眠识别结果`, "sleep");
     assertString(day.sleep, "feedback", 4000, `${key} 的睡眠反馈`);
   }
   if (day.focus !== undefined) {
@@ -122,7 +162,7 @@ function normalizeDay(key: string, value: unknown): StrictDay {
       throw new Error(`${key} 的专注记录格式无效`);
     }
     if (!isRecord(day.focus.result)) throw new Error(`${key} 缺少专注凭证识别结果`);
-    assertResult(day.focus.result, `${key} 的专注识别结果`);
+    assertVisionResult(day.focus.result, `${key} 的专注识别结果`, "focus");
     if (day.focus.status === "approved" && day.focus.minutes === undefined) {
       throw new Error(`${key} 的已审核专注记录缺少时长`);
     }
@@ -131,7 +171,7 @@ function normalizeDay(key: string, value: unknown): StrictDay {
     }
     assertOptionalInteger(day.focus, "minutes", 0, 1440, `${key} 的专注时长`);
     assertOptionalInteger(day.focus, "pendingMinutes", 0, 1440, `${key} 的待确认专注时长`);
-    assertResult(day.focus.pendingResult, `${key} 的待确认识别结果`);
+    assertVisionResult(day.focus.pendingResult, `${key} 的待确认识别结果`, "focus");
     assertString(day.focus, "feedback", 4000, `${key} 的专注反馈`);
   }
   if (day.recall !== undefined) {
@@ -193,6 +233,20 @@ export function normalizeStrictLearningStore(input: unknown): StrictStore {
   if (!isRecord(rulesInput)) throw new Error("睡眠规则格式无效");
   for (const key of ["bedtimeDeadline", "wakeFrom", "wakeUntil", "minSleepHours"]) {
     assertString(rulesInput, key, 32, "睡眠规则");
+  }
+  for (const key of ["bedtimeDeadline", "wakeFrom", "wakeUntil"]) {
+    const value = rulesInput[key];
+    if (value !== undefined && value !== "" &&
+      (typeof value !== "string" || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(value))) {
+      throw new Error("睡眠规则时间格式无效");
+    }
+  }
+  const minSleepHours = rulesInput.minSleepHours;
+  if (minSleepHours !== undefined && minSleepHours !== "") {
+    const hours = Number(minSleepHours);
+    if (!Number.isFinite(hours) || hours < 1 || hours > 24 || !Number.isInteger(hours * 2)) {
+      throw new Error("最低睡眠时长必须为 1 至 24 小时，且以半小时为单位");
+    }
   }
 
   return {
