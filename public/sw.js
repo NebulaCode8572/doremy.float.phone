@@ -1,4 +1,4 @@
-// v13：本次升版是为了强制作废旧缓存。
+// v14：移除受保护页面导航缓存，避免离线启动绕过站点口令。
 // 折叠逻辑的修复已进 main，但客户端仍在跑旧 JS —— /_next/static/ 走 cache-first，
 // 旧包会被一直留在 RUNTIME_CACHE 里。升 CACHE_VERSION 会在 activate 时整批清空。
 const CACHE_VERSION = "ai-phone-pwa-v14";
@@ -41,7 +41,7 @@ function isCacheableRequest(request) {
   return ["font", "image", "script", "style", "worker"].includes(request.destination);
 }
 
-async function networkFirst(request) {
+async function networkOnly(request) {
   // Navigations may contain the authenticated app shell. Never persist them:
   // otherwise an offline PWA launch could bypass the site access-code gate.
   return fetch(request);
@@ -164,7 +164,7 @@ self.addEventListener("notificationclick", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.mode === "navigate") {
-    event.respondWith(networkFirst(request));
+    event.respondWith(networkOnly(request));
     return;
   }
   if (isCacheableRequest(request)) {
