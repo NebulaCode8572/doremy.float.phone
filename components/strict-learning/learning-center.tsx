@@ -66,6 +66,64 @@ function readImage(file: File): Promise<string> {
   });
 }
 
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("图片压缩失败")), type, quality);
+  });
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("压缩后的图片读取失败"));
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function readProfileImage(file: File): Promise<string> {
+  const targetBytes = 320 * 1024;
+  if (file.size <= targetBytes) return readImage(file);
+
+  const objectUrl = URL.createObjectURL(file);
+  const image = new Image();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("无法读取这张图片"));
+      image.src = objectUrl;
+    });
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+
+  const maxDimension = 1280;
+  let scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("当前浏览器不支持图片压缩");
+
+  for (let attempt = 0; attempt < 7; attempt += 1) {
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const quality = Math.max(0.42, 0.84 - attempt * 0.07);
+    let blob = await canvasToBlob(canvas, "image/webp", quality);
+    if (blob.type !== "image/webp") {
+      context.fillStyle = "#fff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      blob = await canvasToBlob(canvas, "image/jpeg", quality);
+    }
+    if (blob.size <= targetBytes) return blobToDataUrl(blob);
+    scale *= 0.82;
+  }
+
+  throw new Error("图片压缩后仍然过大，请换一张尺寸较小的图片");
+}
+
 export function StrictLearningCenter() {
   const { account } = useAccount();
   const storeKey = useMemo(() => getStrictLearningStoreKey(account.id), [account.id]);
@@ -347,7 +405,7 @@ export function StrictLearningCenter() {
     if (!file.type.startsWith("image/")) { setNotice("请选择图片文件。"); return; }
     if (file.size > 5 * 1024 * 1024) { setNotice("图片请控制在 5 MB 以内。"); return; }
     try {
-      const dataUrl = await readImage(file);
+      const dataUrl = await readProfileImage(file);
       setProfileDraft(previous => ({ ...previous, [kind]: dataUrl }));
     } catch { setNotice("图片读取失败。"); }
   };
