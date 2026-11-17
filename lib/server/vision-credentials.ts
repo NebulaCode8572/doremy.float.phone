@@ -52,6 +52,11 @@ export async function saveVisionSettings(userId: string, input: { provider: stri
   const baseUrl = input.baseUrl.trim().replace(/\/+$/, "");
   const model = input.model.trim();
   if (!baseUrl || !/^https:\/\//i.test(baseUrl)) throw new Error("Base URL 必须是 HTTPS 地址");
+  const parsedUrl = new URL(baseUrl);
+  const host = parsedUrl.hostname.toLowerCase();
+  if (parsedUrl.username || parsedUrl.password || host === "localhost" || host.endsWith(".local") || host === "127.0.0.1" || host === "::1" || /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
+    throw new Error("Base URL 不能指向本机或内网地址");
+  }
   if (!model || model.length > 160) throw new Error("请填写有效的模型名称");
   if (input.provider !== "openai-compatible") throw new Error("当前版本仅支持 OpenAI 兼容视觉接口");
   const existing = await loadVisionSettings(userId);
