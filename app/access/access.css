@@ -1,0 +1,139 @@
+ .site-access-root {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 28px 20px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(208, 224, 225, 0.42), transparent 58%),
+    #f7f7f3;
+  color: #283238;
+}
+
+.site-access-card {
+  width: min(100%, 420px);
+  padding: 34px 30px 25px;
+  border: 1px solid rgba(112, 137, 141, 0.16);
+  border-radius: 25px;
+  background: rgba(255, 255, 253, 0.94);
+  box-shadow: 0 18px 60px rgba(49, 71, 76, 0.09);
+}
+
+.site-access-mark {
+  color: #385a61;
+  font-size: 29px;
+  font-weight: 750;
+  letter-spacing: -1.6px;
+}
+
+.site-access-kicker {
+  margin-top: 5px;
+  color: #91a3a3;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2.1px;
+}
+
+.site-access-card h1 {
+  margin: 30px 0 9px;
+  color: #26373b;
+  font-size: 22px;
+  font-weight: 680;
+  letter-spacing: -0.5px;
+}
+
+.site-access-description {
+  margin: 0;
+  color: #78898b;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.site-access-form {
+  display: grid;
+  gap: 11px;
+  margin-top: 25px;
+}
+
+.site-access-form label {
+  color: #53696c;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.site-access-form input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid #dce5e3;
+  border-radius: 12px;
+  outline: none;
+  background: #fbfcfa;
+  color: #26373b;
+  font: inherit;
+  font-size: 14px;
+}
+
+.site-access-form input:focus {
+  border-color: #8ba9a9;
+  box-shadow: 0 0 0 3px rgba(139, 169, 169, 0.14);
+}
+
+.site-access-form button {
+  min-height: 48px;
+  margin-top: 5px;
+  border: 0;
+  border-radius: 12px;
+  background: #456a70;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.site-access-form button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.site-access-notice,
+.site-access-error {
+  margin-top: 20px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.site-access-notice {
+  background: #f2f5f2;
+  color: #607276;
+}
+
+.site-access-notice code {
+  display: inline-block;
+  margin: 2px 3px;
+  color: #385a61;
+  font-size: 11px;
+}
+
+.site-access-error {
+  background: #fff1ee;
+  color: #a34e42;
+}
+
+.site-access-footnote {
+  margin-top: 25px;
+  color: #a2afad;
+  font-size: 10px;
+  text-align: center;
+  letter-spacing: 0.25px;
+}
+
+@media (max-width: 420px) {
+  .site-access-card {
+    padding: 29px 23px 22px;
+    border-radius: 22px;
+  }
+}

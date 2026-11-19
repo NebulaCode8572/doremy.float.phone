@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readLimitedJson } from "@/lib/server/read-limited-json";
 
 import { cleanAccountText } from "@/lib/server/account-auth";
 import { shortcutEmailSubjectTag } from "@/lib/shortcut-email";
@@ -104,7 +105,9 @@ export async function POST(request: Request) {
     try {
         if (!getSupabaseServerConfig()) return fail("Supabase 环境变量未配置。", 503);
 
-        const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+        const parsed = await readLimitedJson(request, 16_384);
+        if (!parsed.ok) return fail(parsed.error, parsed.status);
+        const body = parsed.value;
         const token = cleanAccountText(body.token, 100);
         if (!token) return fail("缺少 token。", 400);
 

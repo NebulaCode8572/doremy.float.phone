@@ -37,17 +37,43 @@ export function registerDynamicPrefix(prefix: string): void {
     if (_hydrated) migrateLegacyPrefix(prefix);
 }
 
-// Migrate a single legacy localStorage key into the cache + IDB, then drop it
-// from localStorage. Used by both initial hydration and late registration.
+const LOCAL_STORAGE_FALLBACK_PREFIX = "\u0000KV_FALLBACK_V1\u0000";
+
+function decodeLocalStorageValue(raw: string): { value: string; isFallback: boolean } {
+    return raw.startsWith(LOCAL_STORAGE_FALLBACK_PREFIX)
+        ? { value: raw.slice(LOCAL_STORAGE_FALLBACK_PREFIX.length), isFallback: true }
+        : { value: raw, isFallback: false };
+}
+
+// Migrate a legacy localStorage value only when IndexedDB has no newer value.
+// Explicitly marked fallback values are newer failed-write recovery copies.
 function migrateLegacyKey(lsKey: string): void {
     if (typeof window === "undefined") return;
     const raw = localStorage.getItem(lsKey);
     if (raw === null) return;
-    if (_cache.get(lsKey) !== raw) {
-        _cache.set(lsKey, raw);
-        kvDb.entries.put({ key: lsKey, value: raw }).catch(() => {});
-    }
-    localStorage.removeItem(lsKey);
+    const decoded = decodeLocalStorageValue(raw);
+    let applied = false;
+    kvDb.transaction("rw", kvDb.entries, async () => {
+        const existing = await kvDb.entries.get(lsKey);
+        if (localStorage.getItem(lsKey) !== raw) return;
+        if (!decoded.isFallback && _cache.has(lsKey) && _cache.get(lsKey) !== decoded.value) return;
+        if (!decoded.isFallback && existing && existing.value !== decoded.value) {
+            // An unmarked, differing value is an old mirror, not proof of a
+            // failed recent write. Preserve it rather than overwriting IDB.
+            return;
+        }
+        if (existing?.value !== decoded.value) {
+            await kvDb.entries.put({ key: lsKey, value: decoded.value });
+        }
+        applied = true;
+    }).then(() => {
+        if (applied && localStorage.getItem(lsKey) === raw) {
+            _cache.set(lsKey, decoded.value);
+            removeLegacyLocalStorageKeyIfRaw(lsKey, raw);
+        }
+    }).catch(() => {
+        // Preserve localStorage as the recovery copy.
+    });
 }
 
 function migrateLegacyPrefix(prefix: string): void {
@@ -77,13 +103,18 @@ function removeLegacyLocalStorageKey(key: string): void {
     }
 }
 
-function removeLegacyLocalStorageKeyIfValue(key: string, value: string): void {
+function removeLegacyLocalStorageKeyIfRaw(key: string, raw: string): void {
     if (typeof window === "undefined") return;
     try {
-        if (localStorage.getItem(key) === value) localStorage.removeItem(key);
+        if (localStorage.getItem(key) === raw) localStorage.removeItem(key);
     } catch {
         // Ignore localStorage cleanup failures; IndexedDB remains the source of truth.
     }
+}
+
+function removeLegacyLocalStorageKeyIfValue(key: string, value: string): void {
+    removeLegacyLocalStorageKeyIfRaw(key, value);
+    removeLegacyLocalStorageKeyIfRaw(key, LOCAL_STORAGE_FALLBACK_PREFIX + value);
 }
 
 // localStorage 配额只有 ~5MB,超过这个量级的 value(如自定义APP的整批
@@ -92,11 +123,17 @@ const LOCAL_STORAGE_MIRROR_MAX_LENGTH = 400_000;
 
 function writeFallbackLocalStorage(key: string, value: string): void {
     if (typeof window === "undefined" || !isManagedLegacyKey(key)) return;
-    if (value.length > LOCAL_STORAGE_MIRROR_MAX_LENGTH) return;
+    if (value.length + LOCAL_STORAGE_FALLBACK_PREFIX.length > LOCAL_STORAGE_MIRROR_MAX_LENGTH) {
+        // Do not leave an older mirror behind: hydration could mistake it for
+        // the latest value and restore stale data over IndexedDB.
+        removeLegacyLocalStorageKey(key);
+        return;
+    }
     try {
-        localStorage.setItem(key, value);
+        localStorage.setItem(key, LOCAL_STORAGE_FALLBACK_PREFIX + value);
     } catch {
-        // Ignore fallback persistence failures; in-memory cache is already updated.
+        // A stale old mirror is worse than no fallback copy.
+        removeLegacyLocalStorageKey(key);
     }
 }
 
@@ -119,25 +156,54 @@ export function hydrateKvDb(): Promise<void> {
     if (_hydrated || typeof window === "undefined") return Promise.resolve();
     if (_hydratePromise) return _hydratePromise;
     _hydratePromise = (async () => {
-        // Load existing IDB data into cache
+        // Load existing IDB data into cache and track what is actually
+        // persisted. The in-memory cache may contain values from a previous
+        // failed hydration attempt, so it must not decide whether migration
+        // data can safely be removed from localStorage.
         const all = await kvDb.entries.toArray();
+        const persisted = new Map<string, string>();
         for (const { key, value } of all) {
+            persisted.set(key, value);
             if (!_cache.has(key)) _cache.set(key, value);
         }
 
-        // Migrate from localStorage
+        // Migrate from localStorage. Cache updates are delayed until the
+        // IndexedDB batch succeeds; a failed write leaves the old copy intact
+        // and retryable on the next hydration attempt.
         const batch: { key: string; value: string }[] = [];
-        const removeKeys = new Set<string>();
+        const removeKeys = new Map<string, string>();
+
+        const queueLegacyValue = (key: string, raw: string) => {
+            const decoded = decodeLocalStorageValue(raw);
+            const existing = persisted.get(key);
+            if (!decoded.isFallback && _cache.has(key) && _cache.get(key) !== decoded.value) {
+                // A value written during an earlier failed hydration attempt
+                // may be newer than this unmarked legacy mirror.
+                return;
+            }
+            if (decoded.isFallback) {
+                // A marked value is a known failed-write recovery copy and
+                // takes precedence over the older IndexedDB value.
+                if (existing !== decoded.value) batch.push({ key, value: decoded.value });
+                else _cache.set(key, decoded.value);
+                removeKeys.set(key, raw);
+                return;
+            }
+            if (existing === undefined) {
+                batch.push({ key, value: decoded.value });
+                removeKeys.set(key, raw);
+            } else if (existing === decoded.value) {
+                removeKeys.set(key, raw);
+            }
+            // If an unmarked legacy mirror differs from an existing IDB value,
+            // leave it untouched as a recovery copy; never overwrite IDB with
+            // an ambiguous stale value.
+        };
 
         // Fixed keys
         for (const lsKey of _fixedKeys) {
             const raw = localStorage.getItem(lsKey);
-            if (raw === null) continue;
-            if (_cache.get(lsKey) !== raw) {
-                batch.push({ key: lsKey, value: raw });
-                _cache.set(lsKey, raw);
-            }
-            removeKeys.add(lsKey);
+            if (raw !== null) queueLegacyValue(lsKey, raw);
         }
 
         // Dynamic prefix keys
@@ -145,17 +211,30 @@ export function hydrateKvDb(): Promise<void> {
             const k = localStorage.key(i);
             if (!k || !matchesDynamicPrefix(k)) continue;
             const raw = localStorage.getItem(k);
-            if (raw !== null) {
-                if (_cache.get(k) !== raw) {
-                    batch.push({ key: k, value: raw });
-                    _cache.set(k, raw);
-                }
-                removeKeys.add(k);
-            }
+            if (raw !== null) queueLegacyValue(k, raw);
         }
 
-        if (batch.length > 0) await kvDb.entries.bulkPut(batch);
-        for (const k of removeKeys) localStorage.removeItem(k);
+        // Recheck the exact localStorage snapshots inside the read/write
+        // transaction. A newer write in another task/tab must not be replaced
+        // by a stale value collected earlier in this hydration pass.
+        let committedBatch: { key: string; value: string }[] = [];
+        if (batch.length > 0) {
+            await kvDb.transaction("rw", kvDb.entries, async () => {
+                committedBatch = batch.filter(({ key }) => {
+                    const sourceRaw = removeKeys.get(key);
+                    return sourceRaw !== undefined && localStorage.getItem(key) === sourceRaw;
+                });
+                if (committedBatch.length > 0) {
+                    await kvDb.entries.bulkPut(committedBatch);
+                }
+            });
+            for (const { key, value } of committedBatch) {
+                if (localStorage.getItem(key) === removeKeys.get(key)) _cache.set(key, value);
+            }
+        }
+        for (const [key, raw] of removeKeys) {
+            removeLegacyLocalStorageKeyIfRaw(key, raw);
+        }
     })().then(() => {
         _hydrated = true;
         _hydrateError = null;
@@ -195,7 +274,7 @@ export function kvSet(key: string, value: string): void {
     kvDb.entries.put({ key, value }).then(() => {
         if (isManagedLegacyKey(key)) removeLegacyLocalStorageKeyIfValue(key, value);
     }).catch(err => {
-        writeFallbackLocalStorage(key, value);
+        if (_cache.get(key) === value) writeFallbackLocalStorage(key, value);
         if (!isAbortLikeError(err)) {
             console.warn("[KvDB] put failed:", key, err);
         }
@@ -209,7 +288,7 @@ export async function kvSetAsync(key: string, value: string): Promise<void> {
         await kvDb.entries.put({ key, value });
         if (isManagedLegacyKey(key)) removeLegacyLocalStorageKeyIfValue(key, value);
     } catch (err) {
-        writeFallbackLocalStorage(key, value);
+        if (_cache.get(key) === value) writeFallbackLocalStorage(key, value);
         if (!isAbortLikeError(err)) {
             console.warn("[KvDB] put failed:", key, err);
         }
@@ -223,6 +302,45 @@ export function kvRemove(key: string): void {
     if (isManagedLegacyKey(key)) removeLegacyLocalStorageKey(key);
     kvDb.entries.delete(key).catch(err =>
         console.warn("[KvDB] delete failed:", key, err));
+}
+
+/** Atomically move a key if the destination is absent. Safe across tabs. */
+export async function kvMoveIfAbsent(
+    sourceKey: string,
+    targetKey: string,
+): Promise<{ moved: boolean; value: string | null }> {
+    if (sourceKey === targetKey) {
+        const current = await kvDb.entries.get(targetKey);
+        return { moved: false, value: current?.value ?? null };
+    }
+
+    let outcome: { moved: boolean; value: string | null } = { moved: false, value: null };
+    await kvDb.transaction("rw", kvDb.entries, async () => {
+        const target = await kvDb.entries.get(targetKey);
+        if (target) {
+            // Never discard the source when a destination already exists.
+            // The caller can preserve or reconcile the two copies explicitly.
+            outcome = { moved: false, value: target.value };
+            return;
+        }
+
+        const source = await kvDb.entries.get(sourceKey);
+        if (!source) {
+            outcome = { moved: false, value: null };
+            return;
+        }
+
+        await kvDb.entries.put({ key: targetKey, value: source.value });
+        await kvDb.entries.delete(sourceKey);
+        outcome = { moved: true, value: source.value };
+    });
+
+    if (outcome.moved) _cache.delete(sourceKey);
+    if (outcome.value !== null) _cache.set(targetKey, outcome.value);
+    else if (outcome.moved) _cache.delete(targetKey);
+
+    if (outcome.moved && isManagedLegacyKey(sourceKey)) removeLegacyLocalStorageKeyIfValue(sourceKey, outcome.value ?? "");
+    return outcome;
 }
 
 // ── Iterate keys with a prefix (for dynamic keys) ──
