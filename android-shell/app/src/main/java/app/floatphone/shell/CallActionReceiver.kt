@@ -13,25 +13,33 @@ class CallActionReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_ANSWER = "app.floatphone.shell.CALL_ANSWER"
         const val ACTION_DECLINE = "app.floatphone.shell.CALL_DECLINE"
+        const val ACTION_DISMISS_ALARM = "app.floatphone.shell.DISMISS_DAILY_ALARM"
+        const val ACTION_DISMISS_ALARM = "app.floatphone.shell.DISMISS_DAILY_ALARM"
         const val EXTRA_SESSION_ID = "session_id"
         const val EXTRA_CALL_TS = "call_ts"
         const val EXTRA_WAKE_CALL = "wake_call"
+        const val EXTRA_ALARM_INSTANCE_ID = "daily_alarm_instance_id"
+        const val EXTRA_ALARM_INSTANCE_ID = "daily_alarm_instance_id"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_DISMISS_ALARM) {
+            DailyAlarmFallbackScheduler.cancel(context)
+            return
+        }
+        val alarmInstanceId = intent.getStringExtra(EXTRA_ALARM_INSTANCE_ID).orEmpty()
+        if (alarmInstanceId.isNotBlank()) DailyAlarmCallScheduler.cancel(context, alarmInstanceId)
         CallAlert.stop(context)
         val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
         val wakeCall = intent.getBooleanExtra(EXTRA_WAKE_CALL, false)
         if (intent.action == ACTION_DECLINE) {
-            if (wakeCall) {
-                val target = "${MainActivity.SITE_URL}/#wake-call-declined=${android.net.Uri.encode(sessionId)}"
+            if (wakeCall && sessionId.isNotBlank()) {
+                val declined = "${MainActivity.SITE_URL}/#wake-call-declined=${android.net.Uri.encode(sessionId)}"
                 runCatching {
-                    context.startActivity(
-                        Intent(context, MainActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                            putExtra(MainActivity.EXTRA_OPEN_URL, target)
-                        },
-                    )
+                    context.startActivity(Intent(context, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        putExtra(MainActivity.EXTRA_OPEN_URL, declined)
+                    })
                 }
             }
             return
