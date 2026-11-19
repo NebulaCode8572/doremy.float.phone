@@ -10,7 +10,6 @@ import {
   MASCOT_TRANSITION_MS,
   toggleMascotPanel,
   closeMascotPanel,
-  deactivateMascot,
 } from "@/lib/mascot-state";
 import { getMascotContext, subscribeMascotContext } from "@/lib/mascot-context";
 import { mascotNavigate, DIY_WIDGET_PREVIEW_EVENT, type DiyWidgetPreviewEventDetail, type DiyWidgetPreviewRequest } from "@/lib/mascot-events";
@@ -32,6 +31,7 @@ import {
   getMascotSettingsSnapshot,
   resolveMascotImageRef,
   subscribeMascotSettings,
+  updateMascotSettings,
 } from "@/lib/mascot-settings";
 import type { MascotMsg } from "@/lib/mascot-engine";
 import {
@@ -93,6 +93,24 @@ function copyTextToClipboard(text: string): void {
 function clampNumber(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+async function cropFloatingAvatar(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const side = Math.min(bitmap.width, bitmap.height);
+    const sx = Math.floor((bitmap.width - side) / 2);
+    const sy = Math.floor((bitmap.height - side) / 2);
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 320;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("无法处理这张图片");
+    ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, 320, 320);
+    return canvas.toDataURL("image/webp", 0.86);
+  } finally {
+    bitmap.close();
+  }
 }
 
 /** 从既有 display/slice 反推一个统一缩放比（百分比），作为滑块初值。 */
@@ -501,10 +519,24 @@ export function MascotFloat() {
   const longPressTriggered = useRef(false);
   const floatRef = useRef<HTMLDivElement>(null);
   const [animStyle, setAnimStyle] = useState<React.CSSProperties>({});
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [avatarUploadBusy, setAvatarUploadBusy] = useState(false);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     floatPosRef.current = floatPos;
   }, [floatPos]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("mascot_float_position_v1");
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { left?: number; top?: number };
+      if (Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+        setFloatPos({ left: Number(saved.left), top: Number(saved.top) });
+      }
+    } catch {}
+  }, []);
 
   // Animate: widget → float (in) or float → widget (out)
   useLayoutEffect(() => {
@@ -540,15 +572,14 @@ export function MascotFloat() {
     };
 
     if (state === "animating_in") {
-      setFloatPos(null);
       setAnimStyle({
         position: "absolute",
-        left: defaultFloatLeft,
-        top: defaultFloatTop,
+        left: currentFloatLeft,
+        top: currentFloatTop,
         width: MASCOT_FLOAT_WIDTH,
         height: MASCOT_FLOAT_HEIGHT,
         opacity: 0.9,
-        transform: transformFrom(widgetCenter.x, widgetCenter.y, defaultFloatLeft, defaultFloatTop, scaleFromWidget),
+        transform: transformFrom(widgetCenter.x, widgetCenter.y, currentFloatLeft, currentFloatTop, scaleFromWidget),
         transition: "none",
         zIndex: 9999,
       });
@@ -557,8 +588,8 @@ export function MascotFloat() {
         requestAnimationFrame(() => {
           setAnimStyle({
             position: "absolute",
-            left: defaultFloatLeft,
-            top: defaultFloatTop,
+            left: currentFloatLeft,
+            top: currentFloatTop,
             width: MASCOT_FLOAT_WIDTH,
             height: MASCOT_FLOAT_HEIGHT,
             opacity: 1,
@@ -915,6 +946,7 @@ export function MascotFloat() {
 
   // Drag handlers
   const handlePointerDown = useCallback((e: ReactPointerEvent) => {
+    e.preventDefault();
     longPressTriggered.current = false;
     const el = floatRef.current;
     if (!el) return;
@@ -931,23 +963,30 @@ export function MascotFloat() {
     longPressTimer.current = setTimeout(() => {
       if (!dragState.current?.moved) {
         longPressTriggered.current = true;
-        deactivateMascot();
+        setAvatarPickerOpen(true);
       }
-    }, 600);
-    el.setPointerCapture(e.pointerId);
+    }, 650);
+    try { el.setPointerCapture(e.pointerId); } catch {}
   }, []);
 
   const handlePointerMove = useCallback((e: ReactPointerEvent) => {
     if (!dragState.current) return;
     const dx = e.clientX - dragState.current.startX;
     const dy = e.clientY - dragState.current.startY;
-    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
       dragState.current.moved = true;
       if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
       closeMascotPanel();
     }
     if (dragState.current.moved) {
-      setFloatPos({ left: dragState.current.startLeft + dx, top: dragState.current.startTop + dy });
+      const el = floatRef.current;
+      const shell = el?.closest("[data-ui='phone-screen']") as HTMLElement | null;
+      const maxLeft = Math.max(0, (shell?.clientWidth ?? 390) - MASCOT_FLOAT_WIDTH);
+      const maxTop = Math.max(0, (shell?.clientHeight ?? 844) - MASCOT_FLOAT_HEIGHT);
+      const left = clampNumber(dragState.current.startLeft + dx, 0, maxLeft);
+      const top = clampNumber(dragState.current.startTop + dy, 0, maxTop);
+      setFloatPos({ left, top });
+      try { localStorage.setItem("mascot_float_position_v1", JSON.stringify({ left, top })); } catch {}
     }
   }, []);
 
@@ -957,6 +996,22 @@ export function MascotFloat() {
     dragState.current = null;
     if (longPressTriggered.current) { longPressTriggered.current = false; return; }
     if (!wasDrag) toggleMascotPanel();
+  }, []);
+
+  const handleFloatingAvatarChange = useCallback(async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+    setAvatarUploadBusy(true);
+    try {
+      const avatarImage = await cropFloatingAvatar(file);
+      updateMascotSettings({ avatarImage });
+      setAvatarPickerOpen(false);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "悬浮球图片处理失败");
+    } finally {
+      setAvatarUploadBusy(false);
+      if (avatarFileInputRef.current) avatarFileInputRef.current.value = "";
+    }
   }, []);
 
   const scrollMascotChatToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
@@ -1159,10 +1214,24 @@ export function MascotFloat() {
         .mascot-float-img {
           width: 100%;
           height: 100%;
-          object-fit: contain;
+          object-fit: cover;
+          border-radius: 50%;
           filter: drop-shadow(0 2px 8px rgba(0,0,0,0.3));
           animation: mascot-idle 3s ease-in-out infinite;
         }
+        .mascot-avatar-picker-backdrop {
+          position: fixed; inset: 0; z-index: 10030; display: flex; align-items: flex-end; justify-content: center;
+          padding: 18px; background: rgba(18, 35, 42, .32);
+        }
+        .mascot-avatar-picker {
+          width: min(100%, 360px); display: flex; flex-direction: column; gap: 10px; padding: 20px;
+          border-radius: 22px; background: #f8fcfd; color: #315766; box-shadow: 0 12px 36px rgba(0,0,0,.18);
+        }
+        .mascot-avatar-picker span { font-size: 13px; line-height: 1.6; color: #6b8790; }
+        .mascot-avatar-picker button {
+          border: 0; border-radius: 14px; padding: 12px; background: #b8dce9; color: #315766; font-weight: 700;
+        }
+        .mascot-avatar-picker button.secondary { background: #edf4f6; font-weight: 500; }
         @keyframes mascot-idle {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-4px); }
@@ -2155,11 +2224,28 @@ export function MascotFloat() {
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
+            onPointerCancel={() => {
+              if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+              dragState.current = null;
+            }}
             onContextMenu={(e) => e.preventDefault()}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img className="mascot-float-img" src={mascotAvatarUrl} alt={mascotDisplayName} />
           </div>
+          {avatarPickerOpen ? (
+            <div className="mascot-avatar-picker-backdrop" onClick={() => setAvatarPickerOpen(false)}>
+              <div className="mascot-avatar-picker" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+                <strong>更换悬浮球图片</strong>
+                <span>长按悬浮球后，可上传图片；图片会自动居中裁成圆形。</span>
+                <button type="button" disabled={avatarUploadBusy} onClick={() => avatarFileInputRef.current?.click()}>
+                  {avatarUploadBusy ? "正在处理…" : "选择图片"}
+                </button>
+                <button type="button" className="secondary" onClick={() => setAvatarPickerOpen(false)}>取消</button>
+                <input ref={avatarFileInputRef} type="file" accept="image/*" hidden onChange={(event) => { void handleFloatingAvatarChange(event.target.files?.[0]); }} />
+              </div>
+            </div>
+          ) : null}
 
           {/* Panel */}
           {panelOpen && (() => {

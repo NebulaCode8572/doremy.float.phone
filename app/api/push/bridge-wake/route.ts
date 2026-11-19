@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readLimitedJson } from "@/lib/server/read-limited-json";
 
 import { cleanAccountText } from "@/lib/server/account-auth";
 import { encryptPushJobPayload } from "@/lib/server/push-job-crypto";
@@ -70,8 +71,14 @@ async function handleWake(request: Request, bodyToken: string) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-  return handleWake(request, cleanAccountText(body.token, 100));
+  const parsed = await readLimitedJson(request, 4_096);
+  if (!parsed.ok) {
+    return NextResponse.json({ ok: false, error: parsed.error }, {
+      status: parsed.status,
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
+  }
+  return handleWake(request, cleanAccountText(parsed.value.token, 100));
 }
 
 /** 快捷指令「获取 URL 内容」默认发 GET——同样支持，token 走查询参数。 */

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
 
 import { AccountGate } from "@/components/auth/account-gate";
+import { ChatPluginBootstrap } from "@/components/chat-plugin-bootstrap";
+import { ChatReasoningVisibilityController } from "@/components/chat-reasoning-visibility-controller";
 import { CloudBackupScheduler } from "@/components/cloud-backup-scheduler";
 import { RealityBridgeScheduler } from "@/components/reality-bridge-scheduler";
 import { WidgetScheduler } from "@/components/widget/widget-scheduler";
@@ -11,6 +13,7 @@ import { CheckInScheduler } from "@/components/screenshot/checkin-scheduler";
 import { MediaMaintenanceScheduler } from "@/components/media-maintenance-scheduler";
 import { ShellPushRegistrar } from "@/components/shell-push-registrar";
 import { DesktopShell } from "./desktop-shell";
+import { StrictLearningCenter } from "@/components/strict-learning/learning-center";
 import { OfflinePushRevampAnnouncement } from "./offline-push-revamp-announcement";
 import { SplashAnimation } from "./splash-animation";
 import { MusicProvider } from "@/lib/music-context";
@@ -313,6 +316,8 @@ export function MainApp() {
 
   return (
     <AccountGate>
+      <ChatPluginBootstrap />
+      <ChatReasoningVisibilityController />
       {!splashDismissed ? (
         <SplashScreen ready={hydrated} onEnter={() => setSplashDismissed(true)} />
       ) : (
@@ -322,6 +327,7 @@ export function MainApp() {
               initialThemeProfile={preparedDesktopTheme?.profile}
               initialThemeAssets={preparedDesktopTheme?.assets}
             />
+            <StrictLearningCenter />
             <OfflinePushRevampAnnouncement />
             <CloudBackupScheduler />
             <RealityBridgeScheduler />
