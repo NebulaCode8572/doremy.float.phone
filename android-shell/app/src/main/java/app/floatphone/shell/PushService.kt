@@ -349,6 +349,7 @@ class PushService : Service() {
                 }.onFailure { error ->
                     updateKeepAlive("推送处理失败：${error.message?.take(100) ?: error.javaClass.simpleName}")
                 }
+            }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 normal = true
