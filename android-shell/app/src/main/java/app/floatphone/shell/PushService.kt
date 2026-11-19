@@ -336,11 +336,6 @@ class PushService : Service() {
                         val detail = result.exceptionOrNull()?.message?.take(100) ?: "未知通知错误"
                         updateKeepAlive("来电通知失败：$detail")
                         if (alarmInstanceId.isNotBlank()) {
-                            DailyAlarmCallScheduler.onDeliveryFailure(
-                                this@PushService, sessionId, characterName, alarmInstanceId, alarmAttempt,
-                            )
-                        }
-                        if (alarmInstanceId.isNotBlank()) {
                             // A failed native notification is a failed call delivery: retry once,
                             // then use the native alarm if the second presentation also fails.
                             DailyAlarmCallScheduler.onDeliveryFailure(
@@ -354,9 +349,6 @@ class PushService : Service() {
                 }.onFailure { error ->
                     updateKeepAlive("推送处理失败：${error.message?.take(100) ?: error.javaClass.simpleName}")
                 }
-            }.onFailure { error ->
-                updateKeepAlive("推送处理失败：${error.message?.take(100) ?: error.javaClass.simpleName}")
-            }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 normal = true
