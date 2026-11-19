@@ -1,9 +1,9 @@
 name: Web Typecheck
-# Verified against the latest dependency security repair commit.
+# Run the same full web checks on the isolated PaiVoice integration branch.
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/paivoice-realtime-call]
     paths:
       - "app/**"
       - "components/**"

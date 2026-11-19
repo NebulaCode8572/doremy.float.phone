@@ -27,6 +27,7 @@ class IncomingCallActivity : AppCompatActivity() {
         const val EXTRA_SESSION_ID = "session_id"
         const val EXTRA_CHARACTER_NAME = "character_name"
         const val EXTRA_CALL_TS = "call_ts"
+        const val EXTRA_WAKE_CALL = "wake_call"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,6 +46,7 @@ class IncomingCallActivity : AppCompatActivity() {
         val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
         val characterName = intent.getStringExtra(EXTRA_CHARACTER_NAME).orEmpty().ifEmpty { "对方" }
         val callTs = intent.getLongExtra(EXTRA_CALL_TS, 0L)
+        val wakeCall = intent.getBooleanExtra(EXTRA_WAKE_CALL, false)
 
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
@@ -96,16 +98,16 @@ class IncomingCallActivity : AppCompatActivity() {
                 setOnClickListener { onClick() }
             }
         buttons.addView(roundButton("拒接", Color.parseColor("#E5484D")) { finishCall() })
-        buttons.addView(roundButton("接听", Color.parseColor("#30A46C")) { answer(sessionId, callTs) })
+        buttons.addView(roundButton("接听", Color.parseColor("#30A46C")) { answer(sessionId, callTs, wakeCall) })
         root.addView(buttons)
 
         setContentView(root)
     }
 
-    private fun answer(sessionId: String, callTs: Long) {
+    private fun answer(sessionId: String, callTs: Long, wakeCall: Boolean) {
         CallAlert.stop(this)
         val ts = if (callTs > 0) callTs else System.currentTimeMillis()
-        val target = "${MainActivity.SITE_URL}/#incoming-call=${android.net.Uri.encode(sessionId)}&rt=$ts&answered=1"
+        val target = "${MainActivity.SITE_URL}/#incoming-call=${android.net.Uri.encode(sessionId)}&rt=$ts&answered=1${if (wakeCall) "&wake=1" else ""}"
         val launch = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             putExtra(MainActivity.EXTRA_OPEN_URL, target)
@@ -133,6 +135,19 @@ class IncomingCallActivity : AppCompatActivity() {
 
     private fun finishCall() {
         CallAlert.stop(this)
+        val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+        val wakeCall = intent.getBooleanExtra(EXTRA_WAKE_CALL, false)
+        if (wakeCall && sessionId.isNotEmpty()) {
+            val target = "${MainActivity.SITE_URL}/#wake-call-declined=${android.net.Uri.encode(sessionId)}"
+            runCatching {
+                startActivity(
+                    Intent(this, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        putExtra(MainActivity.EXTRA_OPEN_URL, target)
+                    },
+                )
+            }
+        }
         finish()
     }
 }

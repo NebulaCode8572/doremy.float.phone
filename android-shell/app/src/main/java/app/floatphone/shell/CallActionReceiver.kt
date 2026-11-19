@@ -15,14 +15,30 @@ class CallActionReceiver : BroadcastReceiver() {
         const val ACTION_DECLINE = "app.floatphone.shell.CALL_DECLINE"
         const val EXTRA_SESSION_ID = "session_id"
         const val EXTRA_CALL_TS = "call_ts"
+        const val EXTRA_WAKE_CALL = "wake_call"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         CallAlert.stop(context)
-        if (intent.action != ACTION_ANSWER) return
         val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+        val wakeCall = intent.getBooleanExtra(EXTRA_WAKE_CALL, false)
+        if (intent.action == ACTION_DECLINE) {
+            if (wakeCall) {
+                val target = "${MainActivity.SITE_URL}/#wake-call-declined=${android.net.Uri.encode(sessionId)}"
+                runCatching {
+                    context.startActivity(
+                        Intent(context, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            putExtra(MainActivity.EXTRA_OPEN_URL, target)
+                        },
+                    )
+                }
+            }
+            return
+        }
+        if (intent.action != ACTION_ANSWER) return
         val callTs = intent.getLongExtra(EXTRA_CALL_TS, 0L).takeIf { it > 0 } ?: System.currentTimeMillis()
-        val target = "${MainActivity.SITE_URL}/#incoming-call=${android.net.Uri.encode(sessionId)}&rt=$callTs&answered=1"
+        val target = "${MainActivity.SITE_URL}/#incoming-call=${android.net.Uri.encode(sessionId)}&rt=$callTs&answered=1${if (wakeCall) "&wake=1" else ""}"
         runCatching {
             context.startActivity(
                 Intent(context, MainActivity::class.java).apply {

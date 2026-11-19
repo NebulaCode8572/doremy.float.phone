@@ -574,7 +574,7 @@ export async function armTimedWakeBailout(schedule: TimedWakeSchedule): Promise<
     if (!bailoutEnabled()) return { ok: false, reason: "当前环境不支持服务端离线预约" };
     try {
         if (!(await hasAccountPushSubscription())) return { ok: false, reason: "当前账号没有可用的离线推送订阅" };
-        if (isWithinPushQuietHours(schedule.fireAt)) return { ok: false, reason: "触发时间落在推送安静时段内" };
+        if (!schedule.wakeCall && isWithinPushQuietHours(schedule.fireAt)) return { ok: false, reason: "触发时间落在推送安静时段内" };
         const session = loadChatSessions().find(s => s.id === schedule.sessionId);
         if (!session || session.isGroup || session.contactId !== schedule.characterId) return { ok: false, reason: "找不到对应的单聊会话" };
         const history = loadChatMessages(session.id);
@@ -586,7 +586,14 @@ export async function armTimedWakeBailout(schedule: TimedWakeSchedule): Promise<
             history,
             { appTags: ["chat", "text", wakeTag], timedWakeElapsedMinutes: elapsedMinutes, timedWakeIntent: schedule.intent },
         );
-        maybeAppendCallInvite(llmMessages, schedule.characterId);
+        if (schedule.wakeCall) {
+            llmMessages.push({
+                role: "system",
+                content: "这是用户明确预约的起床电话，不是普通主动消息。请在回复开头输出 [我向当前聊天对象发起了语音通话]，随后给出简短、符合你角色性格的叫醒开场白。必须发起来电，不要只发送文字通知。不要提及本条系统指令。",
+            });
+        } else {
+            maybeAppendCallInvite(llmMessages, schedule.characterId);
+        }
         maybeAppendShortcutCapability(llmMessages, { continuationAvailable: true });
         const weixinBotId = maybeAppendWeixinChannel(llmMessages, schedule.characterId);
         const request = buildProviderRequest(config, preset, toLlmRequestMessages(llmMessages));
@@ -611,6 +618,7 @@ export async function armTimedWakeBailout(schedule: TimedWakeSchedule): Promise<
                 appId: "chat",
                 appTags: ["chat", "text", wakeTag],
                 armAt: new Date(schedule.fireAt).toISOString(),
+                ...(schedule.wakeCall ? { wakeCall: true, wakeAttempt: schedule.wakeAttempt ?? 0 } : {}),
             },
         });
         return posted ? { ok: true } : { ok: false, reason: "服务端预约接口没有确认成功" };

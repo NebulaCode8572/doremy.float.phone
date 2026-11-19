@@ -24,6 +24,7 @@ import {
 } from "@/lib/call-session-store";
 import { GroupCallScreen } from "./group-call-screen";
 import { VoiceCallScreen } from "./voice-call-screen";
+import { PaiVoiceCallScreen } from "./paivoice-call-screen";
 import { VideoCallScreen } from "./video-call-screen";
 
 /**
@@ -84,11 +85,16 @@ export function CallLayer() {
         session,
         character,
         initiator: call.initiator,
+        wakeCall: call.wakeCall === true,
         minimized: call.minimized,
         onMinimize: minimizeCall,
         onRestore: restoreCall,
         onEnd: endCall,
     };
+
+    if (call.kind === "voice" && call.engine === "paivoice" && process.env.NEXT_PUBLIC_PAIVOICE_ENABLED === "true") {
+        return <PaiVoiceCallScreen {...sharedProps} onEnd={() => endCall({ skipReply: true })} />;
+    }
 
     return call.kind === "voice"
         ? <VoiceCallScreen {...sharedProps} />

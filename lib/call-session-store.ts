@@ -15,15 +15,19 @@
 "use client";
 
 export type ActiveCallKind = "voice" | "video";
+export type ActiveCallEngine = "legacy" | "paivoice";
 
 export type ActiveCall = {
     sessionId: string;
     /** 单聊：角色 id。群聊通话没有单一角色，用群会话本身承载（留空字符串）。 */
     characterId: string;
     kind: ActiveCallKind;
+    engine?: ActiveCallEngine;
     initiator: "user" | "character";
     /** initiator="character" 时发起通话的角色名（群聊来电要显示具体是谁打来的）。 */
     initiatorName?: string;
+    /** 定时唤醒电话；接通后用于判断是否需要重拨。 */
+    wakeCall?: boolean;
     minimized: boolean;
     /**
      * 每次拨号都换一个新值，用作 React key：
@@ -67,8 +71,10 @@ export function startCall(input: {
     sessionId: string;
     characterId: string;
     kind: ActiveCallKind;
+    engine?: ActiveCallEngine;
     initiator: "user" | "character";
     initiatorName?: string;
+    wakeCall?: boolean;
 }): void {
     activeCall = {
         ...input,
@@ -98,14 +104,14 @@ export function restoreCall(): void {
  * 通话界面已提升到 desktop-shell，聊天室不再是它的父级，收不了挂断回调；
  * 原来挂在聊天室里的收尾（刷新通话留痕 + 让角色回应一次）改由这条事件触发。
  */
-export function endCall(): void {
+export function endCall(options?: { skipReply?: boolean }): void {
     const ended = activeCall;
     if (!ended) return;
     activeCall = null;
     emit();
     if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("chat-call-ended", {
-            detail: { sessionId: ended.sessionId },
+            detail: { sessionId: ended.sessionId, skipReply: options?.skipReply === true },
         }));
     }
 }
