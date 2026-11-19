@@ -28,6 +28,8 @@ export type ActiveCall = {
     initiatorName?: string;
     /** 定时唤醒电话；接通后用于判断是否需要重拨。 */
     wakeCall?: boolean;
+    /** Android lock-screen accept action already happened before the web call screen opened. */
+    accepted: boolean;
     minimized: boolean;
     /**
      * 每次拨号都换一个新值，用作 React key：
@@ -75,9 +77,11 @@ export function startCall(input: {
     initiator: "user" | "character";
     initiatorName?: string;
     wakeCall?: boolean;
+    accepted?: boolean;
 }): void {
     activeCall = {
         ...input,
+        accepted: input.accepted === true,
         minimized: false,
         callId: `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     };
