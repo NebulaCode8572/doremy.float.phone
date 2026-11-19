@@ -14,11 +14,9 @@ class CallActionReceiver : BroadcastReceiver() {
         const val ACTION_ANSWER = "app.floatphone.shell.CALL_ANSWER"
         const val ACTION_DECLINE = "app.floatphone.shell.CALL_DECLINE"
         const val ACTION_DISMISS_ALARM = "app.floatphone.shell.DISMISS_DAILY_ALARM"
-        const val ACTION_DISMISS_ALARM = "app.floatphone.shell.DISMISS_DAILY_ALARM"
         const val EXTRA_SESSION_ID = "session_id"
         const val EXTRA_CALL_TS = "call_ts"
         const val EXTRA_WAKE_CALL = "wake_call"
-        const val EXTRA_ALARM_INSTANCE_ID = "daily_alarm_instance_id"
         const val EXTRA_ALARM_INSTANCE_ID = "daily_alarm_instance_id"
     }
 
