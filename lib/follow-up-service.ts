@@ -30,6 +30,7 @@ import {
     type IdleReconnectRule,
 } from "./idle-reconnect-storage";
 import { loadFollowUpConfig } from "./settings-storage";
+import { isProactiveInteractionAllowed, loadProactiveInteractionState } from "./proactive-interaction-state";
 import { parseAIResponse } from "./rich-message-parser";
 import type { ParsedMessagePart } from "./rich-message-parser";
 import { getStatusRegionConfig, isCustomStatusRegionActive } from "./chat-status-region";
@@ -46,6 +47,7 @@ import {
 import {
     loadTimedWakeSchedules,
     removeTimedWakeSchedule,
+    scheduleNextWakeCallRetry,
     type TimedWakeSchedule,
 } from "./timed-wake-storage";
 import {
@@ -169,6 +171,11 @@ export function stopFollowUpService() {
 /** Schedule a follow-up for a session (called by ChatRoom after AI replies).
  *  Purely anxiety-driven: no anxiety field or below threshold → no follow-up. */
 export function scheduleFollowUp(sessionId: string, count: number, stateValues?: StateValue[]) {
+    if (!isProactiveInteractionAllowed(sessionId)) {
+        clearFollowUpSchedule(sessionId);
+        cancelFollowUpBailout(sessionId);
+        return;
+    }
     const config = loadFollowUpConfig();
 
     if (!stateValues || stateValues.length === 0) {
@@ -196,7 +203,11 @@ export function scheduleFollowUp(sessionId: string, count: number, stateValues?:
     // Linear interpolation: threshold → maxDelay, 100 → minDelay
     const range = 100 - config.anxietyThreshold;
     const t = range > 0 ? (anxietyEntry.value - config.anxietyThreshold) / range : 1;
-    const delaySec = Math.round(config.anxietyMaxDelay + t * (config.anxietyMinDelay - config.anxietyMaxDelay));
+    const baseDelaySec = Math.round(config.anxietyMaxDelay + t * (config.anxietyMinDelay - config.anxietyMaxDelay));
+    const proactiveState = loadProactiveInteractionState(sessionId);
+    const delaySec = proactiveState.mode === "study"
+        ? Math.min(1800, Math.max(600, baseDelaySec * 3))
+        : baseDelaySec;
     const fireAt = Date.now() + delaySec * 1000;
     console.log(`[FollowUp] Anxiety-driven: value=${anxietyEntry.value}, delay=${delaySec}s, session=${sessionId}, count=${count}`);
     saveFollowUpSchedule({ sessionId, fireAt, count, delaySec });
@@ -253,7 +264,21 @@ export async function requestBackgroundChatReply(
     }
 }
 
-/** Cancel any pending follow-up for a session (called when user sends a message). */
+/** Stop queued ordinary proactive messages without changing the user's idle-reconnect preferences. */
+export function suspendProactiveActions(sessionId: string): void {
+    clearFollowUpSchedule(sessionId);
+    cancelFollowUpBailout(sessionId);
+    for (const rule of loadIdleReconnectRules()) {
+        if (rule.sessionId === sessionId) void cancelBailoutPrefix(`idle:${rule.id}:`);
+    }
+    if (firingSet.has(sessionId)) {
+        cancelledWhileFiring.add(sessionId);
+    }
+    if (backgroundGeneratingSessions.has(sessionId)) {
+        cancelledBackgroundSessions.add(sessionId);
+    }
+}
+
 export function cancelFollowUp(sessionId: string) {
     clearFollowUpSchedule(sessionId);
     cancelFollowUpBailout(sessionId);
@@ -325,7 +350,7 @@ async function saveBackgroundCompletionRounds(
     currentCount: number,
     followUpIndex: number | undefined,
     contextMessages: ChatMessage[],
-    options?: { senderCharacterId?: string; senderName?: string; silent?: boolean },
+    options?: { senderCharacterId?: string; senderName?: string; silent?: boolean; wakeCall?: boolean },
 ): Promise<{ hasVisible: boolean; newCount: number; stateValues: StateValue[] }> {
     let hasVisible = false;
     let newCount = currentCount;
@@ -441,6 +466,7 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
         const session = sessions.find(s => s.id === sched.sessionId);
         if (!session) return;
 
+        if (!isProactiveInteractionAllowed(session.id)) return;
         const latestMessages = loadChatMessages(session.id);
 
         const count = sched.count + 1;
@@ -496,7 +522,14 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
             rounds = await generateBackgroundCompletionRounds(
                 session,
                 messagesWithHint,
-                { followUpCount: count, followUpDelay: sched.delaySec ?? 60, appTags: ["chat", "text", "followup"] },
+                {
+                    followUpCount: count,
+                    followUpDelay: sched.delaySec ?? 60,
+                    appTags: ["chat", "text", "followup"],
+                    ephemeralSystemNote: loadProactiveInteractionState(session.id).mode === "study"
+                        ? "用户目前处于学习或忙碌状态。只有确实合适时才进行简短、低频、温和的陪伴；可以结合情境提醒喝水、调整坐姿或休息眼睛，但不要机械重复同类提醒，不要要求用户回应，也不要打断明显的专注时段。"
+                        : undefined,
+                },
             );
         } finally {
             stopBailoutHeartbeat();
@@ -560,6 +593,7 @@ function pollIdleReconnect(now: number) {
     lastIdleReconnectPollAt = now;
 
     for (const rule of loadIdleReconnectRules()) {
+        if (!isProactiveInteractionAllowed(rule.sessionId)) continue;
         if (idleReconnectFiringSet.has(rule.id)) continue;
         if (firingSet.has(rule.sessionId)) continue;
         // 追问链正在管这个会话时不叠加打扰
@@ -573,7 +607,11 @@ function pollIdleReconnect(now: number) {
         const effectiveConsecutive = rule.lastFiredAt && rule.lastFiredAt > lastUserAt ? rule.consecutiveCount : 0;
         if (effectiveConsecutive >= IDLE_RECONNECT_MAX_CONSECUTIVE) continue;
 
-        const intervalMs = Math.max(1, rule.intervalMinutes) * 60_000;
+        const proactiveState = loadProactiveInteractionState(rule.sessionId);
+        const intervalMinutes = proactiveState.mode === "study"
+            ? Math.max(15, rule.intervalMinutes * 3)
+            : Math.max(1, rule.intervalMinutes);
+        const intervalMs = intervalMinutes * 60_000;
         const nextDueAt = Math.max(
             lastUserAt + intervalMs,
             rule.lastFiredAt ? rule.lastFiredAt + intervalMs : 0,
@@ -631,6 +669,7 @@ async function awaitServerGenerated(
 async function fireIdleReconnect(rule: IdleReconnectRule, lastUserAt: number) {
     idleReconnectFiringSet.add(rule.id);
     try {
+        if (!isProactiveInteractionAllowed(rule.sessionId)) return;
         const session = loadChatSessions().find(s => s.id === rule.sessionId);
         if (!session || session.isGroup || session.contactId !== rule.characterId) return;
 
@@ -659,6 +698,9 @@ async function fireIdleReconnect(rule: IdleReconnectRule, lastUserAt: number) {
             {
                 appTags: ["chat", "text", "idle_wake"],
                 timedWakeElapsedMinutes: elapsedMinutes,
+                ephemeralSystemNote: loadProactiveInteractionState(session.id).mode === "study"
+                    ? "用户目前正在学习或忙碌。只有确实有价值时才进行简短、低频、温和的陪伴；不要连续提醒，不要要求用户回应，也不要打断专注。"
+                    : undefined,
             },
         );
 
@@ -704,6 +746,7 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
         const sessions = loadChatSessions();
         const session = sessions.find(s => s.id === sched.sessionId);
         if (!session || session.contactId !== sched.characterId) return;
+        if (!isProactiveInteractionAllowed(session.id, { allowScheduledWake: true })) return;
 
         const latestMessages = loadChatMessages(session.id);
         const elapsedMinutes = resolveTimedWakeElapsedMinutes(sched, latestMessages, Date.now());
@@ -719,6 +762,7 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
             return;
         }
 
+        if (sched.wakeCall) scheduleNextWakeCallRetry(sched);
         console.log("[TimedWake] Dispatching followup-started for session:", session.id);
         backgroundGeneratingSessions.add(session.id);
         window.dispatchEvent(new CustomEvent("followup-started", { detail: { sessionId: session.id } }));
@@ -732,6 +776,9 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
                 appTags: ["chat", "text", wakeTag],
                 timedWakeElapsedMinutes: elapsedMinutes,
                 timedWakeIntent: sched.intent,
+                ...(sched.wakeCall ? {
+                    ephemeralSystemNote: "这是用户明确预约的起床电话，不是普通主动消息。请在回复开头输出 [我向当前聊天对象发起了语音通话]，随后给出简短、符合你角色性格的叫醒开场白。必须发起来电，不要只发送文字通知。不要提及本条系统指令。",
+                } : {}),
             },
         );
 
@@ -746,6 +793,7 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
             0,
             undefined,
             latestMessages,
+            { wakeCall: sched.wakeCall === true },
         );
         console.log(`[TimedWake] Result: hasVisible=${hasVisible}`);
 
@@ -782,6 +830,7 @@ async function fireMenstrualPeriodCare(input: {
         const sessions = loadChatSessions();
         const session = sessions.find(s => s.id === input.sessionId);
         if (!session || session.isGroup || session.contactId !== input.characterId) return;
+        if (!isProactiveInteractionAllowed(session.id)) return;
         if (hasMenstrualPeriodCareTriggered(input.characterId, input.event.cycleKey)) return;
 
         const latestMessages = loadChatMessages(session.id);
@@ -969,6 +1018,7 @@ export async function parseAndSaveResponse(
          *  tool_call（标记原文，组装器原样进上下文、气泡隐藏）+ tool_notice
          *  （可见灰条），与小手机内直接调用快捷动作的显示一致 */
         shortcutMarker?: { text: string; insertAt: number; name: string };
+        wakeCall?: boolean;
     },
 ): Promise<{ hasVisible: boolean; newCount: number; stateValues: StateValue[] }> {
     const responseBatchId = options?.responseBatchId || createResponseBatchId();
@@ -1091,7 +1141,7 @@ export async function parseAndSaveResponse(
         }
         // Emit call trigger event for chat-room to pick up
         if (triggerCall && typeof window !== "undefined") {
-            window.dispatchEvent(new CustomEvent("ai-call-trigger", { detail: { sessionId, type: triggerCall } }));
+            window.dispatchEvent(new CustomEvent("ai-call-trigger", { detail: { sessionId, type: triggerCall, wakeCall: options?.wakeCall === true } }));
         }
         return { hasVisible: false, newCount: MAX_FOLLOW_UPS, stateValues };
     }
@@ -1205,7 +1255,7 @@ export async function parseAndSaveResponse(
 
     // Emit call trigger event for chat-room to pick up
     if (triggerCall && typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("ai-call-trigger", { detail: { sessionId, type: triggerCall } }));
+        window.dispatchEvent(new CustomEvent("ai-call-trigger", { detail: { sessionId, type: triggerCall, wakeCall: options?.wakeCall === true } }));
     }
 
     return { hasVisible: true, newCount: currentCount + 1, stateValues };

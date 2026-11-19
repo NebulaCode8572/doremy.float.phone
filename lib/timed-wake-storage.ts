@@ -16,6 +16,10 @@ export type TimedWakeSchedule = {
     intent: string;
     /** 创建来源：tool=角色自己约的（"你当时想着"视角）/ user=用户预约（"TA拜托你"视角）。缺省按 tool。 */
     source?: "tool" | "user";
+    /** 用户明确要求到点电话叫醒时启用来电与有限重拨。 */
+    wakeCall?: boolean;
+    /** 0=首次来电；1~3=最多三次重拨。 */
+    wakeAttempt?: number;
 };
 
 export function makeTimedWakeId(sessionId: string): string {
@@ -47,6 +51,40 @@ export function saveTimedWakeSchedule(schedule: TimedWakeSchedule): void {
     const next = all.filter(item => item.sessionId !== schedule.sessionId);
     next.push(schedule);
     saveTimedWakeSchedules(next);
+}
+
+export function scheduleNextWakeCallRetry(schedule: TimedWakeSchedule): TimedWakeSchedule | null {
+    if (!schedule.wakeCall) return null;
+    const attempt = Math.max(0, Math.floor(schedule.wakeAttempt ?? 0));
+    if (attempt >= 3) return null;
+    const now = Date.now();
+    const next: TimedWakeSchedule = {
+        ...schedule,
+        id: makeTimedWakeId(schedule.sessionId),
+        createdAt: now,
+        fireAt: now + 2 * 60_000,
+        delayMinutes: 2,
+        wakeAttempt: attempt + 1,
+    };
+    saveTimedWakeSchedule(next);
+    return next;
+}
+
+/** 接通后 30 秒没有有效回应：把当前待重拨任务延后到挂断后 2 分钟。 */
+export function postponeWakeCallRetry(sessionId: string): TimedWakeSchedule | null {
+    const current = loadTimedWakeSchedules().find(item => item.sessionId === sessionId && item.wakeCall);
+    if (!current) return null;
+    removeTimedWakeSchedule(current.id);
+    const now = Date.now();
+    const next: TimedWakeSchedule = {
+        ...current,
+        id: makeTimedWakeId(sessionId),
+        createdAt: now,
+        fireAt: now + 2 * 60_000,
+        delayMinutes: 2,
+    };
+    saveTimedWakeSchedule(next);
+    return next;
 }
 
 export function clearTimedWakeSchedule(sessionId: string): void {

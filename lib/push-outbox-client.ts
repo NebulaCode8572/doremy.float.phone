@@ -7,10 +7,11 @@ import type { RegexConfig } from "./settings-types";
 import { stripHallucinatedTimestamps } from "./llm-provider-adapter";
 import { MacroEngine } from "./macro-engine";
 import { getActiveAppTags } from "./content-tag-utils";
-import { loadChatMessages, loadChatSessions, reindexSessionMessageOrdersByTime } from "./chat-storage";
+import { loadChatMessages, loadChatSessions, pushChatMessage, reindexSessionMessageOrdersByTime } from "./chat-storage";
 import { hasAccountPushSubscription, isShellEnvironment } from "./push-client";
 import { isPersonalPushCloudActive, loadPersonalPushCloudState, personalPushFetch } from "./personal-push-cloud";
-import { removeTimedWakeSchedule } from "./timed-wake-storage";
+import { loadTimedWakeSchedules, removeTimedWakeSchedule, scheduleNextWakeCallRetry } from "./timed-wake-storage";
+import { removeProactiveCallSchedule } from "./proactive-call-storage";
 import { appendBridgeFeed } from "./reality-bridge/storage";
 import { loadScreenChatSettings, saveScreenChatAck } from "./reality-bridge/storage";
 
@@ -32,6 +33,9 @@ type OutboxEntry = {
         armAt?: string;
         /** 云端触发快捷动作失败的摘要；成功时不带这个字段 */
         shortcutDeliveryError?: string;
+        wakeCall?: boolean;
+        wakeAttempt?: number;
+        proactiveCall?: boolean;
     } | null;
     created_at: string;
 };
@@ -53,6 +57,12 @@ function getTimedWakeIdFromTriggerKey(triggerKey: string | null): string | null 
 function clearTimedWakeIfHandled(triggerKey: string | null): void {
     const timedWakeId = getTimedWakeIdFromTriggerKey(triggerKey);
     if (timedWakeId) removeTimedWakeSchedule(timedWakeId);
+}
+
+function clearProactiveCallIfHandled(triggerKey: string | null): void {
+    if (!triggerKey?.startsWith("proactivecall:")) return;
+    const id = triggerKey.slice("proactivecall:".length).trim();
+    if (id) removeProactiveCallSchedule(id);
 }
 
 export async function consumeServerOutbox(options?: { silent?: boolean; force?: boolean }): Promise<void> {
@@ -195,6 +205,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                     const existingMessages = loadChatMessages(sessionId);
                     if (followUpIndex && existingMessages.some(m => m.role === "assistant" && m.followUpIndex === followUpIndex)) {
                         clearTimedWakeIfHandled(entry.trigger_key);
+                        clearProactiveCallIfHandled(entry.trigger_key);
                         consumedIds.push(entry.id);
                         if (entry.trigger_key) handledTriggerKeys.add(entry.trigger_key);
                         continue;
@@ -234,16 +245,61 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                             name: rawMarker.name,
                         }
                         : undefined;
+                    if (meta.wakeCall === true) {
+                        const nextAttempt = (meta.wakeAttempt ?? 0) + 1;
+                        const retryAlreadyQueued = loadTimedWakeSchedules().some(item =>
+                            item.sessionId === sessionId
+                            && item.wakeCall
+                            && (item.wakeAttempt ?? 0) >= nextAttempt
+                            && item.fireAt > Date.now()
+                        );
+                        if (!retryAlreadyQueued) {
+                            scheduleNextWakeCallRetry({
+                                id: getTimedWakeIdFromTriggerKey(entry.trigger_key) || entry.id,
+                                sessionId,
+                                characterId: session.contactId,
+                                fireAt: Date.now(),
+                                createdAt: Date.now(),
+                                delayMinutes: 0,
+                                intent: "按用户约定的时间电话叫醒",
+                                source: "user",
+                                wakeCall: true,
+                                wakeAttempt: meta.wakeAttempt ?? 0,
+                            });
+                        }
+                    }
                     const { hasVisible, newCount, stateValues } = await parseAndSaveResponse(
                         text,
                         sessionId,
                         meta.prevCount ?? 0,
                         followUpIndex,
                         existingMessages,
-                        { silent: options?.silent !== false, ...(shortcutMarker ? { shortcutMarker } : {}) },
+                        {
+                            silent: options?.silent !== false,
+                            ...(shortcutMarker ? { shortcutMarker } : {}),
+                            wakeCall: meta.wakeCall === true,
+                        },
                     );
                     if (hasVisible && newCount < 10) scheduleFollowUp(sessionId, newCount, stateValues);
+                    if (meta.proactiveCall === true) {
+                        const mergedMessages = loadChatMessages(sessionId);
+                        const hasRecentCallRecord = mergedMessages.some(message =>
+                            message.role === "assistant"
+                            && message.content.includes("发起了语音通话")
+                            && Number.isFinite(Date.parse(message.createdAt))
+                            && Date.parse(message.createdAt) >= (Number.isFinite(armAtMs) ? armAtMs - 60_000 : passStartMs - 15 * 60_000),
+                        );
+                        if (!hasRecentCallRecord) {
+                            pushChatMessage({
+                                sessionId,
+                                role: "assistant",
+                                content: "[我发起了语音通话]",
+                            });
+                            window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId } }));
+                        }
+                    }
                     clearTimedWakeIfHandled(entry.trigger_key);
+                    clearProactiveCallIfHandled(entry.trigger_key);
                     consumedIds.push(entry.id);
                     if (entry.trigger_key) handledTriggerKeys.add(entry.trigger_key);
                 } catch (err) {

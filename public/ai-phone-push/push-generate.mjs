@@ -261,6 +261,36 @@ async function decryptPayload(payload: EncryptedPayload, serviceKey: string): Pr
   return new TextDecoder().decode(plain);
 }
 
+/** Resolve a future local wall-clock occurrence without assuming a fixed UTC offset. */
+function dailyAlarmOccurrence(nowMs: number, localTime: string, timeZone: string): { fireAt: number; dateKey: string } {
+  const [hour, minute] = localTime.split(":").map(Number);
+  const formatter = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const partsOf = (epoch: number) => {
+    const parts = formatter.formatToParts(new Date(epoch));
+    const value = (key: string) => Number(parts.find(part => part.type === key)?.value || 0);
+    return { year: value("year"), month: value("month"), day: value("day"), hour: value("hour"), minute: value("minute") };
+  };
+  const toEpoch = (year: number, month: number, day: number) => {
+    const target = Date.UTC(year, month - 1, day, hour, minute);
+    let guess = target;
+    for (let i = 0; i < 3; i += 1) {
+      const local = partsOf(guess);
+      const represented = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute);
+      guess += target - represented;
+    }
+    return guess;
+  };
+  const today = partsOf(nowMs);
+  let year = today.year, month = today.month, day = today.day;
+  let fireAt = toEpoch(year, month, day);
+  if (fireAt <= nowMs + 5_000) {
+    const tomorrow = new Date(Date.UTC(year, month - 1, day + 1));
+    year = tomorrow.getUTCFullYear(); month = tomorrow.getUTCMonth() + 1; day = tomorrow.getUTCDate();
+    fireAt = toEpoch(year, month, day);
+  }
+  const dateKey = String(year) + "-" + String(month).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+  return { fireAt, dateKey };
+}
 // ── 主流程 ──
 type JobRow = { id: string; user_id: string; trigger_key: string; kind: string; payload: EncryptedPayload };
 type SubscriptionRow = { endpoint: string; p256dh: string; auth: string };
@@ -527,6 +557,34 @@ Deno.serve(async (req: Request) => {
     const payload = JSON.parse(await decryptPayload(job.payload, payloadKey)) as JobPayload;
     let shortcutStoragePath = "";
 
+    // Schedule the next local-day occurrence before generation so a provider failure does not erase recurrence.
+    const dailyAlarm = payload.merge?.dailyAlarm as { id?: string; localTime?: string; timeZone?: string } | undefined;
+    if (dailyAlarm?.id && dailyAlarm.localTime && dailyAlarm.timeZone && !(await isCancelled())) {
+      const next = dailyAlarmOccurrence(Date.now(), dailyAlarm.localTime, dailyAlarm.timeZone);
+      const nextTriggerKey = "dailyalarm:" + dailyAlarm.id + ":" + next.dateKey;
+      const nextMerge = {
+        ...payload.merge,
+        armAt: new Date(next.fireAt).toISOString(),
+        dailyAlarm: { ...dailyAlarm, dateKey: next.dateKey },
+        alarmInstanceId: dailyAlarm.id + ":" + next.dateKey,
+      };
+      await rest("push_jobs", {
+        method: "POST",
+        body: JSON.stringify([{
+          id: "job_" + crypto.randomUUID(),
+          user_id: job.user_id,
+          trigger_key: nextTriggerKey,
+          kind: "timed_task",
+          execute_at: new Date(next.fireAt + 15_000).toISOString(),
+          status: "pending",
+          payload: await encryptPayload(JSON.stringify({ ...payload, merge: nextMerge }), payloadKey),
+        }]),
+      }).catch(() => undefined);
+      if (await isCancelled()) {
+        await rest("push_jobs?user_id=eq." + encodeURIComponent(job.user_id) + "&trigger_key=eq." + encodeURIComponent(nextTriggerKey) + "&status=eq.pending", { method: "DELETE" }).catch(() => undefined);
+      }
+    }
+
     if (job.kind === "shortcut_resume" && payload.shortcut) {
       const commandResponse = await rest(
         `push_shortcut_commands?id=eq.${encodeURIComponent(payload.shortcut.commandId)}`
@@ -662,7 +720,9 @@ Deno.serve(async (req: Request) => {
       /【我发起了语音通话】/,
       /【拨打电话】/,
     ];
-    let deliverAsCall = false;
+    // The dedicated proactive-call trigger is authoritative even if metadata is lost.
+    const isExplicitProactiveCall = job.trigger_key.startsWith("proactivecall:");
+    let deliverAsCall = payload.merge?.proactiveCall === true || isExplicitProactiveCall;
     {
       const head = rawText.slice(0, 200);
       const matched = callMarkers
@@ -1083,6 +1143,7 @@ Deno.serve(async (req: Request) => {
         raw_text: rawText,
         meta: {
           ...(payload.merge ?? {}),
+          ...(isExplicitProactiveCall ? { proactiveCall: true } : {}),
           pushGenerated: true,
           ...(executedShortcutMarker ? { shortcutMarker: executedShortcutMarker } : {}),
         },
@@ -1115,14 +1176,19 @@ Deno.serve(async (req: Request) => {
     // hasShellSub 恒为 false，下面的广播整段被跳过：消息生成成功、写得进 outbox，
     // 却永远弹不出通知。壳订阅本就只属于本项目唯一的主人，按 endpoint 前缀单独取，
     // 不掺 user_id；topic 也改用 endpoint 里带的站点 id，与壳实际订阅的频道一致。
-    const shellSubsResponse = await rest("push_subscriptions?endpoint=like.shell:*&select=endpoint&limit=50");
-    const shellTopics = (shellSubsResponse.ok
+    const shellSubsResponse = await rest("push_subscriptions?endpoint=like.shell:*&select=endpoint");
+    const shellSubRows = shellSubsResponse.ok
       ? await shellSubsResponse.json() as { endpoint: string }[]
-      : [])
+      : [];
+    const shellTopics = shellSubRows
       .map(sub => String(sub.endpoint || "").slice("shell:".length).trim())
       .filter(Boolean)
       .map(userId => `shellpush:${userId}`);
     const hasShellSub = shellTopics.length > 0;
+    if (!shellSubsResponse.ok) {
+      const detail = await shellSubsResponse.text().catch(() => "");
+      pushErrors.push(`shell subscription lookup http ${shellSubsResponse.status}${detail ? `: ${detail.slice(0, 100)}` : ""}`);
+    }
     const vapid = vapidRow
       ? { publicKey: vapidRow.vapid_public_key, privateKey: vapidRow.vapid_private_key, subject: siteOrigin || "mailto:push@ai-phone.local" }
       : null;
@@ -1130,8 +1196,9 @@ Deno.serve(async (req: Request) => {
     const title = payload.notify?.title || "小手机";
     const callSessionId = typeof payload.merge?.sessionId === "string" ? payload.merge.sessionId : "";
     // 来电：单条推送（不分段），点开带 ring 参数直达振铃；正文照常进 outbox
+    const isWakeCall = deliverAsCall && payload.merge?.wakeCall === true;
     const targetUrl = deliverAsCall && callSessionId
-      ? `/?ring=${encodeURIComponent(callSessionId)}&rt=${Date.now()}`
+      ? `/?ring=${encodeURIComponent(callSessionId)}&rt=${Date.now()}${isWakeCall ? "&wake=1" : ""}`
       : (payload.notify?.url || "/");
     let parts = deliverAsCall
       ? ["来电话了…"]
@@ -1151,7 +1218,7 @@ Deno.serve(async (req: Request) => {
         body: partBody,
         tag: `${job.id}-${index}`,
         url: targetUrl,
-        ...(deliverAsCall ? { sessionId: callSessionId, callTs: Date.now() } : {}),
+        ...(deliverAsCall ? { sessionId: callSessionId, callTs: Date.now(), ...(isWakeCall ? { wakeCall: true } : {}), ...(payload.merge?.dailyAlarm ? { dailyAlarm: payload.merge.dailyAlarm, alarmInstanceId: String(payload.merge.alarmInstanceId || ""), alarmAttempt: 1 } : {}) } : {}),
       });
       if (vapid) {
         for (const sub of webSubs) {
@@ -1189,19 +1256,19 @@ Deno.serve(async (req: Request) => {
                   ...(typeof payload.notify?.avatar === "string" && payload.notify.avatar
                     ? { avatar: payload.notify.avatar }
                     : {}),
-                  ...(deliverAsCall ? { kind: "call", characterName: title, callTs: Date.now() } : {}),
+                  ...(deliverAsCall ? { kind: "call", characterName: title, callTs: Date.now(), ...(isWakeCall ? { wakeCall: true } : {}), ...(payload.merge?.dailyAlarm ? { dailyAlarm: payload.merge.dailyAlarm, alarmInstanceId: String(payload.merge.alarmInstanceId || ""), alarmAttempt: 1 } : {}) } : {}),
                 },
               })),
             }),
           });
-          await response.text().catch(() => undefined);
+          const responseText = await response.text().catch(() => "");
           if (response.ok) pushed += 1;
-          else pushErrors.push(`shell http ${response.status}`);
+          else pushErrors.push(`shell http ${response.status}${responseText ? `: ${responseText.slice(0, 100)}` : ""}`);
         } catch (err) {
           pushErrors.push(`shell ${(err instanceof Error ? err.message : String(err)).slice(0, 60)}`);
         }
       }
-      await progress(`pushed ${index + 1}/${parts.length}${pushErrors.length ? `, errors: ${pushErrors[0]}` : ""}`);
+      await progress(`pushed ${index + 1}/${parts.length}, shell targets=${shellTopics.length}${pushErrors.length ? `, errors: ${pushErrors[0]}` : ""}`);
     }
 
     // 第一轮正文已经落库并完成推送后，再发“运行快捷指令”通知。用户看到的

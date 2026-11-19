@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, type CSSProperties } from "react";
-import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues, updateChatMessage, deleteChatMessage } from "@/lib/chat-storage";
+import { Code, X } from "lucide-react";
+import CSSSchemeBar from "@/components/ui/css-scheme-picker";
+import { CHAT_SESSION_CSS_EXAMPLE } from "@/lib/css-examples";
+import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues, updateChatMessage, deleteChatMessage, loadChatAppSettings, saveChatAppSettings } from "@/lib/chat-storage";
 import { getStatusRegionConfig, isCustomStatusRegionActive } from "@/lib/chat-status-region";
 import type { StateValue } from "@/lib/chat-storage";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
@@ -59,6 +62,8 @@ type VoiceCallScreenProps = {
     onEnd: () => void;
     onConnect?: () => void;
     initiator?: "user" | "character";
+    /** Android 锁屏界面已经接听：进入通话屏时直接视为已接通。 */
+    initiallyAccepted?: boolean;
     /** 通话是否处于缩小的悬浮窗状态：通话继续（识别/播放/计时不停），界面缩为小窗 */
     minimized?: boolean;
     /** 点击左上角返回键：请求缩小为悬浮窗（通话继续，不挂断） */
@@ -104,7 +109,7 @@ function stripBilingualForSpeech(text: string): string {
 
 // ── Component ───────────────────────────────────────
 
-export function VoiceCallScreen({ session, character, onEnd, onConnect, initiator = "user", minimized = false, onMinimize, onRestore }: VoiceCallScreenProps) {
+export function VoiceCallScreen({ session, character, onEnd, onConnect, initiator = "user", initiallyAccepted = false, minimized = false, onMinimize, onRestore }: VoiceCallScreenProps) {
     // iOS 保留 Web Speech 免提 + Web Audio 播放（麦克风会话共存的老方案）；
     // 其余设备改「按住说话 + 云端转写」，播放走媒体元素（音量键可控、无静音拨键坑）。
     // 没配 OpenAI 兼容识别时回落旧行为（安卓=文字输入）。
@@ -118,8 +123,10 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
     const androidTextInputOnly = androidTextInputOnlyRef.current;
     const playCallAudio = iosDevice ? playAudioBlob : playAudioBlobViaMediaElement;
     const keyboardOffsetStyle = useCallKeyboardOffsetStyle();
-    const [callState, setCallState] = useState<CallState>("CONNECTING");
+    const [callState, setCallState] = useState<CallState>(initiallyAccepted ? "IDLE" : "CONNECTING");
     const hasConnectedRef = useRef(false);
+    // 来电接通后只主动开口一次；避免状态往返 IDLE 时重复生成第一句话。
+    const initialIncomingGreetingStartedRef = useRef(false);
     const [callDuration, setCallDuration] = useState(0);
     const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
     const [interimText, setInterimText] = useState("");
@@ -127,6 +134,8 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
     const [inputMode, setInputMode] = useState<"voice" | "text">(() => androidTextInputOnly ? "text" : "voice");
     const [typedText, setTypedText] = useState("");
     const [bgImageResolved, setBgImageResolved] = useState<string | null>(null);
+    const [showCallCssEditor, setShowCallCssEditor] = useState(false);
+    const [callCssDraft, setCallCssDraft] = useState(() => loadChatAppSettings().globalChatCustomCSS || "");
     const [showSttWarning, setShowSttWarning] = useState(false);
     // 正在重听的字幕 id（按钮据此高亮）
     const [replayingId, setReplayingId] = useState<string | null>(null);
@@ -475,7 +484,10 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
 
     // ── Full conversation turn ──────────────────────
 
-    const runConversationTurn = useCallback(async (userText?: string) => {
+    const runConversationTurn = useCallback(async (
+        userText?: string,
+        turnOptions?: { ephemeralSystemNote?: string },
+    ) => {
         // 用户开口：自动搭话重新计数（上限按「你开口后」重新算）
         if (userText) {
             autoTurnsRef.current = 0;
@@ -510,6 +522,7 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
             // 3. Generate AI response
             const aiResponseText = flattenCompletionResult(await generateChatCompletion(session, messagesRef.current, {
                 appTags: ["chat", "voice"],
+                ephemeralSystemNote: turnOptions?.ephemeralSystemNote,
             }));
 
             // Bail if call ended during generation
@@ -595,6 +608,29 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
         }
     }, [session, processAIResponse, playCallAudio, scheduleNextAutoChat]);
 
+    // 角色来电被用户接听后，立即由角色先说第一句话。
+    // 这次生成走正常消息入库 + TTS 流程，但用一次性系统提示明确「主动开口」，
+    // 不依赖自动搭话开关，也不会把提示写进聊天记录。
+    useEffect(() => {
+        if (initiator !== "character" || callState !== "IDLE" || initialIncomingGreetingStartedRef.current) return;
+        initialIncomingGreetingStartedRef.current = true;
+        const recentAssistantMessage = [...messagesRef.current].reverse().find(message => {
+            if (message.role !== "assistant" || message.mediaType || !message.content?.trim()) return false;
+            if (message.content.includes("发起了语音通话")) return false;
+            const createdAt = Date.parse(message.createdAt);
+            return Number.isFinite(createdAt) && Date.now() - createdAt >= 0 && Date.now() - createdAt < 15 * 60_000;
+        });
+        const recentAssistantText = recentAssistantMessage?.content.trim().slice(0, 800);
+        void runConversationTurn(undefined, {
+            ephemeralSystemNote: [
+                "你刚刚主动拨打了用户的语音电话，用户已经接听。现在请由你主动说出通话的第一句话，不要等待用户先开口。",
+                recentAssistantText
+                    ? "你在这次来电前已经发出的最近一条聊天消息是：「" + recentAssistantText + "」。这条消息用户已经能在聊天记录中看到。通话开场要自然承接它，不要重复问候、复述或照搬这条消息。"
+                    : "请结合你的人设和最近的聊天上下文，自然、简短地开始这次通话；如果上下文表明这是早安或叫醒电话，就自然地向用户道早安并温和叫醒用户。",
+                "直接说你要对用户说的话，不要提及系统提示、任务或生成过程。"
+            ].join("\n"),
+        });
+    }, [initiator, callState, runConversationTurn]);
     // ── 安卓壳原生浮窗 ──────────────────────────────
     //
     // 原实现在这里手写接线，有两个坑：
@@ -1067,6 +1103,64 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
             />
 
             <CallVolumeControl />
+
+            <button
+                type="button"
+                aria-label="编辑聊天气泡 CSS"
+                title="编辑聊天气泡 CSS"
+                onClick={() => {
+                    setCallCssDraft(loadChatAppSettings().globalChatCustomCSS || "");
+                    setShowCallCssEditor(true);
+                }}
+                style={{
+                    position: "absolute", top: "max(14px, env(safe-area-inset-top))", right: 14,
+                    zIndex: 55, width: 42, height: 42, borderRadius: 999,
+                    display: "grid", placeItems: "center",
+                    color: "#fff", background: "rgba(20,20,26,0.42)",
+                    border: "1px solid rgba(255,255,255,0.22)",
+                    backdropFilter: "blur(8px)",
+                }}
+            >
+                <Code size={19} />
+            </button>
+
+            {showCallCssEditor && (
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="聊天气泡 CSS 编辑器"
+                    style={{
+                        position: "absolute", inset: 0, zIndex: 90,
+                        display: "flex", flexDirection: "column",
+                        padding: "max(18px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom))",
+                        background: "rgba(12,14,20,0.96)", color: "#fff",
+                    }}
+                >
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="font-semibold">聊天气泡 CSS</div>
+                        <button type="button" onClick={() => setShowCallCssEditor(false)} aria-label="关闭 CSS 编辑器" className="p-2">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <p className="text-xs opacity-75 mb-3">这里编辑全局聊天室 CSS；单独会话样式仍会优先覆盖全局设置。</p>
+                    <textarea
+                        value={callCssDraft}
+                        onChange={event => setCallCssDraft(event.target.value)}
+                        spellCheck={false}
+                        placeholder={CHAT_SESSION_CSS_EXAMPLE}
+                        className="ui-textarea font-mono text-xs flex-1"
+                        style={{ minHeight: 0, resize: "none", background: "rgba(255,255,255,0.08)", color: "#fff" }}
+                    />
+                    <div className="flex gap-2 mt-3 items-center">
+                        <CSSSchemeBar target="chat_session" currentCSS={callCssDraft} onLoad={setCallCssDraft} />
+                        <button type="button" className="ui-btn ui-btn-outline" onClick={() => setCallCssDraft(CHAT_SESSION_CSS_EXAMPLE)}>示例</button>
+                        <button type="button" className="ui-btn ui-btn-soft-action flex-1" onClick={() => {
+                            saveChatAppSettings({ ...loadChatAppSettings(), globalChatCustomCSS: callCssDraft });
+                            setShowCallCssEditor(false);
+                        }}>应用</button>
+                    </div>
+                </div>
+            )}
 
             {/* 待发送提示：缩成小窗/全屏都看得见，避免以为消息丢了 */}
             {replyQueue.pending > 0 && (

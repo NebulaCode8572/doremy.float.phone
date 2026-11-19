@@ -42,6 +42,7 @@ export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "发送文件",
     "角色电脑",
     "稍后主动联系",
+    "稍后主动来电",
     "设置定时醒来",
     "查看全部手机数据",
 ];
@@ -140,10 +141,52 @@ const TIMED_WAKE_USAGE_GUIDE = [
     "- 只在你确实打算稍后主动找对方时使用。",
     "- 同一聊天同时只保留一个约定；新的设置会替换旧的。",
     "- 到点后不要机械发送，结合上下文判断该不该开口；不合适就静默。",
+    "- 如果你确定要在稍后拨打语音电话，必须使用独立动作「稍后主动来电」；不要把普通消息排期改成电话。",
     "",
     "示例：",
     '[执行动作:稍后主动联系({"delayMinutes":15,"intent":"过15分钟看看对方回了没，如果还合适就轻轻找一句"})]',
 ].join("\n");
+
+const PROACTIVE_CALL_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        delayMinutes: {
+            type: "number",
+            description: "从现在开始多少分钟后主动拨打语音电话，必须是正数",
+        },
+        intent: {
+            type: "string",
+            description: "到点打电话时想聊什么或想说什么，用一句话说明",
+        },
+    },
+    required: ["delayMinutes", "intent"],
+});
+
+const PROACTIVE_CALL_USAGE_GUIDE = [
+    "以下是你获取指令的返回结果：",
+    "动作：稍后主动来电",
+    "用途：为当前私聊安排一次确定的主动语音来电。到点后系统会直接发起语音来电，不再由你临时决定是否拨号。",
+    "",
+    "参数：",
+    "- delayMinutes (number): 从现在开始多少分钟后拨打，1 到 10080 分钟。",
+    "- intent (string): 到点通话时想聊的主题或想说的话。",
+    "",
+    "规则：",
+    "- 只有确实想在稍后打电话时才使用；普通主动消息继续使用「稍后主动联系」。",
+    "- 两种排期相互独立，不会互相覆盖。",
+    "- 这是一次性来电；不要用它安排重复拨打。",
+    "- 到点后会直接拨号，接通后的开场内容由你生成。",
+    "",
+    "示例：",
+    '[执行动作:稍后主动来电({"delayMinutes":15,"intent":"过一会儿打电话问问对方今天的情况"})]',
+].join("\n");
+
+const PROACTIVE_CALL_SUBTOOLS: InternalToolDefinition[] = [{
+    name: "稍后主动来电",
+    description: "独立安排一次稍后的主动语音来电；不影响「稍后主动联系」消息排期。",
+    parameterSchema: PROACTIVE_CALL_PARAMETER_SCHEMA,
+    usageGuide: PROACTIVE_CALL_USAGE_GUIDE,
+}];
 
 const NOTE_WALL_USAGE_GUIDE = [
     "以下是你获取指令的返回结果：",
@@ -1397,7 +1440,7 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     {
         id: TIMED_WAKE_CAPABILITY_ID,
         name: "稍后主动联系",
-        description: "让角色约定「过一会儿主动联系对方」：现在设定一个延时与想法，到点后由角色决定主动发消息或静默（不是睡觉醒来）。",
+        description: "让角色安排稍后的主动联系：可选择到点后由角色决定发消息，或明确安排一次语音来电；两种任务独立排期。",
         enabled: false,
         mode: "auto",
         createdAt: 0,
@@ -1897,6 +1940,9 @@ export function getInternalCapabilitySubToolDefinition(
     if (capability.id === SYSTEM_CALENDAR_CAPABILITY_ID) {
         return SYSTEM_CALENDAR_SUBTOOLS.find(tool => tool.name === name) ?? null;
     }
+    if (capability.id === TIMED_WAKE_CAPABILITY_ID) {
+        return PROACTIVE_CALL_SUBTOOLS.find(tool => tool.name === name) ?? null;
+    }
     return null;
 }
 
@@ -1923,6 +1969,9 @@ export function getInternalCapabilitySubToolDefinitions(
     }
     if (capability.id === SYSTEM_CALENDAR_CAPABILITY_ID) {
         return SYSTEM_CALENDAR_SUBTOOLS;
+    }
+    if (capability.id === TIMED_WAKE_CAPABILITY_ID) {
+        return PROACTIVE_CALL_SUBTOOLS;
     }
     return [];
 }

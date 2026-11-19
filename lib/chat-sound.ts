@@ -16,6 +16,7 @@ import {
     type ChatSoundKind,
 } from "./chat-storage";
 import { getChatAudioFromIndexedDB } from "./chat-asset-storage";
+import { syncNativeCallRingtones } from "./call-ringtone-sync";
 
 /** 提示音解析用的会话上下文（带 sounds 字段即可） */
 type SessionLike = Pick<ChatSession, "sounds"> | null | undefined;
@@ -206,6 +207,9 @@ function markBurstPlayed(msg: ChatMessage): void {
  */
 export function installChatSoundListener(): () => void {
     if (typeof window === "undefined") return () => {};
+
+    // WebView 启动/恢复时把全局及各角色的有效来电铃声补同步到原生私有目录。
+    void syncNativeCallRingtones();
 
     const onPushed = (e: Event) => {
         const detail = (e as CustomEvent<{ message?: ChatMessage }>).detail;

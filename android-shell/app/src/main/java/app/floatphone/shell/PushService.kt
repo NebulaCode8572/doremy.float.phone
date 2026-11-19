@@ -11,9 +11,14 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Base64
+import android.util.Log
 import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
+import androidx.core.graphics.drawable.IconCompat
+import androidx.core.app.NotificationManagerCompat
 // RemoteInput 必须用 androidx 版：NotificationCompat.Action.addRemoteInput()
 // 收的是 androidx.core.app.RemoteInput，与框架的 android.app.RemoteInput
 // 是两个类型（同名不同源），混用会直接编译失败。
@@ -45,7 +50,23 @@ class PushService : Service() {
         private const val CH_MESSAGES = "shell_messages"
         private const val CH_CALLS = "shell_calls"
         private const val NOTIF_FG_ID = 1
+        private const val TAG_CALL_PRESENTATION = "CallPresentation"
+        const val ACTION_DAILY_ALARM_RETRY = "app.floatphone.shell.DAILY_ALARM_RETRY"
         private var running = false
+
+        fun startDailyAlarmCall(context: Context, sessionId: String, characterName: String, alarmInstanceId: String, attempt: Int): Boolean {
+            val intent = Intent(context, PushService::class.java)
+                .setAction(ACTION_DAILY_ALARM_RETRY)
+                .putExtra(DailyAlarmCallScheduler.EXTRA_SESSION_ID, sessionId)
+                .putExtra(DailyAlarmCallScheduler.EXTRA_CHARACTER_NAME, characterName)
+                .putExtra(DailyAlarmCallScheduler.EXTRA_CALL_TS, System.currentTimeMillis())
+                .putExtra(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
+                .putExtra(DailyAlarmCallScheduler.EXTRA_ATTEMPT, attempt)
+            return runCatching {
+                if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
+                true
+            }.getOrDefault(false)
+        }
 
         fun start(context: Context) {
             if (running) return
@@ -71,6 +92,7 @@ class PushService : Service() {
     private var msgSeq = 2
     private var notifId = 100
     private var shellSubRegisteredUserId: String? = null
+    private var lastConfigError: String? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -82,7 +104,26 @@ class PushService : Service() {
         thread(name = "shell-push-loop") { connectionLoop() }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_DAILY_ALARM_RETRY) {
+            val name = intent.getStringExtra(DailyAlarmCallScheduler.EXTRA_CHARACTER_NAME).orEmpty().ifBlank { "角色" }
+            val sessionId = intent.getStringExtra(DailyAlarmCallScheduler.EXTRA_SESSION_ID).orEmpty()
+            val alarmInstanceId = intent.getStringExtra(DailyAlarmCallScheduler.EXTRA_ALARM_INSTANCE_ID).orEmpty()
+            val callTs = intent.getLongExtra(DailyAlarmCallScheduler.EXTRA_CALL_TS, System.currentTimeMillis())
+            val attempt = intent.getIntExtra(DailyAlarmCallScheduler.EXTRA_ATTEMPT, 2)
+            try {
+                runCatching { showIncomingCallNotification(name, sessionId, callTs, alarmInstanceId, attempt) }
+                    .onFailure { DailyAlarmCallScheduler.onDeliveryFailure(this, sessionId, name, alarmInstanceId, attempt) }
+            } finally {
+                if (attempt >= 2) DailyAlarmCallScheduler.clearRetryDispatch(this, alarmInstanceId)
+            }
+        } else {
+            // A sticky service restart or a normal push can resume a retry that was persisted
+            // just before the process died.
+            DailyAlarmCallScheduler.restoreRetryDispatch(this)
+        }
+        return START_STICKY
+    }
 
     override fun onDestroy() {
         stopped = true
@@ -95,9 +136,10 @@ class PushService : Service() {
     private fun connectionLoop() {
         var backoffSec = 5L
         while (!stopped) {
+            lastConfigError = null
             val config = fetchConfig()
             if (config == null) {
-                updateKeepAlive("未登录或站点不可达，稍后重试")
+                updateKeepAlive(lastConfigError ?: "未登录或站点不可达，稍后重试")
                 sleepSec(60); continue
             }
             updateKeepAlive("正在连接推送服务…")
@@ -141,7 +183,11 @@ class PushService : Service() {
         val url = online.optString("supabaseUrl")
         val key = online.optString("anonKey")
         if (url.isEmpty() || key.isEmpty()) return null
-        registerShellSubscription(cookie, userId)
+        val registrationError = registerShellSubscription(cookie, userId)
+        if (registrationError != null) {
+            lastConfigError = "设备登记失败：$registrationError"
+            return null
+        }
         PushConfig(url.trimEnd('/'), key, userId)
     }.getOrNull()
 
@@ -150,9 +196,9 @@ class PushService : Service() {
      * 作用是让离线消息排期的"账号已订阅"门控放行，并让服务端知道
      * 要往 shellpush 频道广播；服务端不会对它做 Web Push 投递。
      */
-    private fun registerShellSubscription(cookie: String, userId: String) {
-        if (shellSubRegisteredUserId == userId) return
-        runCatching {
+    private fun registerShellSubscription(cookie: String, userId: String): String? {
+        if (shellSubRegisteredUserId == userId) return null
+        return runCatching {
             val body = JSONObject()
                 .put("endpoint", "shell:$userId")
                 .put(
@@ -167,8 +213,19 @@ class PushService : Service() {
             if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
             val request = builder.build()
             client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) shellSubRegisteredUserId = userId
+                val responseText = response.body?.string().orEmpty()
+                val responseJson = runCatching { JSONObject(responseText) }.getOrNull()
+                if (response.isSuccessful && responseJson?.optBoolean("ok") == true) {
+                    shellSubRegisteredUserId = userId
+                    null
+                } else {
+                    val detail = responseJson?.optString("error")?.takeIf { it.isNotBlank() }
+                        ?: responseText.take(120).ifBlank { "服务器未返回错误详情" }
+                    "HTTP ${response.code}: $detail"
+                }
             }
+        }.getOrElse { error ->
+            "请求异常：${error.message?.take(120) ?: error.javaClass.simpleName}"
         }
     }
 
@@ -234,24 +291,63 @@ class PushService : Service() {
                         }
                         return
                     }
-                    if (msg.optString("event") != "broadcast") return
-                    val payload = msg.optJSONObject("payload") ?: return
-                    if (payload.optString("event") != "notify") return
-                    val body = payload.optJSONObject("payload") ?: return
+                    val outerEvent = msg.optString("event")
+                    if (outerEvent != "broadcast") {
+                        updateKeepAlive("收到推送协议消息：$outerEvent")
+                        return
+                    }
+                    val payload = msg.optJSONObject("payload") ?: run {
+                        updateKeepAlive("收到广播，但缺少 payload")
+                        return
+                    }
+                    val eventName = payload.optString("event")
+                    if (eventName != "notify") {
+                        updateKeepAlive("收到广播事件：${eventName.ifBlank { "未知" }}")
+                        return
+                    }
+                    // Realtime Broadcast 标准结构是 payload.payload；兼容网关/旧版
+                    // 包装层直接把业务字段放在 payload 下的情况。
+                    val body = payload.optJSONObject("payload") ?: payload.optJSONObject("data") ?: payload
                     val title = body.optString("title").ifEmpty { "小手机" }
                     val text2 = body.optString("body").ifEmpty { "有新消息" }
-                    // 来电：全屏来电通知（任何一步失败回落普通通知，主路不受影响）
-                    if (body.optString("kind") == "call") {
-                        val shown = runCatching {
+                    val isCall = body.optString("kind") == "call" || body.optString("type") == "incoming_call"
+                    updateKeepAlive(if (isCall) "已收到来电事件，正在显示…" else "已收到角色消息，正在显示…")
+                    // 来电：全屏来电通知（失败时保留明确诊断，不再静默吞掉异常）
+                    if (isCall) {
+                        val characterName = body.optString("characterName").ifEmpty { title }
+                        val sessionId = body.optString("sessionId")
+                        val alarmInstanceId = body.optString("alarmInstanceId")
+                        val alarmAttempt = body.optInt("alarmAttempt", 1)
+                        val result = runCatching {
                             showIncomingCallNotification(
-                                body.optString("characterName").ifEmpty { title },
-                                body.optString("sessionId"),
+                                characterName,
+                                sessionId,
                                 body.optLong("callTs", System.currentTimeMillis()),
+                                alarmInstanceId,
+                                alarmAttempt,
+                                body.optString("avatar"),
+                                body.optBoolean("wakeCall", false),
                             )
-                        }.isSuccess
-                        if (shown) return
+                        }
+                        if (result.isSuccess) {
+                            updateKeepAlive("已收到来电事件，来电通知已提交")
+                            return
+                        }
+                        val detail = result.exceptionOrNull()?.message?.take(100) ?: "未知通知错误"
+                        updateKeepAlive("来电通知失败：$detail")
+                        if (alarmInstanceId.isNotBlank()) {
+                            // A failed native notification is a failed call delivery: retry once,
+                            // then use the native alarm if the second presentation also fails.
+                            DailyAlarmCallScheduler.onDeliveryFailure(
+                                this@PushService, sessionId, characterName, alarmInstanceId, alarmAttempt,
+                            )
+                            return
+                        }
                     }
                     showMessageNotification(title, text2, body.optString("sessionId"), body.optString("avatar"))
+                    updateKeepAlive("已收到角色消息")
+                }.onFailure { error ->
+                    updateKeepAlive("推送处理失败：${error.message?.take(100) ?: error.javaClass.simpleName}")
                 }
             }
 
@@ -339,12 +435,33 @@ class PushService : Service() {
      * 全屏来电通知：锁屏/熄屏直接弹 IncomingCallActivity，亮屏时是带
      * 接听/拒接按钮的 heads-up。振动循环 + 55s 超时未接由 CallAlert 管。
      */
-    private fun showIncomingCallNotification(characterName: String, sessionId: String, callTs: Long) {
+    private fun showIncomingCallNotification(
+        characterName: String,
+        sessionId: String,
+        callTs: Long,
+        alarmInstanceId: String = "",
+        alarmAttempt: Int = 1,
+        avatarUrl: String = "",
+        wakeCall: Boolean = false,
+    ) {
+        // Persist the timeout before exposing the notification. Duplicate deliveries for an
+        // existing instance/attempt are ignored; attempt 2 replaces attempt 1.
+        if (alarmInstanceId.isNotBlank()) {
+            // A disabled/replaced or substantially delayed occurrence must not resurrect a call.
+            if (!DailyAlarmWatchdogScheduler.isOccurrenceActive(this, alarmInstanceId)) {
+                DailyAlarmCallScheduler.markTerminal(this, alarmInstanceId)
+                return
+            }
+            val accepted = DailyAlarmCallScheduler.schedule(this, sessionId, characterName, callTs, alarmInstanceId, alarmAttempt)
+            if (!accepted) return
+        }
         val fullScreen = Intent(this, IncomingCallActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra(IncomingCallActivity.EXTRA_SESSION_ID, sessionId)
             putExtra(IncomingCallActivity.EXTRA_CHARACTER_NAME, characterName)
             putExtra(IncomingCallActivity.EXTRA_CALL_TS, callTs)
+            putExtra(IncomingCallActivity.EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
+            putExtra(IncomingCallActivity.EXTRA_WAKE_CALL, wakeCall)
         }
         val fullScreenPending = PendingIntent.getActivity(
             this, 60, fullScreen,
@@ -356,13 +473,17 @@ class PushService : Service() {
                 action = actionName
                 putExtra(CallActionReceiver.EXTRA_SESSION_ID, sessionId)
                 putExtra(CallActionReceiver.EXTRA_CALL_TS, callTs)
+                putExtra(CallActionReceiver.EXTRA_ALARM_INSTANCE_ID, alarmInstanceId)
+                putExtra(CallActionReceiver.EXTRA_WAKE_CALL, wakeCall)
             },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val notification = NotificationCompat.Builder(this, CH_CALLS)
+        val declinePending = buildAction(CallActionReceiver.ACTION_DECLINE, 61)
+        val answerPending = buildAction(CallActionReceiver.ACTION_ANSWER, 62)
+        val builder = NotificationCompat.Builder(this, CH_CALLS)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle(characterName)
-            .setContentText("语音来电…")
+            .setContentText("邀请你语音通话…")
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setOngoing(true)
@@ -370,15 +491,69 @@ class PushService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setFullScreenIntent(fullScreenPending, true)
             .setContentIntent(fullScreenPending)
-            .addAction(0, "拒接", buildAction(CallActionReceiver.ACTION_DECLINE, 61))
-            .addAction(0, "接听", buildAction(CallActionReceiver.ACTION_ANSWER, 62))
-            .build()
-        getSystemService(NotificationManager::class.java).notify(CallAlert.NOTIF_CALL_ID, notification)
-        CallAlert.start(this, sessionId, characterName) {
-            // 超时未接：收场 + 换一条"未接来电"普通通知（正文消息本来就会进聊天）
-            CallAlert.stop(this)
-            runCatching { showMissedCallNotification(characterName) }
+
+        // Android 12+ 使用系统 CallStyle：由系统绘制桌面/锁屏来电卡片，
+        // 包含来电者身份、拒接与接听按钮；旧系统保留兼容的 heads-up action。
+        val callerAvatar = loadAvatarBitmap(avatarUrl)
+        if (Build.VERSION.SDK_INT >= 31) {
+            val callerBuilder = Person.Builder()
+                .setName(characterName)
+                .setImportant(true)
+            callerAvatar?.let { callerBuilder.setIcon(IconCompat.createWithBitmap(it)) }
+            builder.setStyle(
+                NotificationCompat.CallStyle.forIncomingCall(callerBuilder.build(), declinePending, answerPending),
+            )
+        } else {
+            builder.addAction(0, "拒接", declinePending)
+                .addAction(0, "接听", answerPending)
         }
+        callerAvatar?.let { builder.setLargeIcon(it) }
+        val notification = builder.build()
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(CallAlert.NOTIF_CALL_ID, notification)
+        // 来电主流程必须先启动；诊断代码即使在个别 ROM 上异常，也不能阻断响铃。
+        if (alarmInstanceId.isNotBlank()) {
+            CallAlert.start(this, sessionId, characterName, timeoutMs = 0L)
+        } else {
+            CallAlert.start(this, sessionId, characterName) {
+                // 普通来电超时：收场并显示未接来电通知。
+                CallAlert.stop(this)
+                runCatching { showMissedCallNotification(characterName) }
+            }
+        }
+        runCatching { logCallPresentationDiagnostics(notificationManager) }
+            .onFailure { Log.w(TAG_CALL_PRESENTATION, "diagnostics failed", it) }
+    }
+
+    /**
+     * Records the OS-side conditions that determine whether Android can launch the
+     * full-screen incoming-call Activity or downgrade it to a heads-up notification.
+     * This is diagnostic only: it does not change notification behavior or permissions.
+     */
+    private fun logCallPresentationDiagnostics(notificationManager: NotificationManager) {
+        val notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
+        val fullScreenIntentAllowed = if (Build.VERSION.SDK_INT >= 34) {
+            runCatching { notificationManager.canUseFullScreenIntent() }.getOrNull()
+        } else {
+            null // Android 13 and below do not expose this runtime query.
+        }
+        val channelImportance = notificationManager.getNotificationChannel(CH_CALLS)?.importance ?: -1
+        val notificationPosted = runCatching {
+            notificationManager.activeNotifications.any { it.id == CallAlert.NOTIF_CALL_ID }
+        }.getOrDefault(false)
+        val screenInteractive = runCatching {
+            getSystemService(PowerManager::class.java).isInteractive
+        }.getOrDefault(false)
+
+        Log.i(
+            TAG_CALL_PRESENTATION,
+            "call notification posted; sdk=${Build.VERSION.SDK_INT}, " +
+                "notificationsEnabled=$notificationsEnabled, " +
+                "fullScreenIntentAllowed=$fullScreenIntentAllowed, " +
+                "channelImportance=$channelImportance, " +
+                "activeNotification=$notificationPosted, " +
+                "screenInteractive=$screenInteractive, category=CALL, fullScreenIntent=true",
+        )
     }
 
     private fun showMissedCallNotification(characterName: String) {

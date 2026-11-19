@@ -26,6 +26,7 @@ import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-
 import { dispatchChatMessageNotice } from "@/lib/chat-notification-events";
 import { ChatSoundSourceEditor, SOUND_ITEMS } from "./chat-sound-editor";
 import { previewChatSound } from "@/lib/chat-sound";
+import { syncNativeCallRingtones } from "@/lib/call-ringtone-sync";
 import {
     GLOBAL_CHAT_STATUS_REGION_ID,
     getStatusRegionConfig,
@@ -51,6 +52,7 @@ function ChatSoundsSection() {
         setSounds(current => {
             const next: ChatSoundsConfig = { ...current, [kind]: { ...current[kind], ...patch } };
             saveChatAppSettings({ ...loadChatAppSettings(), globalChatSounds: next });
+            if (kind === "incomingCall") void syncNativeCallRingtones();
             return next;
         });
     };

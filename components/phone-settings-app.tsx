@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, createContext, type CSSProperties, type ReactNode } from "react";
-import { Activity, CalendarDays, Camera, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, LayoutTemplate, Link2, Loader2, LogOut, MessageSquare, Mic, PhoneCall, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload, Zap } from "lucide-react";
+import { Activity, BookOpen, CalendarDays, Camera, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, LayoutTemplate, Link2, Loader2, LogOut, MessageSquare, Mic, PhoneCall, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload, Zap } from "lucide-react";
 import { ConfirmDialog } from "./ui/modal";
 import { useAccount } from "@/lib/account-context";
 import { isSelfHostedModeEnabled } from "@/lib/self-hosting";
@@ -27,6 +27,9 @@ import { DeviceActionSettings } from "./device-action/device-action-settings";
 import { SystemCalendarSettings } from "./system-calendar/system-calendar-settings";
 import { ScreenshotSettings } from "./screenshot/screenshot-settings";
 import { WidgetSettings } from "./widget/widget-settings";
+import { DailyAlarmSettings } from "./settings/daily-alarm-settings";
+import { VisionApiSettings } from "./settings/vision-api-settings";
+import { StrictLearningSettings } from "./settings/strict-learning-settings";
 import { fetchIsAdmin } from "@/lib/moderation-client";
 import { PageShell } from "./ui/page-shell";
 import { CardGrid, FeaturedCard, type CardItem, type FeaturedCardItem } from "./ui/card-grid";
@@ -50,6 +53,8 @@ type SettingsPageProps = {
 type SubPage =
     | "main"
     | "api"
+    | "vision"
+    | "strictLearning"
     | "voice"
     | "imageGeneration"
     | "presets"
@@ -69,10 +74,13 @@ type SubPage =
     | "systemCalendar"
     | "screenshot"
     | "widget"
+    | "dailyAlarm"
     | "about";
 
 const SETTINGS_MENU = [
     { id: "api", icon: HardDrive, label: "API 设置", desc: "大模型接口", iconColor: BINDING_ACCENTS.api , glass: "api" },
+    { id: "vision", icon: Image, label: "视觉模型 API", desc: "全局图片理解模型", iconColor: CONTENT_APP_ACCENTS.moments, glass: "image-generation" },
+    { id: "strictLearning", icon: BookOpen, label: "严格学习模式", desc: "学习任务与凭证审核", iconColor: CONTENT_APP_ACCENTS.chat, glass: "" },
     { id: "voice", icon: Mic, label: "语音 API", desc: "语音合成", iconColor: BINDING_ACCENTS.voice , glass: "voice" },
     { id: "imageGeneration", icon: Image, label: "图像生成 API", desc: "模型、参考图与提示词", iconColor: CONTENT_APP_ACCENTS.moments , glass: "image-generation" },
     { id: "presets", icon: Fingerprint, label: "预设", desc: "角色预设", iconColor: BINDING_ACCENTS.preset , glass: "presets" },
@@ -89,6 +97,7 @@ const SETTINGS_MENU = [
     { id: "systemCalendar", icon: CalendarDays, label: "系统日历", desc: "让角色知道你的日程、记下纪念日", iconColor: BINDING_ACCENTS.memory , glass: "" },
     { id: "screenshot", icon: Camera, label: "截屏", desc: "让角色看一眼你现在的屏幕", iconColor: BINDING_ACCENTS.voice , glass: "" },
     { id: "widget", icon: LayoutTemplate, label: "桌面小组件", desc: "角色留在桌面上的话", iconColor: BINDING_ACCENTS.memory , glass: "" },
+    { id: "dailyAlarm", icon: Clock, label: "每日 AI 闹钟", desc: "早安消息与语音来电", iconColor: BINDING_ACCENTS.voice , glass: "" },
     { id: "agentComputer", icon: Laptop, label: "角色电脑", desc: "云端小电脑（自部署）", iconColor: BINDING_ACCENTS.memory , glass: "agent-computer" },
     { id: "identity", icon: UserCircle, label: "用户身份", desc: "个人信息", iconColor: BINDING_ACCENTS.identity , glass: "identity" },
     { id: "about", icon: Info, label: "关于与声明", desc: "版本与协议", iconColor: BINDING_ACCENTS.memory , glass: "about" },
@@ -196,7 +205,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
 
     const defaultTitle = currentPage === "main"
         ? "设置"
-        : currentPage === "api" || currentPage === "voice" || currentPage === "imageGeneration" || currentPage === "presets" || currentPage === "worldbook" || currentPage === "regex" || currentPage === "identity"
+        : currentPage === "api" || currentPage === "vision" || currentPage === "strictLearning" || currentPage === "voice" || currentPage === "imageGeneration" || currentPage === "presets" || currentPage === "worldbook" || currentPage === "regex" || currentPage === "identity"
             ? ""
             : currentPage === "moderation"
                 ? "管理中心"
@@ -318,6 +327,10 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         switch (currentPage) {
             case "api":
                 return <ApiSettings />;
+            case "vision":
+                return <VisionApiSettings />;
+            case "strictLearning":
+                return <StrictLearningSettings />;
             case "voice":
                 return <VoiceSettings />;
             case "imageGeneration":
@@ -350,6 +363,8 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                 return <ScreenshotSettings onNotice={onNotice} />;
             case "widget":
                 return <WidgetSettings onNotice={onNotice} />;
+            case "dailyAlarm":
+                return <DailyAlarmSettings onNotice={onNotice} />;
             case "agentComputer":
                 return <AgentComputerSettings onNotice={onNotice} />;
             case "moderation":
@@ -495,13 +510,13 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                         <CardGrid
                             label="API Config"
                             labelClassName="settings-menu-section-title"
-                            items={SETTINGS_MENU.filter(item => ["api", "voice"].includes(item.id)).map(makeCardItem)}
+                            items={SETTINGS_MENU.filter(item => ["api", "vision", "voice"].includes(item.id)).map(makeCardItem)}
                         />
                         <div className="settings-data-rules-section">
                             <h3 className="settings-menu-section-title">Data & Rules</h3>
                             <div className="mt-[10px] flex flex-col gap-3">
                                 <CardGrid
-                                    items={SETTINGS_MENU.filter(item => ["presets", "worldbook", "regex", "data"].includes(item.id)).map(makeCardItem)}
+                                    items={SETTINGS_MENU.filter(item => ["presets", "worldbook", "regex", "data", "strictLearning"].includes(item.id)).map(makeCardItem)}
                                 />
                                 <FeaturedCard item={bindingFeaturedItem} />
                             </div>
@@ -528,6 +543,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                         </div>
                         <div className="settings-realtime-section">
                             <h3 className="settings-menu-section-title">Runtime</h3>
+                            <CardGrid items={SETTINGS_MENU.filter(item => item.id === "dailyAlarm").map(makeCardItem)} />
                             <div className="app-card card-featured settings-toggle-card">
                                 <span className="card-icon card-icon-glass">
                                     <GlassIcon name="time-aware" />

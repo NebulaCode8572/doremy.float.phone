@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, getSystemInstructionDisplayContent, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, isSessionStreamingEnabled, resolveChatBackgroundImage, resolveChatUserAvatar } from "@/lib/chat-storage";
 import { cleanStreamText, splitStreamPreviewSegments, stripLiteralTexts, stripXmlTagBlocks } from "@/lib/stream-preview";
 import type { StateValue } from "@/lib/chat-storage";
@@ -39,7 +39,7 @@ import { ChatSettingsPanel } from "./chat-settings-panel";
 // 通话界面不再由聊天室渲染：已提升到 desktop-shell 的 CallLayer，
 // 这样切会话、回桌面、开别的 App 都不会中断通话。聊天室只负责「发起」；
 // 挂断后的界面刷新由 chat-call-ended 事件回调，角色回应由全局层统一触发。
-import { startCall } from "@/lib/call-session-store";
+import { getActiveCall, getActiveCallServerSnapshot, subscribeActiveCall, startCall } from "@/lib/call-session-store";
 import { TransferTargetModal } from "./transfer-target-modal";
 import { GiftPickerModal } from "./gift-picker-modal";
 import { ConfirmDialog } from "@/components/ui/modal";
@@ -49,6 +49,7 @@ import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseG
 import { appendChatOfflineTurn, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, extractThinkingTag, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp, cancelBackgroundGeneration, isBackgroundReplyGenerating } from "@/lib/follow-up-service";
+import { applyProactiveIntentFromUserText } from "@/lib/proactive-interaction-state";
 import { useKeyboardDismissAutoSend } from "@/components/chat/use-keyboard-dismiss-auto-send";
 import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
@@ -1138,6 +1139,12 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
 }));
 
 export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
+    const activeCall = useSyncExternalStore(
+        subscribeActiveCall,
+        getActiveCall,
+        getActiveCallServerSnapshot,
+    );
+    const isPaiVoiceCallActiveHere = activeCall?.engine === "paivoice" && activeCall.sessionId === session.id;
     const [liveCSS, setLiveCSS] = useState(session.customCSS || "");
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [transientMessages, setTransientMessages] = useState<ChatMessage[]>([]);
@@ -1713,22 +1720,6 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         });
     }, [activeRegexes, displayRegexMacroEngine, getRegexActiveTags]);
 
-    // Rich voice-message syntax is structural, not display text. Keep each
-    // [语音条:...] token intact while applying user display-regex rules to
-    // the surrounding text; otherwise a broad regex can erase or rewrite
-    // the marker before the display projection reparses the response.
-    const renderDisplayTextPreservingVoiceMarkers = useCallback((
-        text: string,
-        placement: 1 | 2 | 5 | 6,
-        isOffline = false,
-    ) => {
-        if (!text || activeRegexes.length === 0) return text;
-        const voiceMarker = /(\[语音条\s*[：:]\s*[^\]]+\])/g;
-        return text.split(voiceMarker).map((segment, index) => (
-            index % 2 === 1 ? segment : renderDisplayText(segment, placement, isOffline)
-        )).join("");
-    }, [activeRegexes.length, renderDisplayText]);
-
     const getMessageDisplayContent = useCallback((message: RenderChatMessage): string => (
         message.displayProjected
             ? message.content
@@ -2203,7 +2194,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     // 群聊通话没有单一角色，交由 CallLayer 按会话成员渲染
                     characterId: session.isGroup ? "" : session.contactId,
                     kind: detail.type === "video" ? "video" : "voice",
+                    engine: !session.isGroup && detail.type !== "video" && process.env.NEXT_PUBLIC_PAIVOICE_ENABLED === "true"
+                        ? "paivoice"
+                        : "legacy",
                     initiator: "character",
+                    wakeCall: detail.wakeCall === true,
+                    accepted: detail.__fromBar === true,
                     ...(typeof detail.characterName === "string" ? { initiatorName: detail.characterName } : {}),
                 });
                 // Dismiss the global incoming-call bar (if showing)
@@ -3158,6 +3154,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             sessionId: session.id,
             characterId: session.isGroup ? "" : session.contactId,
             kind: triggerCall,
+            engine: triggerCall === "voice" && !session.isGroup && process.env.NEXT_PUBLIC_PAIVOICE_ENABLED === "true" ? "paivoice" : "legacy",
             initiator: "character",
         });
     };
@@ -4126,6 +4123,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             // 点数由系统旁白公布——避免结果挂在 user 消息上被角色模仿格式
             const diceOnly = !isQuoting && isDiceOnlyMessage(currentText);
             const diceFace = diceOnly ? rollChatDiceFace() : 0;
+
+            applyProactiveIntentFromUserText(session.id, currentText);
 
             const newMsg = pushChatMessage({
                 sessionId: session.id,
@@ -5344,11 +5343,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const seen = new Set<string>();
         return displayMessages.filter(m => {
             if (isReadingDiscussMessage(m)) return false;
+            if (isPaiVoiceCallActiveHere && m.origin === "call") return false;
             if (seen.has(m.id)) return false;
             seen.add(m.id);
             return true;
         });
-    }, [displayMessages]);
+    }, [displayMessages, isPaiVoiceCallActiveHere]);
 
     const projectedMessages = useMemo<RenderChatMessage[]>(() => {
         const batches = new Map<string, ChatMessage[]>();
@@ -5379,7 +5379,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 projected.push(...batch);
                 continue;
             }
-            const displayRaw = renderDisplayTextPreservingVoiceMarkers(raw, 2, false);
+            const displayRaw = renderDisplayText(raw, 2, false);
             if (displayRaw === raw) {
                 projected.push(...batch);
                 continue;
@@ -6751,7 +6751,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 	                onOpenRichModal={(modal) => { setShowPlusMenu(false); setRichModal(modal); }}
                 onOpenCustomPlusAction={handleOpenCustomPlusAction}
                 onStartVideoCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); startCall({ sessionId: session.id, characterId: session.isGroup ? "" : session.contactId, kind: "video", initiator: "user" }); }}
-                onStartVoiceCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); startCall({ sessionId: session.id, characterId: session.isGroup ? "" : session.contactId, kind: "voice", initiator: "user" }); }}
+                onStartVoiceCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); startCall({ sessionId: session.id, characterId: session.isGroup ? "" : session.contactId, kind: "voice", engine: session.isGroup || process.env.NEXT_PUBLIC_PAIVOICE_ENABLED !== "true" ? "legacy" : "paivoice", initiator: "user" }); }}
                 onSendText={handleSendText}
                 onStopGeneration={clearStuckGeneration}
                 onTriggerAIResponse={triggerAIResponse}
