@@ -152,9 +152,26 @@
             android:turnScreenOn="true"
             android:theme="@style/Theme.FloatShell" />
 
+        <activity
+            android:name=".DailyAlarmFallbackActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.FloatShell" />
+
         <receiver
             android:name=".CallActionReceiver"
             android:exported="false" />
+
+        <receiver android:name=".DailyAlarmCallTimeoutReceiver" android:exported="false" />
+        <receiver android:name=".DailyAlarmWatchdogReceiver" android:exported="false" />
+        <receiver android:name=".DailyAlarmFallbackReceiver" android:exported="false" />
+
+        <service
+            android:name=".DailyAlarmRingingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <service
             android:name=".PushService"
@@ -166,6 +183,10 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
 
