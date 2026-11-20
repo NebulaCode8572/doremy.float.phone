@@ -760,14 +760,14 @@ export function FloatVoiceCallScreen({
 
   if (started) {
     return (
-      <div className="fixed inset-0 z-[110] overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,_#38404a_0%,_#191d24_48%,_#08090c_100%)] text-white">
+      <div className="fixed inset-0 z-[110] overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,_#292a2d_0%,_#141516_48%,_#050506_100%)] text-white">
         <div className="absolute left-0 right-0 top-[max(30px,env(safe-area-inset-top))] flex items-center justify-between px-7">
           {onMinimize ? (
             <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-12 w-12 items-center justify-center text-white">
               <PictureInPicture2 size={34} strokeWidth={1.8} />
             </button>
           ) : <span className="h-12 w-12" />}
-          <span className="absolute left-1/2 -translate-x-1/2 text-[28px] font-normal tabular-nums">
+          <span className="absolute left-1/2 -translate-x-1/2 flex h-12 w-12 items-center justify-center text-[22px] font-light tabular-nums">
             {formatDuration(duration)}
           </span>
           <button
@@ -776,19 +776,19 @@ export function FloatVoiceCallScreen({
             disabled
             className="flex h-12 w-12 cursor-not-allowed items-center justify-center text-white/55"
           >
-            <Plus size={42} strokeWidth={1.7} />
+            <Plus size={32} strokeWidth={1.7} />
           </button>
         </div>
 
         <div className="absolute left-1/2 top-[26%] flex -translate-x-1/2 flex-col items-center">
           {character.avatar ? (
-            <img src={character.avatar} alt={character.name} className="h-[25vw] w-[25vw] max-h-[100px] max-w-[100px] min-h-[92px] min-w-[92px] rounded-2xl object-cover" />
+            <img src={character.avatar} alt={character.name} className="h-[25vw] w-[25vw] max-h-[100px] max-w-[100px] min-h-[92px] min-w-[92px] rounded-xl object-cover" />
           ) : (
-            <div className="flex h-[25vw] w-[25vw] max-h-[100px] max-w-[100px] min-h-[92px] min-w-[92px] items-center justify-center rounded-2xl bg-white/15 text-4xl">
+            <div className="flex h-[25vw] w-[25vw] max-h-[100px] max-w-[100px] min-h-[92px] min-w-[92px] items-center justify-center rounded-xl bg-white/15 text-4xl">
               {character.name.slice(0, 1)}
             </div>
           )}
-          <h1 className="mt-3 text-[28px] font-normal">{character.name}</h1>
+          <h1 className="mt-3 text-[24px] font-normal">{character.name}</h1>
           {error && <p role="alert" className="mt-3 max-w-[80vw] text-center text-sm text-rose-200">{error}</p>}
         </div>
 
@@ -832,7 +832,7 @@ export function FloatVoiceCallScreen({
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex flex-col items-center justify-between overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,_#38404a_0%,_#191d24_48%,_#08090c_100%)] px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))] text-white">
+    <div className="fixed inset-0 z-[110] flex flex-col items-center justify-between overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,_#292a2d_0%,_#141516_48%,_#050506_100%)] px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))] text-white">
       <div className="flex w-full items-center justify-between">
         {onMinimize ? (
           <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-10 w-10 items-center justify-center">
@@ -848,7 +848,7 @@ export function FloatVoiceCallScreen({
         {character.avatar ? (
           <img src={character.avatar} alt={character.name} className="mb-5 h-28 w-28 rounded-full object-cover" />
         ) : (
-          <div className="mb-5 flex h-24 w-24 items-center justify-center rounded-2xl bg-white/15 text-4xl">{character.name.slice(0, 1)}</div>
+          <div className="mb-5 flex h-24 w-24 items-center justify-center rounded-xl bg-white/15 text-4xl">{character.name.slice(0, 1)}</div>
         )}
         <h1 className="text-2xl font-normal">{character.name}</h1>
         {error && <p role="alert" className="mt-4 text-center text-sm text-rose-200">{error}</p>}
