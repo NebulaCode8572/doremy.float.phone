@@ -70,7 +70,12 @@ function issuePaiVoiceTicket(userId: string, secret: string): string {
 export async function POST(request: Request) {
   try {
     const origin = request.headers.get("origin");
-    if (origin && origin !== new URL(request.url).origin) {
+    const requestOrigin = new URL(request.url).origin;
+    const allowedLocalOrigins = new Set([
+      "http://localhost:3001",
+      "http://127.0.0.1:3001",
+    ]);
+    if (origin && origin !== requestOrigin && !allowedLocalOrigins.has(origin)) {
       return jsonError("请求来源无效。", 403);
     }
     if (request.headers.get("sec-fetch-site") === "cross-site") {
