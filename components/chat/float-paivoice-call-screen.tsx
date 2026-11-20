@@ -760,9 +760,20 @@ export function FloatVoiceCallScreen({
 
   if (started) {
     return (
-      <div className="fixed inset-0 z-[110] overflow-hidden bg-[radial-gradient(ellipse_at_50%_36%,_#292a2d_0%,_#171819_44%,_#080809_100%)] text-white">
-        {/* 背景层次：中性灰黑，模拟标准图的柔和模糊光影 */}
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_18%_48%,_rgba(65,66,68,0.30)_0%,_transparent_45%),radial-gradient(ellipse_at_82%_78%,_rgba(76,76,78,0.28)_0%,_transparent_48%),radial-gradient(ellipse_at_50%_100%,_rgba(48,48,50,0.35)_0%,_transparent_55%)]" />
+      <div
+        className="fixed inset-0 z-[110] overflow-hidden text-white"
+        style={{
+          backgroundColor: "#090909",
+          backgroundImage: "radial-gradient(ellipse at 50% 36%, rgba(38,39,40,0.95) 0%, rgba(20,21,22,0.98) 48%, #050506 100%)",
+        }}
+      >
+        {/* Opaque base and layered charcoal gradients to prevent the chat UI showing through */}
+        <div
+          className="pointer-events-none absolute inset-0 z-0"
+          style={{
+            backgroundImage: "radial-gradient(ellipse at 18% 48%, rgba(65,66,68,0.32) 0%, transparent 45%), radial-gradient(ellipse at 82% 78%, rgba(76,76,78,0.30) 0%, transparent 48%), radial-gradient(ellipse at 50% 100%, rgba(48,48,50,0.38) 0%, transparent 55%)",
+          }}
+        />
 
         {/* 顶部栏 */}
         <div className="absolute left-0 right-0 top-[max(28px,env(safe-area-inset-top))] flex items-center justify-between px-6">
