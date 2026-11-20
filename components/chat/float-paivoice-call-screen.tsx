@@ -761,19 +761,29 @@ export function FloatVoiceCallScreen({
   if (started) {
     return (
       <div
-        className="fixed inset-0 z-[110] overflow-hidden text-white"
-        style={{
-          backgroundColor: "#090909",
-          backgroundImage: "radial-gradient(ellipse at 50% 36%, rgba(38,39,40,0.95) 0%, rgba(20,21,22,0.98) 48%, #050506 100%)",
-        }}
+        className="fixed inset-0 z-[110] overflow-hidden text-white bg-black" 
+        style={{ backgroundColor: "#000000" }} // 纯黑底色，彻底防透底
       >
-        {/* Opaque base and layered charcoal gradients to prevent the chat UI showing through */}
+        {/* 1. 背景图模糊层 */}
+        {character.avatar && (
+          <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+            <img
+              src={character.avatar}
+              alt=""
+              className="h-full w-full scale-125 object-cover blur-[48px]"
+              style={{ opacity: 0.65 }} // 这里是模糊背景图的透明度，如果不想要透明度可以改成 1，但原图效果有透明度
+              aria-hidden="true"
+            />
+          </div>
+        )}
+
+        {/* 2. 深色渐变覆盖层（原图那种上下暗、中间亮的质感） */}
         <div
           className="pointer-events-none absolute inset-0 z-0"
           style={{
-            backgroundImage: "radial-gradient(ellipse at 18% 48%, rgba(65,66,68,0.32) 0%, transparent 45%), radial-gradient(ellipse at 82% 78%, rgba(76,76,78,0.30) 0%, transparent 48%), radial-gradient(ellipse at 50% 100%, rgba(48,48,50,0.38) 0%, transparent 55%)",
+            background: "linear-gradient(180deg, rgba(0,0,0,0.88) 0%, rgba(7,7,8,0.70) 35%, rgba(24,24,26,0.70) 72%, rgba(0,0,0,0.86) 100%)",
           }}
-        />
+        />                   
 
         {/* 顶部栏 */}
         <div className="absolute left-0 right-0 top-[max(28px,env(safe-area-inset-top))] flex items-center justify-between px-6">
