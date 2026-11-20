@@ -760,29 +760,19 @@ export function FloatVoiceCallScreen({
 
   if (started) {
     return (
-      <div className="fixed inset-0 z-[110] overflow-hidden bg-[#080809] text-white" style={{ backgroundColor: "#080809" }}>
-        {/* Soft, blurred avatar wallpaper with the reference's nearly-black treatment */}
-        {character.avatar ? (
-          <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            <img
-              src={character.avatar}
-              alt=""
-              className="h-full w-full scale-125 object-cover blur-[48px]" style={{ opacity: 0.65 }}
-              aria-hidden="true"
-            />
-          </div>
-        ) : (
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_30%_40%,#28282b_0%,#111112_48%,#050506_100%)]" aria-hidden="true" />
-        )}
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background: "linear-gradient(180deg, rgba(0,0,0,0.88) 0%, rgba(7,7,8,0.70) 35%, rgba(24,24,26,0.70) 72%, rgba(0,0,0,0.86) 100%)",
-          }}
-        />
+      <div className="fixed inset-0 isolate z-[110] overflow-hidden bg-[#080809] text-white" style={{ backgroundColor: "#080809" }}>
+        {/* Background layers have explicit positioning and stacking. */}
+        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
+          {character.avatar ? (
+            <img src={character.avatar} alt="" className="absolute h-full w-full scale-125 object-cover blur-[48px]" style={{ opacity: 0.65, inset: 0 }} />
+          ) : (
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_40%,#28282b_0%,#111112_48%,#050506_100%)]" />
+          )}
+        </div>
+        <div className="pointer-events-none absolute inset-0 z-10" aria-hidden="true" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.88) 0%, rgba(7,7,8,0.70) 35%, rgba(24,24,26,0.70) 72%, rgba(0,0,0,0.86) 100%)" }}/>
 
         {/* Screenshot-matched top row */}
-        <div className="absolute left-0 right-0 top-[7.1%] flex items-center justify-between px-[6.2%]">
+        <div className="absolute z-20 left-0 right-0 top-[7.1%] flex items-center justify-between px-[6.2%]">
           {onMinimize ? (
             <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-12 w-12 items-center justify-center text-white">
               <svg viewBox="0 0 48 48" width="36" height="36" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -800,7 +790,7 @@ export function FloatVoiceCallScreen({
         </div>
 
         {/* Avatar and name: reference starts around one quarter down the screen */}
-        <div className="absolute left-1/2 top-[25.5%] flex -translate-x-1/2 flex-col items-center">
+        <div className="absolute z-20 left-1/2 top-[25.5%] flex -translate-x-1/2 flex-col items-center">
           {character.avatar ? (
             <img src={character.avatar} alt={character.name} className="object-cover" style={{ width: "24vw", height: "24vw", maxWidth: 168, maxHeight: 168, minWidth: 112, minHeight: 112, borderRadius: 16, aspectRatio: "1 / 1", objectFit: "cover" }} />
           ) : (
@@ -813,7 +803,7 @@ export function FloatVoiceCallScreen({
         </div>
 
         {/* Bottom control row aligned to the screenshot */}
-        <div className="absolute bottom-[calc(env(safe-area-inset-bottom)+14.8vh)] left-1/2 flex w-[76vw] max-w-[520px] -translate-x-1/2 items-start justify-between">
+        <div className="absolute z-20 bottom-[calc(env(safe-area-inset-bottom)+14.8vh)] left-1/2 flex w-[76vw] max-w-[520px] -translate-x-1/2 items-start justify-between">
           <div className="flex w-[18vw] max-w-[126px] flex-shrink-0 flex-col items-center gap-5">
             <button type="button" onClick={toggleMic} aria-label={micMuted ? "取消麦克风静音" : "麦克风静音"} className={`flex aspect-square w-full min-w-[76px] items-center justify-center rounded-full shadow-md transition-colors ${micMuted ? "bg-[#242426] text-white" : "bg-white text-black"}`}>
               {micMuted ? <MicOff size={40} strokeWidth={2.1} /> : <Mic size={40} strokeWidth={2.1} />}
@@ -838,7 +828,16 @@ export function FloatVoiceCallScreen({
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex flex-col items-center justify-between overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,_#292a2d_0%,_#141516_48%,_#050506_100%)] px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))] text-white">
+    <div className="fixed inset-0 isolate z-[110] flex flex-col items-center justify-between overflow-hidden bg-[#080809] px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))] text-white" style={{ backgroundColor: "#080809" }}>
+    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
+      {character.avatar ? (
+        <img src={character.avatar} alt="" className="absolute h-full w-full scale-125 object-cover blur-[48px]" style={{ opacity: 0.65, inset: 0 }} />
+      ) : (
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_40%,#28282b_0%,#111112_48%,#050506_100%)]" />
+      )}
+    </div>
+    <div className="pointer-events-none absolute inset-0 z-10" aria-hidden="true" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.88) 0%, rgba(7,7,8,0.70) 35%, rgba(24,24,26,0.70) 72%, rgba(0,0,0,0.86) 100%)" }}/>
+    <div className="relative z-20 flex flex-1 w-full flex-col items-center justify-between">
       <div className="flex w-full items-center justify-between">
         {onMinimize ? (
           <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-10 w-10 items-center justify-center">
@@ -852,7 +851,7 @@ export function FloatVoiceCallScreen({
       </div>
       <div className="flex flex-1 flex-col items-center justify-center">
         {character.avatar ? (
-          <img src={character.avatar} alt={character.name} className="mb-5 h-28 w-28 rounded-full object-cover" />
+          <img src={character.avatar} alt={character.name} className="mb-5 h-28 w-28 rounded-2xl object-cover" style={{ borderRadius: 16, aspectRatio: "1 / 1" }} />
         ) : (
           <div className="mb-5 flex h-24 w-24 items-center justify-center rounded-xl bg-white/15 text-4xl">{character.name.slice(0, 1)}</div>
         )}
@@ -874,6 +873,7 @@ export function FloatVoiceCallScreen({
           {phase === "connecting" ? "正在连接…" : "开始通话"}
         </button>
       )}
+    </div>
     </div>
   );
 }
