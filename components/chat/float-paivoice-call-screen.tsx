@@ -760,7 +760,7 @@ export function FloatVoiceCallScreen({
 
   if (started) {
     return (
-      <div className="fixed inset-0 z-[110] overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,_#38404a_0%,_#191d24_48%,_#08090c_100%)] text-white">
+      <div className="fixed inset-0 z-[110] overflow-hidden bg-[#000000] text-white">
         <div className="absolute left-0 right-0 top-[max(30px,env(safe-area-inset-top))] flex items-center justify-between px-7">
           {onMinimize ? (
             <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-12 w-12 items-center justify-center text-white">
@@ -832,7 +832,7 @@ export function FloatVoiceCallScreen({
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex flex-col items-center justify-between overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,_#38404a_0%,_#191d24_48%,_#08090c_100%)] px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))] text-white">
+    <div className="fixed inset-0 z-[110] flex flex-col items-center justify-between overflow-hidden bg-[#000000] px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-[max(24px,env(safe-area-inset-top))] text-white">
       <div className="flex w-full items-center justify-between">
         {onMinimize ? (
           <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-10 w-10 items-center justify-center">
