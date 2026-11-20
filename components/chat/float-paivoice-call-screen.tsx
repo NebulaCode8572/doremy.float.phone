@@ -760,71 +760,57 @@ export function FloatVoiceCallScreen({
 
   if (started) {
     return (
-      <div className="fixed inset-0 z-[110] overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,_#292a2d_0%,_#141516_48%,_#050506_100%)] text-white">
-        <div className="absolute left-0 right-0 top-[max(30px,env(safe-area-inset-top))] flex items-center justify-between px-7">
+      <div className="fixed inset-0 z-[110] overflow-hidden bg-[radial-gradient(ellipse_at_50%_36%,_#292a2d_0%,_#171819_44%,_#080809_100%)] text-white">
+        {/* 背景层次：中性灰黑，模拟标准图的柔和模糊光影 */}
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_18%_48%,_rgba(65,66,68,0.30)_0%,_transparent_45%),radial-gradient(ellipse_at_82%_78%,_rgba(76,76,78,0.28)_0%,_transparent_48%),radial-gradient(ellipse_at_50%_100%,_rgba(48,48,50,0.35)_0%,_transparent_55%)]" />
+
+        {/* 顶部栏 */}
+        <div className="absolute left-0 right-0 top-[max(28px,env(safe-area-inset-top))] flex items-center justify-between px-6">
           {onMinimize ? (
-            <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-12 w-12 items-center justify-center text-white">
-              <PictureInPicture2 size={34} strokeWidth={1.8} />
+            <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-11 w-11 items-center justify-center text-white">
+              <PictureInPicture2 size={28} strokeWidth={1.8} />
             </button>
-          ) : <span className="h-12 w-12" />}
-          <span className="absolute left-1/2 -translate-x-1/2 flex h-12 w-12 items-center justify-center text-[22px] font-light tabular-nums">
+          ) : <span className="h-11 w-11" />}
+          <span className="absolute left-1/2 -translate-x-1/2 flex h-11 items-center justify-center text-[18px] font-light tabular-nums tracking-wide">
             {formatDuration(duration)}
           </span>
-          <button
-            type="button"
-            aria-label="添加通话成员（暂不可用）"
-            disabled
-            className="flex h-12 w-12 cursor-not-allowed items-center justify-center text-white/55"
-          >
-            <Plus size={32} strokeWidth={1.7} />
+          <button type="button" aria-label="添加通话成员（暂不可用）" disabled className="flex h-11 w-11 cursor-not-allowed items-center justify-center text-white/55">
+            <Plus size={26} strokeWidth={1.7} />
           </button>
         </div>
 
-        <div className="absolute left-1/2 top-[26%] flex -translate-x-1/2 flex-col items-center">
+        {/* 头像 + 名字 */}
+        <div className="absolute left-1/2 top-[23%] flex -translate-x-1/2 flex-col items-center">
           {character.avatar ? (
-            <img src={character.avatar} alt={character.name} className="h-[25vw] w-[25vw] max-h-[100px] max-w-[100px] min-h-[92px] min-w-[92px] rounded-xl object-cover" />
+            <img src={character.avatar} alt={character.name} className="h-[24vw] w-[24vw] max-h-[100px] max-w-[100px] min-h-[92px] min-w-[92px] rounded-xl object-cover" />
           ) : (
-            <div className="flex h-[25vw] w-[25vw] max-h-[100px] max-w-[100px] min-h-[92px] min-w-[92px] items-center justify-center rounded-xl bg-white/15 text-4xl">
+            <div className="flex h-[24vw] w-[24vw] max-h-[100px] max-w-[100px] min-h-[92px] min-w-[92px] items-center justify-center rounded-xl bg-white/15 text-4xl font-medium">
               {character.name.slice(0, 1)}
             </div>
           )}
-          <h1 className="mt-3 text-[24px] font-normal">{character.name}</h1>
+          <h1 className="mt-3.5 text-[22px] font-normal tracking-wide">{character.name}</h1>
           {error && <p role="alert" className="mt-3 max-w-[80vw] text-center text-sm text-rose-200">{error}</p>}
         </div>
 
-        <div className="absolute bottom-[calc(env(safe-area-inset-bottom)+7vh)] left-1/2 flex w-[86vw] max-w-[360px] -translate-x-1/2 items-start justify-between">
-          <div className="flex w-[19vw] max-w-[78px] flex-shrink-0 flex-col items-center gap-3">
-            <button
-              type="button"
-              onClick={toggleMic}
-              aria-label={micMuted ? "取消麦克风静音" : "麦克风静音"}
-              className={`flex aspect-square w-full min-w-[68px] items-center justify-center rounded-full shadow-lg ${micMuted ? "bg-neutral-800 text-white" : "bg-white text-black"}`}
-            >
-              {micMuted ? <MicOff size={32} strokeWidth={2.2} /> : <Mic size={32} strokeWidth={2.2} />}
+        {/* 底部三个按钮 */}
+        <div className="absolute bottom-[calc(env(safe-area-inset-bottom)+6vh)] left-1/2 flex w-[84vw] max-w-[350px] -translate-x-1/2 items-start justify-between">
+          <div className="flex w-[19vw] max-w-[76px] flex-shrink-0 flex-col items-center gap-2.5">
+            <button type="button" onClick={toggleMic} aria-label={micMuted ? "取消麦克风静音" : "麦克风静音"} className={`flex aspect-square w-full min-w-[66px] items-center justify-center rounded-full shadow-md transition-colors ${micMuted ? "bg-[#2a2a2c] text-white" : "bg-white text-black"}`}>
+              {micMuted ? <MicOff size={28} strokeWidth={2.1} /> : <Mic size={28} strokeWidth={2.1} />}
             </button>
-            <span className="whitespace-nowrap text-center text-[14px] text-white/85">{micMuted ? "麦克风已关" : "麦克风已开"}</span>
+            <span className="whitespace-nowrap text-center text-[13px] text-white/80">{micMuted ? "麦克风已关" : "麦克风已开"}</span>
           </div>
-          <div className="flex w-[19vw] max-w-[78px] flex-shrink-0 flex-col items-center gap-3">
-            <button
-              type="button"
-              onClick={endCall}
-              aria-label="挂断"
-              className="flex aspect-square w-full min-w-[68px] items-center justify-center rounded-full bg-[#e34850] text-white shadow-lg"
-            >
-              <Phone size={34} strokeWidth={1.8} className="rotate-[135deg]" />
+          <div className="flex w-[19vw] max-w-[76px] flex-shrink-0 flex-col items-center gap-2.5">
+            <button type="button" onClick={endCall} aria-label="挂断" className="flex aspect-square w-full min-w-[66px] items-center justify-center rounded-full bg-[#e34850] text-white shadow-md">
+              <Phone size={30} strokeWidth={1.8} className="rotate-[135deg]" />
             </button>
-            <span className="whitespace-nowrap text-center text-[14px] text-white/85">挂断</span>
+            <span className="whitespace-nowrap text-center text-[13px] text-white/80">挂断</span>
           </div>
-          <div className="flex w-[19vw] max-w-[78px] flex-shrink-0 flex-col items-center gap-3">
-            <button
-              type="button"
-              onClick={toggleSpeaker}
-              aria-label={speakerMuted ? "开启扬声器" : "关闭扬声器"}
-              className={`flex aspect-square w-full min-w-[68px] items-center justify-center rounded-full shadow-lg ${speakerMuted ? "bg-[#171719] text-white" : "bg-white text-black"}`}
-            >
-              {speakerMuted ? <VolumeX size={32} strokeWidth={2.2} /> : <Volume2 size={32} strokeWidth={2.2} />}
+          <div className="flex w-[19vw] max-w-[76px] flex-shrink-0 flex-col items-center gap-2.5">
+            <button type="button" onClick={toggleSpeaker} aria-label={speakerMuted ? "开启扬声器" : "关闭扬声器"} className={`flex aspect-square w-full min-w-[66px] items-center justify-center rounded-full shadow-md transition-colors ${speakerMuted ? "bg-[#1c1c1e] text-white" : "bg-white text-black"}`}>
+              {speakerMuted ? <VolumeX size={28} strokeWidth={2.1} /> : <Volume2 size={28} strokeWidth={2.1} />}
             </button>
-            <span className="whitespace-nowrap text-center text-[14px] text-white/85">{speakerMuted ? "扬声器已关" : "扬声器已开"}</span>
+            <span className="whitespace-nowrap text-center text-[13px] text-white/80">{speakerMuted ? "扬声器已关" : "扬声器已开"}</span>
           </div>
         </div>
       </div>
