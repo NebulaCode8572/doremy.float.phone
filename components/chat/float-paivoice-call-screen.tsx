@@ -760,18 +760,20 @@ export function FloatVoiceCallScreen({
 
   if (started) {
     return (
-      <div className="fixed inset-0 z-[110] overflow-hidden bg-[#080809] text-white">
+      <div className="fixed inset-0 z-[110] overflow-hidden bg-[#080809] text-white" style={{ backgroundColor: "#080809" }}>
         {/* Soft, blurred avatar wallpaper with the reference's nearly-black treatment */}
         {character.avatar ? (
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             <img
               src={character.avatar}
               alt=""
-              className="h-full w-full scale-125 object-cover blur-[48px]"
+              className="h-full w-full scale-125 object-cover blur-[48px]" style={{ opacity: 0.65 }}
               aria-hidden="true"
             />
           </div>
-        ) : null}
+        ) : (
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_30%_40%,#28282b_0%,#111112_48%,#050506_100%)]" aria-hidden="true" />
+        )}
         <div
           className="pointer-events-none absolute inset-0"
           style={{
@@ -800,9 +802,9 @@ export function FloatVoiceCallScreen({
         {/* Avatar and name: reference starts around one quarter down the screen */}
         <div className="absolute left-1/2 top-[25.5%] flex -translate-x-1/2 flex-col items-center">
           {character.avatar ? (
-            <img src={character.avatar} alt={character.name} className="h-[24vw] w-[24vw] max-h-[168px] max-w-[168px] min-h-[112px] min-w-[112px] rounded-[16px] object-cover" />
+            <img src={character.avatar} alt={character.name} className="object-cover" style={{ width: "24vw", height: "24vw", maxWidth: 168, maxHeight: 168, minWidth: 112, minHeight: 112, borderRadius: 16, aspectRatio: "1 / 1", objectFit: "cover" }} />
           ) : (
-            <div className="flex h-[24vw] w-[24vw] max-h-[168px] max-w-[168px] min-h-[112px] min-w-[112px] items-center justify-center rounded-[16px] bg-white/15 text-4xl font-medium">
+            <div className="flex items-center justify-center bg-white/15 text-4xl font-medium" style={{ width: "24vw", height: "24vw", maxWidth: 168, maxHeight: 168, minWidth: 112, minHeight: 112, borderRadius: 16, aspectRatio: "1 / 1" }}>
               {character.name.slice(0, 1)}
             </div>
           )}
