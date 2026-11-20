@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LoaderCircle, Mic, MicOff, PhoneOff, Volume2, VolumeX, PictureInPicture2, Plus } from "lucide-react";
+import { LoaderCircle, Mic, MicOff, Phone, Volume2, VolumeX, PictureInPicture2, Plus } from "lucide-react";
 
 import type { Character } from "@/lib/character-types";
 import type { ChatSession } from "@/lib/chat-storage";
@@ -793,34 +793,39 @@ export function FloatVoiceCallScreen({
         </div>
 
         <div className="absolute bottom-[calc(env(safe-area-inset-bottom)+7vh)] left-1/2 flex w-[86vw] max-w-[360px] -translate-x-1/2 items-start justify-between">
-          <button
-            type="button"
-            onClick={toggleMic}
-            aria-label={micMuted ? "取消麦克风静音" : "麦克风静音"}
-            className={`flex h-[19vw] w-[19vw] min-h-[68px] min-w-[68px] max-h-[78px] max-w-[78px] flex-shrink-0 flex-col items-center justify-center rounded-full shadow-lg ${micMuted ? "bg-neutral-800 text-white" : "bg-white text-black"}`}
-          >
-            {micMuted ? <MicOff size={32} strokeWidth={2.2} /> : <Mic size={32} strokeWidth={2.2} />}
-            <span className="absolute mt-[108px] w-[120px] text-center text-[14px] text-white/85">{micMuted ? "麦克风已关" : "麦克风已开"}</span>
-          </button>
-          <button
-            type="button"
-            onClick={endCall}
-            aria-label="挂断"
-            className="flex h-[19vw] w-[19vw] min-h-[68px] min-w-[68px] max-h-[78px] max-w-[78px] flex-shrink-0 items-center justify-center rounded-full bg-[#e34850] text-white shadow-lg"
-          >
-            <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M3.2 8.7c2.5-1.6 5.5-2.5 8.8-2.5s6.3.9 8.8 2.5l-2.2 3.1c-.5.7-1.4 1-2.2.6l-2.1-1a1.8 1.8 0 0 0-1.7 0l-2.1 1c-.8.4-1.7.1-2.2-.6L6.7 8.7" transform="rotate(180 12 12)"/>
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={toggleSpeaker}
-            aria-label={speakerMuted ? "开启扬声器" : "关闭扬声器"}
-            className={`flex h-[19vw] w-[19vw] min-h-[68px] min-w-[68px] max-h-[78px] max-w-[78px] flex-shrink-0 flex-col items-center justify-center rounded-full shadow-lg ${speakerMuted ? "bg-[#171719] text-white" : "bg-white text-black"}`}
-          >
-            {speakerMuted ? <VolumeX size={32} strokeWidth={2.2} /> : <Volume2 size={32} strokeWidth={2.2} />}
-            <span className="absolute mt-[108px] w-[120px] text-center text-[14px] text-white/85">{speakerMuted ? "扬声器已关" : "扬声器已开"}</span>
-          </button>
+          <div className="flex w-[19vw] max-w-[78px] flex-shrink-0 flex-col items-center gap-3">
+            <button
+              type="button"
+              onClick={toggleMic}
+              aria-label={micMuted ? "取消麦克风静音" : "麦克风静音"}
+              className={`flex aspect-square w-full min-w-[68px] items-center justify-center rounded-full shadow-lg ${micMuted ? "bg-neutral-800 text-white" : "bg-white text-black"}`}
+            >
+              {micMuted ? <MicOff size={32} strokeWidth={2.2} /> : <Mic size={32} strokeWidth={2.2} />}
+            </button>
+            <span className="whitespace-nowrap text-center text-[14px] text-white/85">{micMuted ? "麦克风已关" : "麦克风已开"}</span>
+          </div>
+          <div className="flex w-[19vw] max-w-[78px] flex-shrink-0 flex-col items-center gap-3">
+            <button
+              type="button"
+              onClick={endCall}
+              aria-label="挂断"
+              className="flex aspect-square w-full min-w-[68px] items-center justify-center rounded-full bg-[#e34850] text-white shadow-lg"
+            >
+              <Phone size={34} strokeWidth={1.8} className="rotate-[135deg]" />
+            </button>
+            <span className="whitespace-nowrap text-center text-[14px] text-white/85">挂断</span>
+          </div>
+          <div className="flex w-[19vw] max-w-[78px] flex-shrink-0 flex-col items-center gap-3">
+            <button
+              type="button"
+              onClick={toggleSpeaker}
+              aria-label={speakerMuted ? "开启扬声器" : "关闭扬声器"}
+              className={`flex aspect-square w-full min-w-[68px] items-center justify-center rounded-full shadow-lg ${speakerMuted ? "bg-[#171719] text-white" : "bg-white text-black"}`}
+            >
+              {speakerMuted ? <VolumeX size={32} strokeWidth={2.2} /> : <Volume2 size={32} strokeWidth={2.2} />}
+            </button>
+            <span className="whitespace-nowrap text-center text-[14px] text-white/85">{speakerMuted ? "扬声器已关" : "扬声器已开"}</span>
+          </div>
         </div>
       </div>
     );
