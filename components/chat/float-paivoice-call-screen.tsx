@@ -761,13 +761,13 @@ export function FloatVoiceCallScreen({
   if (started) {
     return (
       <div className="fixed inset-0 z-[110] overflow-hidden bg-[#080809] text-white">
-        {/* Blurred avatar wallpaper and dark translucent overlay */}
+        {/* Soft, blurred avatar wallpaper with the reference's nearly-black treatment */}
         {character.avatar ? (
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             <img
               src={character.avatar}
               alt=""
-              className="h-full w-full scale-110 object-cover blur-[42px]"
+              className="h-full w-full scale-125 object-cover blur-[48px]"
               aria-hidden="true"
             />
           </div>
@@ -775,27 +775,30 @@ export function FloatVoiceCallScreen({
         <div
           className="pointer-events-none absolute inset-0"
           style={{
-            background: "linear-gradient(180deg, rgba(0,0,0,0.82) 0%, rgba(7,7,8,0.68) 38%, rgba(24,24,26,0.72) 72%, rgba(0,0,0,0.88) 100%)",
+            background: "linear-gradient(180deg, rgba(0,0,0,0.88) 0%, rgba(7,7,8,0.70) 35%, rgba(24,24,26,0.70) 72%, rgba(0,0,0,0.86) 100%)",
           }}
         />
 
-        {/* Header: minimize, call timer, add */}
-        <div className="absolute left-0 right-0 top-[max(28px,env(safe-area-inset-top))] flex items-center justify-between px-6">
+        {/* Screenshot-matched top row */}
+        <div className="absolute left-0 right-0 top-[7.1%] flex items-center justify-between px-[6.2%]">
           {onMinimize ? (
-            <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-11 w-11 items-center justify-center text-white">
-              <PictureInPicture2 size={28} strokeWidth={1.8} />
+            <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-12 w-12 items-center justify-center text-white">
+              <svg viewBox="0 0 48 48" width="44" height="44" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="4.5" y="4.5" width="27" height="27" rx="2.5" />
+                <rect x="16.5" y="16.5" width="27" height="27" rx="2.5" />
+              </svg>
             </button>
-          ) : <span className="h-11 w-11" />}
-          <span className="absolute left-1/2 -translate-x-1/2 flex h-11 items-center justify-center text-[18px] font-light tabular-nums tracking-wide">
+          ) : <span className="h-12 w-12" />}
+          <span className="absolute left-1/2 -translate-x-1/2 flex h-12 items-center justify-center text-[18px] font-light tabular-nums tracking-wide">
             {formatDuration(duration)}
           </span>
-          <button type="button" aria-label="添加通话成员（暂不可用）" disabled className="flex h-11 w-11 cursor-not-allowed items-center justify-center text-white/90">
-            <Plus size={30} strokeWidth={1.7} />
+          <button type="button" aria-label="添加通话成员（暂不可用）" disabled className="flex h-12 w-12 cursor-not-allowed items-center justify-center text-white/95">
+            <Plus size={38} strokeWidth={2.2} />
           </button>
         </div>
 
-        {/* Avatar and character name */}
-        <div className="absolute left-1/2 top-[21.2%] flex -translate-x-1/2 flex-col items-center">
+        {/* Avatar and name: reference starts around one quarter down the screen */}
+        <div className="absolute left-1/2 top-[25.5%] flex -translate-x-1/2 flex-col items-center">
           {character.avatar ? (
             <img src={character.avatar} alt={character.name} className="h-[24vw] w-[24vw] max-h-[168px] max-w-[168px] min-h-[112px] min-w-[112px] rounded-[16px] object-cover" />
           ) : (
@@ -807,25 +810,25 @@ export function FloatVoiceCallScreen({
           {error && <p role="alert" className="mt-3 max-w-[80vw] text-center text-sm text-rose-200">{error}</p>}
         </div>
 
-        {/* Three large call controls, aligned like the reference */}
-        <div className="absolute bottom-[calc(env(safe-area-inset-bottom)+25vh)] left-1/2 flex w-[82vw] max-w-[520px] -translate-x-1/2 items-start justify-between">
-          <div className="flex w-[19vw] max-w-[126px] flex-shrink-0 flex-col items-center gap-3">
+        {/* Bottom control row aligned to the screenshot */}
+        <div className="absolute bottom-[calc(env(safe-area-inset-bottom)+13.2vh)] left-1/2 flex w-[82vw] max-w-[520px] -translate-x-1/2 items-start justify-between">
+          <div className="flex w-[18vw] max-w-[126px] flex-shrink-0 flex-col items-center gap-5">
             <button type="button" onClick={toggleMic} aria-label={micMuted ? "取消麦克风静音" : "麦克风静音"} className={`flex aspect-square w-full min-w-[76px] items-center justify-center rounded-full shadow-md transition-colors ${micMuted ? "bg-[#242426] text-white" : "bg-white text-black"}`}>
-              {micMuted ? <MicOff size={34} strokeWidth={2.1} /> : <Mic size={36} strokeWidth={2.1} />}
+              {micMuted ? <MicOff size={40} strokeWidth={2.1} /> : <Mic size={40} strokeWidth={2.1} />}
             </button>
-            <span className="whitespace-nowrap text-center text-[15px] text-white/80">{micMuted ? "麦克风已关" : "麦克风已开"}</span>
+            <span className="whitespace-nowrap text-center text-[16px] text-white/85">{micMuted ? "麦克风已关" : "麦克风已开"}</span>
           </div>
-          <div className="flex w-[19vw] max-w-[126px] flex-shrink-0 flex-col items-center gap-3">
+          <div className="flex w-[18vw] max-w-[126px] flex-shrink-0 flex-col items-center gap-5">
             <button type="button" onClick={endCall} aria-label="挂断" className="flex aspect-square w-full min-w-[76px] items-center justify-center rounded-full bg-[#e34850] text-white shadow-md">
-              <Phone size={36} strokeWidth={1.8} className="rotate-[135deg]" />
+              <Phone size={38} strokeWidth={2} className="rotate-[135deg]" />
             </button>
-            <span className="whitespace-nowrap text-center text-[15px] text-white/80">挂断</span>
+            <span className="whitespace-nowrap text-center text-[16px] text-white/85">挂断</span>
           </div>
-          <div className="flex w-[19vw] max-w-[126px] flex-shrink-0 flex-col items-center gap-3">
-            <button type="button" onClick={toggleSpeaker} aria-label={speakerMuted ? "开启扬声器" : "关闭扬声器"} className={`flex aspect-square w-full min-w-[76px] items-center justify-center rounded-full shadow-md transition-colors ${speakerMuted ? "bg-[#1c1c1e] text-white" : "bg-white text-black"}`}>
-              {speakerMuted ? <VolumeX size={34} strokeWidth={2.1} /> : <Volume2 size={34} strokeWidth={2.1} />}
+          <div className="flex w-[18vw] max-w-[126px] flex-shrink-0 flex-col items-center gap-5">
+            <button type="button" onClick={toggleSpeaker} aria-label={speakerMuted ? "开启扬声器" : "关闭扬声器"} className={`flex aspect-square w-full min-w-[76px] items-center justify-center rounded-full shadow-md transition-colors ${speakerMuted ? "bg-[#1c1c1e] text-white" : "bg-[#1c1c1e] text-white"}`}>
+              {speakerMuted ? <VolumeX size={40} strokeWidth={2.1} /> : <Volume2 size={40} strokeWidth={2.1} />}
             </button>
-            <span className="whitespace-nowrap text-center text-[15px] text-white/80">{speakerMuted ? "扬声器已关" : "扬声器已开"}</span>
+            <span className="whitespace-nowrap text-center text-[16px] text-white/85">{speakerMuted ? "扬声器已开" : "扬声器已关"}</span>
           </div>
         </div>
       </div>
