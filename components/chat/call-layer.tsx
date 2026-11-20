@@ -55,7 +55,6 @@ export function CallLayer() {
             .filter((item): item is NonNullable<typeof item> => Boolean(item));
         if (members.length === 0) return null;
         const groupProps = {
-            key: call.callId,
             type: call.kind,
             session,
             characters: members,
@@ -68,10 +67,10 @@ export function CallLayer() {
         };
         // 缩成小窗时不套全屏容器：小窗由 portal 挂到 body，
         // 而这层空壳会盖住整个桌面、挡住下面对手机的操作。
-        if (call.minimized) return <GroupCallScreen {...groupProps} />;
+        if (call.minimized) return <GroupCallScreen key={call.callId} {...groupProps} />;
         return (
             <div className="absolute inset-0 z-[100]">
-                <GroupCallScreen {...groupProps} />
+                <GroupCallScreen key={call.callId} {...groupProps} />
             </div>
         );
     }
@@ -81,7 +80,6 @@ export function CallLayer() {
     if (!character) return null;
 
     const sharedProps = {
-        key: call.callId,
         session,
         character,
         initiator: call.initiator,
@@ -93,10 +91,10 @@ export function CallLayer() {
     };
 
     if (call.kind === "voice" && call.engine === "paivoice" && process.env.NEXT_PUBLIC_PAIVOICE_ENABLED === "true") {
-        return <FloatVoiceCallScreen {...sharedProps} initiallyAccepted={call.accepted} onEnd={() => endCall({ skipReply: true })} />;
+        return <FloatVoiceCallScreen key={call.callId} {...sharedProps} initiallyAccepted={call.accepted} onEnd={() => endCall({ skipReply: true })} />;
     }
 
     return call.kind === "voice"
-        ? <VoiceCallScreen {...sharedProps} initiallyAccepted={call.accepted} />
-        : <VideoCallScreen {...sharedProps} />;
+        ? <VoiceCallScreen key={call.callId} {...sharedProps} initiallyAccepted={call.accepted} />
+        : <VideoCallScreen key={call.callId} {...sharedProps} />;
 }
