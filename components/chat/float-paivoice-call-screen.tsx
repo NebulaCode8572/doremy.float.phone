@@ -783,7 +783,7 @@ export function FloatVoiceCallScreen({
         <div className="absolute left-0 right-0 top-[7.1%] flex items-center justify-between px-[6.2%]">
           {onMinimize ? (
             <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-12 w-12 items-center justify-center text-white">
-              <svg viewBox="0 0 48 48" width="44" height="44" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg viewBox="0 0 48 48" width="36" height="36" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <rect x="4.5" y="4.5" width="27" height="27" rx="2.5" />
                 <rect x="16.5" y="16.5" width="27" height="27" rx="2.5" />
               </svg>
@@ -793,7 +793,7 @@ export function FloatVoiceCallScreen({
             {formatDuration(duration)}
           </span>
           <button type="button" aria-label="添加通话成员（暂不可用）" disabled className="flex h-12 w-12 cursor-not-allowed items-center justify-center text-white/95">
-            <Plus size={38} strokeWidth={2.2} />
+            <Plus size={34} strokeWidth={1.7} />
           </button>
         </div>
 
@@ -811,7 +811,7 @@ export function FloatVoiceCallScreen({
         </div>
 
         {/* Bottom control row aligned to the screenshot */}
-        <div className="absolute bottom-[calc(env(safe-area-inset-bottom)+13.2vh)] left-1/2 flex w-[82vw] max-w-[520px] -translate-x-1/2 items-start justify-between">
+        <div className="absolute bottom-[calc(env(safe-area-inset-bottom)+14.8vh)] left-1/2 flex w-[76vw] max-w-[520px] -translate-x-1/2 items-start justify-between">
           <div className="flex w-[18vw] max-w-[126px] flex-shrink-0 flex-col items-center gap-5">
             <button type="button" onClick={toggleMic} aria-label={micMuted ? "取消麦克风静音" : "麦克风静音"} className={`flex aspect-square w-full min-w-[76px] items-center justify-center rounded-full shadow-md transition-colors ${micMuted ? "bg-[#242426] text-white" : "bg-white text-black"}`}>
               {micMuted ? <MicOff size={40} strokeWidth={2.1} /> : <Mic size={40} strokeWidth={2.1} />}
@@ -828,7 +828,7 @@ export function FloatVoiceCallScreen({
             <button type="button" onClick={toggleSpeaker} aria-label={speakerMuted ? "开启扬声器" : "关闭扬声器"} className={`flex aspect-square w-full min-w-[76px] items-center justify-center rounded-full shadow-md transition-colors ${speakerMuted ? "bg-[#1c1c1e] text-white" : "bg-[#1c1c1e] text-white"}`}>
               {speakerMuted ? <VolumeX size={40} strokeWidth={2.1} /> : <Volume2 size={40} strokeWidth={2.1} />}
             </button>
-            <span className="whitespace-nowrap text-center text-[16px] text-white/85">{speakerMuted ? "扬声器已开" : "扬声器已关"}</span>
+            <span className="whitespace-nowrap text-center text-[16px] text-white/85">{speakerMuted ? "扬声器已关" : "扬声器已开"}</span>
           </div>
         </div>
       </div>
