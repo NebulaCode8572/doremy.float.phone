@@ -79,7 +79,7 @@ export function FloatVoiceCallScreen({
   const [started, setStarted] = useState(false);
   const [duration, setDuration] = useState(0);
   const [micMuted, setMicMuted] = useState(false);
-  const [speakerMuted, setSpeakerMuted] = useState(() => !loadProactiveInteractionState(session.id).enabled);
+  const [speakerMuted, setSpeakerMuted] = useState(false);
   const recitationModeRef = useRef(false);
   const [error, setError] = useState("");
   const isIncoming = initiator === "character" && phase === "incoming";
@@ -715,18 +715,9 @@ export function FloatVoiceCallScreen({
 
   const toggleSpeaker = useCallback(() => {
     const next = !speakerMuted;
-    setProactivePermission(session.id, !next);
-    if (next) {
-      suspendProactiveActions(session.id);
-      for (const turnId of proactiveGenerationTurnIdsRef.current) {
-        cancelledGenerationTurnIdsRef.current.add(turnId);
-        generationControllersRef.current.get(turnId)?.abort();
-      }
-      proactiveGenerationTurnIdsRef.current.clear();
-      proactiveTurnRequestedRef.current = false;
-    }
+    callRef.current?.setSpeakerMuted(next);
     setSpeakerMuted(next);
-  }, [session.id, speakerMuted]);
+  }, [speakerMuted]);
 
   const endCall = useCallback(() => {
     for (const [turnId, controller] of generationControllersRef.current) {
@@ -769,8 +760,8 @@ export function FloatVoiceCallScreen({
 
   if (started) {
     return (
-      <div className="fixed inset-0 z-[110] flex flex-col items-center justify-between overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,_#38404a_0%,_#191d24_48%,_#08090c_100%)] px-7 pb-[max(48px,env(safe-area-inset-bottom))] pt-[max(30px,env(safe-area-inset-top))] text-white">
-        <div className="relative flex w-full items-center justify-between">
+      <div className="fixed inset-0 z-[110] overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,_#38404a_0%,_#191d24_48%,_#08090c_100%)] text-white">
+        <div className="absolute left-0 right-0 top-[max(30px,env(safe-area-inset-top))] flex items-center justify-between px-7">
           {onMinimize ? (
             <button type="button" aria-label="缩小通话窗口" onClick={onMinimize} className="flex h-12 w-12 items-center justify-center text-white">
               <PictureInPicture2 size={34} strokeWidth={1.8} />
@@ -789,42 +780,46 @@ export function FloatVoiceCallScreen({
           </button>
         </div>
 
-        <div className="flex flex-1 flex-col items-center justify-center">
+        <div className="absolute left-1/2 top-[26%] flex -translate-x-1/2 flex-col items-center">
           {character.avatar ? (
-            <img src={character.avatar} alt={character.name} className="mb-5 h-28 w-28 rounded-full object-cover" />
+            <img src={character.avatar} alt={character.name} className="h-[25vw] w-[25vw] max-h-[100px] max-w-[100px] min-h-[92px] min-w-[92px] rounded-2xl object-cover" />
           ) : (
-            <div className="mb-5 flex h-24 w-24 items-center justify-center rounded-2xl bg-white/15 text-4xl">
+            <div className="flex h-[25vw] w-[25vw] max-h-[100px] max-w-[100px] min-h-[92px] min-w-[92px] items-center justify-center rounded-2xl bg-white/15 text-4xl">
               {character.name.slice(0, 1)}
             </div>
           )}
-          <h1 className="text-[28px] font-normal">{character.name}</h1>
-          {error && <p role="alert" className="mt-5 max-w-xs text-center text-sm text-rose-200">{error}</p>}
+          <h1 className="mt-3 text-[28px] font-normal">{character.name}</h1>
+          {error && <p role="alert" className="mt-3 max-w-[80vw] text-center text-sm text-rose-200">{error}</p>}
         </div>
 
-        <div className="flex w-full max-w-[540px] items-center justify-between px-1">
+        <div className="absolute bottom-[calc(env(safe-area-inset-bottom)+7vh)] left-1/2 flex w-[86vw] max-w-[360px] -translate-x-1/2 items-start justify-between">
           <button
             type="button"
             onClick={toggleMic}
             aria-label={micMuted ? "取消麦克风静音" : "麦克风静音"}
-            className={`flex h-28 w-28 items-center justify-center rounded-full shadow-lg ${micMuted ? "bg-neutral-800 text-white" : "bg-white text-black"}`}
+            className={`flex h-[19vw] w-[19vw] min-h-[68px] min-w-[68px] max-h-[78px] max-w-[78px] flex-shrink-0 flex-col items-center justify-center rounded-full shadow-lg ${micMuted ? "bg-neutral-800 text-white" : "bg-white text-black"}`}
           >
-            {micMuted ? <MicOff size={43} strokeWidth={2.4} /> : <Mic size={43} strokeWidth={2.4} />}
+            {micMuted ? <MicOff size={32} strokeWidth={2.2} /> : <Mic size={32} strokeWidth={2.2} />}
+            <span className="absolute mt-[108px] w-[120px] text-center text-[14px] text-white/85">{micMuted ? "麦克风已关" : "麦克风已开"}</span>
           </button>
           <button
             type="button"
             onClick={endCall}
             aria-label="挂断"
-            className="flex h-28 w-28 items-center justify-center rounded-full bg-[#e34850] text-white shadow-lg"
+            className="flex h-[19vw] w-[19vw] min-h-[68px] min-w-[68px] max-h-[78px] max-w-[78px] flex-shrink-0 items-center justify-center rounded-full bg-[#e34850] text-white shadow-lg"
           >
-            <PhoneOff size={43} fill="currentColor" strokeWidth={1.8} />
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M3.2 8.7c2.5-1.6 5.5-2.5 8.8-2.5s6.3.9 8.8 2.5l-2.2 3.1c-.5.7-1.4 1-2.2.6l-2.1-1a1.8 1.8 0 0 0-1.7 0l-2.1 1c-.8.4-1.7.1-2.2-.6L6.7 8.7" transform="rotate(180 12 12)"/>
+            </svg>
           </button>
           <button
             type="button"
             onClick={toggleSpeaker}
-            aria-label={speakerMuted ? "开启主动语音" : "关闭主动语音"}
-            className={`flex h-28 w-28 items-center justify-center rounded-full shadow-lg ${speakerMuted ? "bg-[#171719] text-white" : "bg-white text-black"}`}
+            aria-label={speakerMuted ? "开启扬声器" : "关闭扬声器"}
+            className={`flex h-[19vw] w-[19vw] min-h-[68px] min-w-[68px] max-h-[78px] max-w-[78px] flex-shrink-0 flex-col items-center justify-center rounded-full shadow-lg ${speakerMuted ? "bg-[#171719] text-white" : "bg-white text-black"}`}
           >
-            {speakerMuted ? <VolumeX size={43} strokeWidth={2.2} /> : <Volume2 size={43} strokeWidth={2.2} />}
+            {speakerMuted ? <VolumeX size={32} strokeWidth={2.2} /> : <Volume2 size={32} strokeWidth={2.2} />}
+            <span className="absolute mt-[108px] w-[120px] text-center text-[14px] text-white/85">{speakerMuted ? "扬声器已关" : "扬声器已开"}</span>
           </button>
         </div>
       </div>
