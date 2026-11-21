@@ -20,6 +20,7 @@ export type MemoryConfig = {
     autoSummarizeEnabled: boolean;          // whether auto-summarization runs after N events
     autoBuildCoreEnabled: boolean;          // whether core memories rebuild after long-term summarization
     vectorRecallEnabled: boolean;           // whether vector embedding recall is used for memory retrieval
+    vectorMemoryEnabled: boolean;            // independent cloud vector-memory retrieval toggle
     maxLongTermEntries: number;
     summarizationEventInterval: number;     // trigger summarization every N events
     coreSummarizationInterval: number;      // trigger core-memory rebuild every N new long-term memories
@@ -107,6 +108,7 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
     autoSummarizeEnabled: true,
     autoBuildCoreEnabled: true,
     vectorRecallEnabled: true,
+    vectorMemoryEnabled: false,
     maxLongTermEntries: 500,
     summarizationEventInterval: 80,
     coreSummarizationInterval: 5,
