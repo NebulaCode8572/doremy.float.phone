@@ -1096,6 +1096,20 @@ export function MemoryBankPage({
                     </div>
                 </div>
 
+                    <div className="menu-item">
+                        <MemorySettingsIcon icon={Archive} color={BINDING_ACCENTS.embedding} />
+                        <div className="menu-label-group">
+                            <span className="menu-label">Vector Memory</span>
+                            <span className="menu-desc">独立云端向量记忆检索，不受长期记忆预算触发影响</span>
+                        </div>
+                        <div className="menu-right">
+                            <Toggle checked={config.vectorMemoryEnabled ?? false} onChange={(v) => {
+                                const next = { ...config, vectorMemoryEnabled: v };
+                                setConfig(next);
+                                saveMemoryConfig(next);
+                            }} />
+                        </div>
+                    </div>
                 {/* Token budget sliders */}
                 <p className="menu-group-desc mx-2">控制截断量</p>
                 <div className="menu-group">
