@@ -58,7 +58,7 @@ function isPublicIp(address: string): boolean {
   return false;
 }
 
-async function resolvePublicEndpoint(baseUrl: string): Promise<{ url: URL; addresses: Array<{ address: string; family: number }> }> {
+export async function resolvePublicEndpoint(baseUrl: string): Promise<{ url: URL; addresses: Array<{ address: string; family: number }> }> {
   let url: URL;
   try { url = new URL(baseUrl); }
   catch { throw new Error("视觉模型 Base URL 格式无效"); }
