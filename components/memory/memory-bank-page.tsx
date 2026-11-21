@@ -1094,7 +1094,6 @@ export function MemoryBankPage({
                             }} />
                         </div>
                     </div>
-                </div>
 
                     <div className="menu-item">
                         <MemorySettingsIcon icon={Archive} color={BINDING_ACCENTS.embedding} />
@@ -1110,6 +1109,7 @@ export function MemoryBankPage({
                             }} />
                         </div>
                     </div>
+                </div>
                 {/* Token budget sliders */}
                 <p className="menu-group-desc mx-2">控制截断量</p>
                 <div className="menu-group">
