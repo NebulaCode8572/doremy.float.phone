@@ -2,7 +2,7 @@ import type { MemoryEntry } from "@/lib/memory-types";
 import { kvGet, kvSetAsync, registerKvMigration } from "@/lib/kv-db";
 import { loadMemoryConfig } from "@/lib/memory-storage";
 
-export type VectorSyncEntry = Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata">;
+export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata">, "sourceApp"> & { sourceApp: string };
 
 
 export type ImportedMemoryPendingEntry = VectorSyncEntry;
