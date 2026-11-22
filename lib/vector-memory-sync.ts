@@ -23,6 +23,21 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
   }
 }
 
+export async function deleteCharacterVectorsFromVectorCloud(characterId: string): Promise<void> {
+  if (!characterId || typeof window === "undefined") return;
+  try {
+    const response = await fetch("/api/vector-memory-entry", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ characterId }),
+    });
+    if (!response.ok) console.warn("[VectorMemory] Character cleanup endpoint returned HTTP " + response.status);
+  } catch (error) {
+    console.warn("[VectorMemory] Character vector cleanup failed; local character deletion remains unaffected.", error);
+  }
+}
+
 export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[]): Promise<void> {
   if (!entries.length || typeof window === "undefined") return;
   // Incremental and idempotent: only newly saved entries are sent, and source IDs
