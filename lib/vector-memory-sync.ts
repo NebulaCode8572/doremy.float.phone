@@ -1,6 +1,38 @@
 import type { MemoryEntry } from "@/lib/memory-types";
+import { kvGet, kvSetAsync, registerKvMigration } from "@/lib/kv-db";
+import { loadMemoryConfig } from "@/lib/memory-storage";
 
 type VectorSyncEntry = Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata">;
+
+
+export type ImportedMemoryPendingEntry = VectorSyncEntry;
+const IMPORT_PENDING_KEY = "ai_phone_vector_memory_import_pending_v1";
+registerKvMigration(IMPORT_PENDING_KEY);
+
+export function loadImportedMemoryPending(): ImportedMemoryPendingEntry[] {
+  try {
+    const raw = kvGet(IMPORT_PENDING_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry.id === "string" && typeof entry.characterId === "string" && typeof entry.content === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function addImportedMemoryPending(entries: ImportedMemoryPendingEntry[]): Promise<number> {
+  if (!entries.length || !loadMemoryConfig().vectorMemoryEnabled) return 0;
+  const existing = loadImportedMemoryPending();
+  const merged = new Map(existing.map((entry) => [entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type, entry]));
+  for (const entry of entries) merged.set(entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type, entry);
+  const next = Array.from(merged.values());
+  await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify(next));
+  return Math.max(0, next.length - existing.length);
+}
+
+export async function clearImportedMemoryPending(): Promise<void> {
+  await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify([]));
+}
 
 function vectorSourceKind(entry: VectorSyncEntry): "summary" | "core_memory" | "long_term_memory" {
   return entry.type === "core" ? "core_memory" : entry.type === "long_term" ? "long_term_memory" : "summary";
