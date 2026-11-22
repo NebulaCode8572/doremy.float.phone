@@ -85,8 +85,9 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
   }
 }
 
-export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[]): Promise<void> {
-  if (!entries.length || typeof window === "undefined") return;
+export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[]): Promise<boolean> {
+  if (!entries.length || typeof window === "undefined") return false;
+  let allSucceeded = true;
   // Incremental and idempotent: only newly saved entries are sent, and source IDs
   // are stable for upsert. Keep indexing non-blocking for ordinary memory writes.
   const batches: VectorSyncEntry[][] = [];
@@ -108,9 +109,20 @@ export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[])
           metadata: entry.metadata ?? {},
         })) }),
       });
-      if (!response.ok) console.warn(`[VectorMemory] Index endpoint returned HTTP ${response.status}`);
+      if (!response.ok) { allSucceeded = false; console.warn(`[VectorMemory] Index endpoint returned HTTP ${response.status}`); }
     } catch (error) {
+      allSucceeded = false;
       console.warn("[VectorMemory] Incremental indexing failed; chat/memory save remains unaffected.", error);
     }
   }
+  return allSucceeded;
+}
+
+export async function syncImportedMemoryPending(): Promise<{ synced: number; success: boolean }> {
+  const pending = loadImportedMemoryPending();
+  if (!pending.length) return { synced: 0, success: true };
+  if (!loadMemoryConfig().vectorMemoryEnabled) return { synced: 0, success: false };
+  const success = await syncMemoryEntriesToVectorCloud(pending);
+  if (success) await clearImportedMemoryPending();
+  return { synced: success ? pending.length : 0, success };
 }
