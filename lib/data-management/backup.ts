@@ -546,10 +546,11 @@ export async function importBackupBlob(blob: Blob, moduleIds?: DataModuleId[], o
     for (const sourcePayload of modulePayload.sources) {
       const result = await importSource(sourcePayload, Boolean(options.overwrite), resolver, undefined, (entry) => {
         const imported = total.importedMemoryEntries ?? (total.importedMemoryEntries = []);
-        const key = `${entry.characterId}:${entry.id}:${entry.sourceApp}:${entry.type}`;
+        const tracked = { id: entry.id, characterId: entry.characterId, sourceApp: entry.sourceApp, type: entry.type, content: entry.content, importance: entry.importance, createdAt: entry.createdAt, updatedAt: entry.updatedAt, sourceMessageIds: entry.sourceMessageIds, metadata: entry.metadata };
+        const key = `${tracked.characterId}:${tracked.id}:${tracked.sourceApp}:${tracked.type}`;
         const existingIndex = imported.findIndex((item) => `${item.characterId}:${item.id}:${item.sourceApp}:${item.type}` === key);
-        if (existingIndex >= 0) imported[existingIndex] = entry;
-        else imported.push(entry);
+        if (existingIndex >= 0) imported[existingIndex] = tracked;
+        else imported.push(tracked);
       });
       total.added += result.added;
       total.skipped += result.skipped;
