@@ -10,7 +10,7 @@ export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[])
   for (let i = 0; i < entries.length; i += 3) batches.push(entries.slice(i, i + 3));
   for (const batch of batches) {
     try {
-      await fetch("/api/vector-memory-index", {
+      const response = await fetch("/api/vector-memory-index", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -25,6 +25,7 @@ export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[])
           metadata: entry.metadata ?? {},
         })) }),
       });
+      if (!response.ok) console.warn(`[VectorMemory] Index endpoint returned HTTP ${response.status}`);
     } catch (error) {
       console.warn("[VectorMemory] Incremental indexing failed; chat/memory save remains unaffected.", error);
     }
