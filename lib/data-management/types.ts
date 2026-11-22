@@ -168,6 +168,7 @@ export type ImportResult = {
   skipped: number;
   overwritten: number;
   errors: string[];
+  importedMemoryEntries?: Array<{ id: string; characterId: string; sourceApp: string; type: "core" | "long_term"; content: string; importance: number; createdAt: string; updatedAt: string; sourceMessageIds?: string[]; metadata?: Record<string, unknown> }>;
 };
 
 export type ClearResult = {
