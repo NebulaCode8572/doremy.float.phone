@@ -54,6 +54,7 @@ import { notifyMascotPageContext } from "@/lib/mascot-events";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { normalizeTimeZone } from "@/lib/character-time";
 import { removeCharacterChatReferences } from "@/lib/character-chat-cleanup";
+import { deleteCharacterVectorsFromVectorCloud } from "@/lib/vector-memory-sync";
 
 type ViewType = "list" | "detail";
 
@@ -348,6 +349,7 @@ export function PhoneCharacterApp({ onClose, onNotice }: PhoneCharacterAppProps)
               const characterId = view.id;
               if (characterId) {
                 await removeCharacterChatReferences(characterId);
+                await deleteCharacterVectorsFromVectorCloud(characterId);
                 clearCharacterVersions(characterId);
                 updateChars(characters.filter((c) => c.id !== characterId));
               }
