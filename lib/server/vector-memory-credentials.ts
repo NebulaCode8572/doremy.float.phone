@@ -47,3 +47,39 @@ export async function saveVectorMemorySettings(userId: string, input: { baseUrl:
   if (!result.ok) throw new Error(result.error);
   return { configured: true, baseUrl, model, dimensions: 1024, updatedAt: payload.updated_at };
 }
+
+import { Agent, fetch as undiciFetch } from "undici";
+import { isIP } from "node:net";
+
+export async function testVectorMemoryEmbedding(userId: string): Promise<{ dimensions: number }> {
+  const { publicSettings, apiKey } = await loadVectorMemorySettings(userId);
+  if (!publicSettings.configured || !apiKey) throw new Error("请先保存 Vector Memory 配置");
+  const { url, addresses } = await resolvePublicEndpoint(publicSettings.baseUrl);
+  const host = url.hostname.replace(/^\\[|\\]$/g, "").toLowerCase().replace(/\\.$/, "");
+  const pinnedLookup = ((hostname: string, options: { all?: boolean; family?: number }, callback: (...args: any[]) => void) => {
+    if (hostname.toLowerCase().replace(/\\.$/, "") !== host) { callback(Object.assign(new Error("Unexpected provider hostname"), { code: "EAI_AGAIN" })); return; }
+    const matches = options?.family ? addresses.filter(a => a.family === options.family) : addresses;
+    if (!matches.length) { callback(Object.assign(new Error("No matching public address"), { code: "EAI_AGAIN" })); return; }
+    if (options?.all) callback(null, matches); else callback(null, matches[0].address, matches[0].family);
+  }) as never;
+  const dispatcher = new Agent({ connect: { lookup: pinnedLookup } });
+  const base = url.toString().replace(/\\/+$/, "").replace(/\\/embeddings$/i, "");
+  const endpoint = `${base}/embeddings`;
+  try {
+    const response = await undiciFetch(endpoint, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: publicSettings.model, input: "Vector Memory connection test" }),
+      redirect: "error", signal: AbortSignal.timeout(30000), dispatcher,
+    });
+    const text = await response.text();
+    if (text.length > 1_000_000) throw new Error("Embedding 响应超过大小限制");
+    if (!response.ok) throw new Error(`Embedding API 返回 HTTP ${response.status}: ${text.slice(0, 160)`);
+    let data: any;
+    try { data = JSON.parse(text); } catch { throw new Error("Embedding API 返回无效 JSON"); }
+    const vector = data?.data?.[0]?.embedding;
+    if (!Array.isArray(vector) || vector.length !== 1024 || vector.some((n: unknown) => typeof n !== "number" || !Number.isFinite(n))) {
+      throw new Error(`测试失败：模型返回的向量维度不是 1024（实际 ${Array.isArray(vector) ? vector.length : "无效"}）`);
+    }
+    return { dimensions: vector.length };
+  } finally { await dispatcher.close(); }
+}
