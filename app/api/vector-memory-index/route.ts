@@ -11,7 +11,7 @@ export const maxDuration = 90;
 
 const MAX_BATCH = 3;
 const MAX_CONTENT = 12_000;
-const SOURCE_KINDS = new Set(["summary", "core_memory", "chat_chunk"]);
+const SOURCE_KINDS = new Set(["summary", "core_memory", "long_term_memory", "chat_chunk"]);
 
 export async function POST(request: Request) {
   try {
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
           characterId,
           sourceApp,
           sourceId: id,
-          sourceKind: sourceKind as "summary" | "core_memory" | "chat_chunk",
+          sourceKind: sourceKind as "summary" | "core_memory" | "long_term_memory" | "chat_chunk",
           content,
           embedding,
           metadata: item.metadata && typeof item.metadata === "object" ? item.metadata : {},
