@@ -27,7 +27,7 @@ export async function addImportedMemoryPending(entries: ImportedMemoryPendingEnt
   for (const entry of entries) merged.set(entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type, entry);
   const next = Array.from(merged.values());
   await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify(next));
-  return Math.max(0, next.length - existing.length);
+  return next.length;
 }
 
 export async function clearImportedMemoryPending(): Promise<void> {
