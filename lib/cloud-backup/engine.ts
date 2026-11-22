@@ -897,10 +897,11 @@ async function restoreFromCloudManifestInternal(
         };
         try {
           const result = await importSource(payload.sources[sourceIndex], Boolean(options.overwrite), resolver, importProgress, (entry) => {
-            const key = `${entry.characterId}:${entry.id}:${entry.sourceApp}:${entry.type}`;
+            const tracked = { id: entry.id, characterId: entry.characterId, sourceApp: entry.sourceApp, type: entry.type, content: entry.content, importance: entry.importance, createdAt: entry.createdAt, updatedAt: entry.updatedAt, sourceMessageIds: entry.sourceMessageIds, metadata: entry.metadata };
+            const key = `${tracked.characterId}:${tracked.id}:${tracked.sourceApp}:${tracked.type}`;
             const existingIndex = total.importedMemoryEntries.findIndex((item) => `${item.characterId}:${item.id}:${item.sourceApp}:${item.type}` === key);
-            if (existingIndex >= 0) total.importedMemoryEntries[existingIndex] = entry;
-            else total.importedMemoryEntries.push(entry);
+            if (existingIndex >= 0) total.importedMemoryEntries[existingIndex] = tracked;
+            else total.importedMemoryEntries.push(tracked);
           });
           total.added += result.added;
           total.skipped += result.skipped;
