@@ -35,7 +35,8 @@ import { syncChatMessageChunkToVectorCloud, refreshChatMessageBucketsToVectorClo
         }
     }
 }
-\nexport const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
+
+export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
 export const CHAT_INITIAL_VISIBLE_MESSAGE_COUNT = 50;
 export const CHAT_LOAD_MORE_MESSAGE_COUNT = 30;
