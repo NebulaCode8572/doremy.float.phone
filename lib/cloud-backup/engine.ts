@@ -670,7 +670,7 @@ export async function restoreFromCloudManifest(
   config: CloudBackupConfig,
   manifestName: string,
   options: { overwrite?: boolean; moduleIds?: DataModuleId[]; onProgress?: (p: CloudProgress) => void } = {},
-): Promise<{ added: number; skipped: number; overwritten: number; errors: string[] }> {
+): Promise<{ added: number; skipped: number; overwritten: number; errors: string[]; importedMemoryEntries?: Array<{ id: string; characterId: string; sourceApp: string; type: "core" | "long_term"; content: string; importance: number; createdAt: string; updatedAt: string; sourceMessageIds?: string[]; metadata?: Record<string, unknown> }> }> {
   return withCloudOperationLock("restore", () => restoreFromCloudManifestInternal(config, manifestName, options));
 }
 
@@ -678,7 +678,7 @@ async function restoreFromCloudManifestInternal(
   config: CloudBackupConfig,
   manifestName: string,
   options: { overwrite?: boolean; moduleIds?: DataModuleId[]; onProgress?: (p: CloudProgress) => void },
-): Promise<{ added: number; skipped: number; overwritten: number; errors: string[] }> {
+): Promise<{ added: number; skipped: number; overwritten: number; errors: string[]; importedMemoryEntries?: Array<{ id: string; characterId: string; sourceApp: string; type: "core" | "long_term"; content: string; importance: number; createdAt: string; updatedAt: string; sourceMessageIds?: string[]; metadata?: Record<string, unknown> }> }> {
   const rawOnProgress = options.onProgress ?? (() => {});
   // Remember the last percent so out-of-band events (media downloads inside the
   // import phase) can refresh the detail text without jumping the bar around.
@@ -691,7 +691,7 @@ async function restoreFromCloudManifestInternal(
   const manifest = await loadManifest(config, manifestName);
   if (!manifest) throw new Error("找不到该备份清单。");
   const selected = options.moduleIds && options.moduleIds.length > 0 ? new Set(options.moduleIds) : null;
-  const total = { added: 0, skipped: 0, overwritten: 0, errors: [] as string[] };
+  const total = { added: 0, skipped: 0, overwritten: 0, errors: [] as string[], importedMemoryEntries: [] as Array<{ id: string; characterId: string; sourceApp: string; type: "core" | "long_term"; content: string; importance: number; createdAt: string; updatedAt: string; sourceMessageIds?: string[]; metadata?: Record<string, unknown> }> };
 
   const mediaByRef = new Map((manifest.media ?? []).map((item) => [item.ref, item] as const));
 
@@ -896,7 +896,12 @@ async function restoreFromCloudManifestInternal(
           });
         };
         try {
-          const result = await importSource(payload.sources[sourceIndex], Boolean(options.overwrite), resolver, importProgress);
+          const result = await importSource(payload.sources[sourceIndex], Boolean(options.overwrite), resolver, importProgress, (entry) => {
+            const key = `${entry.characterId}:${entry.id}:${entry.sourceApp}:${entry.type}`;
+            const existingIndex = total.importedMemoryEntries.findIndex((item) => `${item.characterId}:${item.id}:${item.sourceApp}:${item.type}` === key);
+            if (existingIndex >= 0) total.importedMemoryEntries[existingIndex] = entry;
+            else total.importedMemoryEntries.push(entry);
+          });
           total.added += result.added;
           total.skipped += result.skipped;
           total.overwritten += result.overwritten;
