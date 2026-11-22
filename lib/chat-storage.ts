@@ -16,7 +16,7 @@ import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import { findUserAvatarChangeIntent, inferAvatarDecisionFromReply } from "./chat-avatar-intent";
 import { syncChatMessageChunkToVectorCloud, refreshChatMessageBucketsToVectorCloud, deleteChatMessageBucketsFromVectorCloud } from "./vector-memory-chat-sync";
 
-\nfunction refreshVectorChunksForMessages(messages: ChatMessage[]): void {
+function refreshVectorChunksForMessages(messages: ChatMessage[]): void {
     if (typeof window === "undefined" || messages.length === 0) return;
     const bySession = new Map<string, Set<number>>();
     for (const message of messages) {
@@ -1967,7 +1967,8 @@ export function editChatMessage(messageId: string, newContent: string) {
     const msgIdx = _messagesCache.findIndex(m => m.id === messageId);
     if (msgIdx !== -1) {
         _messagesCache[msgIdx] = { ..._messagesCache[msgIdx], content: newContent };
-        dbPutMessage(_messagesCache[msgIdx]);\n        refreshVectorChunksForMessages([_messagesCache[msgIdx]]);
+        dbPutMessage(_messagesCache[msgIdx]);
+        refreshVectorChunksForMessages([_messagesCache[msgIdx]]);
 
         const sessionId = _messagesCache[msgIdx].sessionId;
         const lastMsg = getLastVisibleSessionMessage(sessionId);
