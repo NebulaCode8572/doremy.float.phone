@@ -49,7 +49,7 @@ import {
   readBackupManifest,
 } from "@/lib/data-management/backup";
 import { loadCharacters } from "@/lib/character-storage";
-import { deleteCharacterMemoryVectorsFromVectorCloud } from "@/lib/vector-memory-sync";
+import { deleteCharacterMemoryVectorsFromVectorCloud, addImportedMemoryPending } from "@/lib/vector-memory-sync";
 import {
   cleanupOrphanThemeAssets,
   DEFAULT_MEDIA_MAINTENANCE_CONFIG,
@@ -379,6 +379,7 @@ export function DataManagement({ onNotice }: DataManagementProps) {
         console.warn("[DataManagement] cloud restore errors:", result.errors);
       }
       const restoredCount = result.added + result.overwritten;
+      const pendingVectorCount = await addImportedMemoryPending(result.importedMemoryEntries ?? []);
       if (restoredCount === 0 && result.errors.length > 0) {
         throw new Error(`云端恢复失败：${result.errors[0]}`);
       }
@@ -388,7 +389,7 @@ export function DataManagement({ onNotice }: DataManagementProps) {
         : "";
       setRestartNotice({
         title: result.errors.length > 0 ? "恢复部分完成，请彻底重启应用" : "恢复完成，请彻底重启应用",
-        summary: `已从云端恢复：新增 ${result.added}，覆盖 ${result.overwritten}，跳过 ${result.skipped}${errorNote}。${errorDetails}`,
+        summary: `已从云端恢复：新增 ${result.added}，覆盖 ${result.overwritten}，跳过 ${result.skipped}${pendingVectorCount > 0 ? `。有 ${pendingVectorCount} 条记忆等待你确认同步到 Vector Memory` : ""}${errorNote}。${errorDetails}`,
       });
     } finally {
       setCloudProgress(null);
@@ -525,6 +526,7 @@ export function DataManagement({ onNotice }: DataManagementProps) {
   const executeImport = (moduleIds: DataModuleId[], overwrite = false) => runAction("导入中", async () => {
     if (!pendingImport) return "请先选择备份文件。";
     const result: ImportResult = await importBackupBlob(pendingImport.file, moduleIds, { overwrite });
+    const pendingVectorCount = await addImportedMemoryPending(result.importedMemoryEntries ?? []);
     const importedCount = result.added + result.overwritten;
     if (importedCount === 0 && result.errors.length > 0) {
       throw new Error(`导入失败：${result.errors[0]}`);
@@ -534,7 +536,7 @@ export function DataManagement({ onNotice }: DataManagementProps) {
     const errorNote = result.errors.length > 0
       ? `，错误 ${result.errors.length} 个${result.errors[0] ? `\n首个错误：${result.errors[0]}` : ""}`
       : "";
-    setRestartNotice({ title: "导入完成，请彻底重启应用", summary: `${summary}${errorNote}。` });
+    setRestartNotice({ title: "导入完成，请彻底重启应用", summary: `${summary}${pendingVectorCount > 0 ? `。有 ${pendingVectorCount} 条记忆等待你确认同步到 Vector Memory` : ""}${errorNote}。` });
   });
 
   const handlePersist = () => runAction("申请保护", async () => {
