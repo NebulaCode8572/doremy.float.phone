@@ -1,5 +1,5 @@
 import type { MemoryEntry } from "@/lib/memory-types";
-import { kvGet, kvSetAsync, registerKvMigration } from "@/lib/kv-db";
+import { hydrateKvDb, kvGet, kvSetAsync, registerKvMigration } from "@/lib/kv-db";
 import { loadMemoryConfig } from "@/lib/memory-storage";
 
 export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata">, "sourceApp"> & { sourceApp: string };
@@ -21,6 +21,7 @@ export function loadImportedMemoryPending(): ImportedMemoryPendingEntry[] {
 }
 
 export async function addImportedMemoryPending(entries: ImportedMemoryPendingEntry[]): Promise<number> {
+  await hydrateKvDb();
   if (!entries.length || !loadMemoryConfig().vectorMemoryEnabled) return 0;
   const existing = loadImportedMemoryPending();
   const merged = new Map(existing.map((entry) => [entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type, entry]));
@@ -145,6 +146,7 @@ export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[])
 }
 
 export async function syncImportedMemoryPending(): Promise<{ synced: number; success: boolean }> {
+  await hydrateKvDb();
   const pending = loadImportedMemoryPending();
   if (!pending.length) return { synced: 0, success: true };
   if (!loadMemoryConfig().vectorMemoryEnabled) return { synced: 0, success: false };
