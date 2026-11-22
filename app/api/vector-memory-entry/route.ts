@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentAccount } from "@/lib/server/account-auth";
 import { getSupabaseServerConfig } from "@/lib/server/supabase-rest";
 import { readLimitedJson } from "@/lib/server/read-limited-json";
-import { deleteVectorMemorySource, deleteVectorMemoriesForCharacter } from "@/lib/server/vector-memory-store";
+import { deleteVectorMemorySource, deleteVectorMemoriesForCharacter, deleteVectorMemoryEntriesForCharacter } from "@/lib/server/vector-memory-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,8 +20,15 @@ export async function DELETE(request: Request) {
     const sourceApp = typeof parsed.value.sourceApp === "string" ? parsed.value.sourceApp.trim() : "";
     const sourceId = typeof parsed.value.sourceId === "string" ? parsed.value.sourceId.trim() : "";
     const sourceKind = typeof parsed.value.sourceKind === "string" ? parsed.value.sourceKind : "";
+    const memoryOnly = parsed.value.memoryOnly === true;
     if (!characterId || characterId.length > 160) {
       return NextResponse.json({ error: "角色 ID 无效" }, { status: 400 });
+    }
+
+    // Memory-only cleanup intentionally preserves chat_chunk records.
+    if (memoryOnly && !sourceApp && !sourceId && !sourceKind) {
+      await deleteVectorMemoryEntriesForCharacter(account.id, characterId);
+      return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
     }
 
     // Character-wide deletion is account- and character-scoped server-side.
