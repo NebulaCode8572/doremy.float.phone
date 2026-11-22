@@ -13,7 +13,7 @@ function cleanMessageText(message: ChatMessage): string {
 }
 
 /** Incrementally refresh the fixed four-message bucket containing the newly saved message. */
-export function syncChatMessageChunkToVectorCloud(session: ChatSession, message: ChatMessage): void {
+export function syncChatMessageChunkToVectorCloud(session: ChatSession, message: ChatMessage, allMessages: ChatMessage[]): void {
   if (typeof window === "undefined" || session.isGroup || !session.contactId || !loadMemoryConfig().vectorMemoryEnabled) return;
   if (message.sessionId !== session.id) return;
   const order = typeof message.order === "number" && Number.isFinite(message.order) ? message.order : 0;
