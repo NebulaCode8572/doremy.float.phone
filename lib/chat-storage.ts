@@ -28,6 +28,9 @@ import { syncChatMessageChunkToVectorCloud, refreshChatMessageBucketsToVectorClo
     for (const [sessionId, buckets] of bySession) {
         const session = loadChatSessions().find(item => item.id === sessionId);
         if (session && !session.isGroup && session.contactId) {
+            for (const remaining of _messagesCache.filter(item => item.sessionId === sessionId)) {
+                buckets.add(Math.floor(Math.max(0, remaining.order ?? 0) / 4));
+            }
             refreshChatMessageBucketsToVectorCloud(session, _messagesCache, [...buckets]);
         }
     }
