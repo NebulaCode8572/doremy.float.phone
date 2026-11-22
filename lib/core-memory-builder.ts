@@ -11,6 +11,7 @@ import {
 } from "./memory-storage";
 import { resolveAuxiliaryApiConfig } from "./settings-storage";
 import { simpleLLMCall } from "./api-helpers";
+import { syncMemoryEntriesToVectorCloud } from "./vector-memory-sync";
 
 const coreBuildingSet = new Set<string>();
 
@@ -131,6 +132,7 @@ export async function runCoreMemoryPipeline(
         },
     };
     await saveMemoryEntry(coreEntry);
+    if (config.vectorMemoryEnabled) void syncMemoryEntriesToVectorCloud([coreEntry]);
 
     setLastCoreSummarizedTimestamp(characterId, latest);
     if (!options?.force) {
