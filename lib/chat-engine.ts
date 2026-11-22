@@ -61,6 +61,7 @@ import { extractFinishReason } from "./api-helpers";
 import { fetchLlmPayload } from "./llm-http";
 import { loadMemoryConfig, incrementEventCounter } from "./memory-storage";
 import { retrieveCoreMemoriesForPrompt, retrieveMemoriesForPrompt } from "./memory-service";
+import { retrieveVectorMemoryForPrompt } from "./vector-memory-recall";
 import { formatCoreMemories, formatLongTermMemories } from "./memory-injector";
 import { maybeRunSummarization } from "./memory-summarizer";
 import { prepareShortTermContext } from "./short-term-assembler";
@@ -2052,6 +2053,10 @@ export async function buildChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
+    if (memConfig.vectorMemoryEnabled) {
+        const vectorRecallText = await retrieveVectorMemoryForPrompt(character.id, wbActivationContext).catch(() => "");
+        if (vectorRecallText) llmMessages.push({ role: "system", content: vectorRecallText });
+    }
     const avatarChangeIntent = !session.isGroup
         ? findUserAvatarChangeIntent(historyForPrompt, session.id, character.id)
         : null;
