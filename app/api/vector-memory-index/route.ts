@@ -11,7 +11,7 @@ export const maxDuration = 90;
 
 const MAX_BATCH = 3;
 const MAX_CONTENT = 12_000;
-const SOURCE_KINDS = new Set(["summary", "core_memory"]);
+const SOURCE_KINDS = new Set(["summary", "core_memory", "chat_chunk"]);
 
 export async function POST(request: Request) {
   try {
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
     const body = parsed.value;
     const entries = Array.isArray(body.entries) ? body.entries : [];
-    if (!entries.length || entries.length > MAX_BATCH) return NextResponse.json({ error: "每批最多索引 3 条记忆" }, { status: 400 });
+    if (!entries.length || entries.length > MAX_BATCH) return NextResponse.json({ error: "每批最多索引 3 条向量内容" }, { status: 400 });
     const results: Array<{ id: string; success: boolean; error?: string }> = [];
     for (const item of entries) {
       const id = typeof item?.id === "string" ? item.id.slice(0, 240) : "";
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
           characterId,
           sourceApp,
           sourceId: id,
-          sourceKind: sourceKind as "summary" | "core_memory",
+          sourceKind: sourceKind as "summary" | "core_memory" | "chat_chunk",
           content,
           embedding,
           metadata: item.metadata && typeof item.metadata === "object" ? item.metadata : {},
