@@ -177,6 +177,7 @@ export async function runSummarizationPipeline(
     if (allLongTerm.length > config.maxLongTermEntries) {
         const excess = allLongTerm.slice(0, allLongTerm.length - config.maxLongTermEntries);
         await deleteMemoryEntries(excess.map(e => e.id));
+        void deleteMemoryEntriesFromVectorCloud(excess);
     }
 
     incrementCoreMemoryCounter(characterId);
