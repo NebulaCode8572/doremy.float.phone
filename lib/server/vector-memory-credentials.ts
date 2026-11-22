@@ -72,7 +72,7 @@ export async function testVectorMemoryEmbedding(userId: string): Promise<{ dimen
     });
     const text = await response.text();
     if (text.length > 1_000_000) throw new Error("Embedding 响应超过大小限制");
-    if (!response.ok) throw new Error(`Embedding API 返回 HTTP ${response.status}: ${text.slice(0, 160)}`);
+    if (!response.ok) throw new Error(`Embedding API 返回 HTTP ${response.status}`);
     let data: any;
     try { data = JSON.parse(text); } catch { throw new Error("Embedding API 返回无效 JSON"); }
     const vector = data?.data?.[0]?.embedding;
