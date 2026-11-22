@@ -30,6 +30,14 @@ async function deleteChatChunk(characterId: string, sessionId: string, bucket: n
   }
 }
 
+export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, buckets: number[]): void {
+  if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
+  for (const bucket of [...new Set(buckets.filter(value => Number.isInteger(value) && value >= 0))]) {
+    void deleteChatChunk(session.contactId, session.id, bucket);
+  }
+}
+
+
 export function refreshChatMessageBucketsToVectorCloud(
   session: ChatSession,
   allMessages: ChatMessage[],
