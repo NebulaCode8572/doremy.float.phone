@@ -16,7 +16,7 @@ export async function DELETE(request: Request) {
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
     const characterId = typeof parsed.value.characterId === "string" ? parsed.value.characterId.trim() : "";
     const sourceId = typeof parsed.value.sourceId === "string" ? parsed.value.sourceId.trim() : "";
-    const match = /^session:([A-Za-z0-9_-]{1,180}):chunk:(\\d{1,8})$/.exec(sourceId);
+    const match = /^session:([A-Za-z0-9_-]{1,180}):chunk:(\d{1,8})$/.exec(sourceId);
     if (!characterId || characterId.length > 160 || !match) return NextResponse.json({ error: "聊天向量删除参数无效" }, { status: 400 });
     await deleteVectorMemorySource(account.id, characterId, "chat", sourceId, "chat_chunk");
     return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
