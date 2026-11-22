@@ -14,6 +14,7 @@ import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-h
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import { findUserAvatarChangeIntent, inferAvatarDecisionFromReply } from "./chat-avatar-intent";
+import { syncChatMessageChunkToVectorCloud } from "./vector-memory-chat-sync";
 
 export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
@@ -1465,6 +1466,8 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
 
     _messagesCache.push(newMsg);
     dbPutMessage(newMsg);
+    const vectorSession = _sessionsCache.find(session => session.id === newMsg.sessionId);
+    if (vectorSession) syncChatMessageChunkToVectorCloud(vectorSession, newMsg, _messagesCache);
     resolvePendingAvatarRecommendation(newMsg);
 
     // Auto update session last message only for records that can produce a list preview.
