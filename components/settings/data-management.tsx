@@ -313,8 +313,11 @@ export function DataManagement({ onNotice }: DataManagementProps) {
   const [spaceScanDetail, setSpaceScanDetail] = useState<string | null>(null);
   const [spaceClearPending, setSpaceClearPending] = useState<StorageCategoryStat | null>(null);
   const [spaceClearRange, setSpaceClearRange] = useState<number>(30);
+  const [pendingVectorEntriesCount, setPendingVectorEntriesCount] = useState(0);
+  const [pendingVectorSyncBusy, setPendingVectorSyncBusy] = useState(false);
 
   useEffect(() => {
+    setPendingVectorEntriesCount(loadImportedMemoryPending().length);
     setCloudConfig(loadCloudBackupConfig());
     setCloudState(loadCloudBackupState());
   }, []);
@@ -380,6 +383,8 @@ export function DataManagement({ onNotice }: DataManagementProps) {
       }
       const restoredCount = result.added + result.overwritten;
       const pendingVectorCount = await addImportedMemoryPending(result.importedMemoryEntries ?? []);
+    setPendingVectorEntriesCount(loadImportedMemoryPending().length);
+      setPendingVectorEntriesCount(loadImportedMemoryPending().length);
       if (restoredCount === 0 && result.errors.length > 0) {
         throw new Error(`云端恢复失败：${result.errors[0]}`);
       }
