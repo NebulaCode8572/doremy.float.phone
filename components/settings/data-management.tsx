@@ -48,6 +48,8 @@ import {
   inspectData,
   readBackupManifest,
 } from "@/lib/data-management/backup";
+import { loadCharacters } from "@/lib/character-storage";
+import { deleteCharacterMemoryVectorsFromVectorCloud } from "@/lib/vector-memory-sync";
 import {
   cleanupOrphanThemeAssets,
   DEFAULT_MEDIA_MAINTENANCE_CONFIG,
@@ -561,6 +563,12 @@ export function DataManagement({ onNotice }: DataManagementProps) {
 
   const executeClearSelected = (moduleIds: DataModuleId[]) => runAction("清理中", async () => {
     const result = await clearModules(moduleIds);
+    if (moduleIds.includes("memory")) {
+      // Remove only memory vectors; chat_chunk retrieval data is preserved.
+      for (const character of loadCharacters()) {
+        await deleteCharacterMemoryVectorsFromVectorCloud(character.id);
+      }
+    }
     setSelectedClearModules([]);
     const errorNote = result.errors.length > 0 ? `，另有 ${result.errors.length} 个错误` : "";
     setRestartNotice({ title: "清理完成，请彻底重启应用", summary: `已清理 ${result.removed} 项${errorNote}。` });
