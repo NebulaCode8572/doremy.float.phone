@@ -28,6 +28,7 @@ import { runCoreMemoryPipeline } from "@/lib/core-memory-builder";
 import { resolveAuxiliaryApiConfig, resolveUserIdentity } from "@/lib/settings-storage";
 import { generateEmbedding, resolveEmbeddingModel } from "@/lib/memory-embedding";
 import { BINDING_ACCENTS } from "@/lib/ui-accent-colors";
+import { VectorMemorySettings } from "./vector-memory-settings";
 
 type MemoryView = "list" | "detail" | "settings";
 type MemoryTab = "short" | "shared" | "core" | "long";
@@ -1102,6 +1103,7 @@ export function MemoryBankPage({
                             <span className="menu-desc">独立云端向量记忆检索，不受长期记忆预算触发影响</span>
                         </div>
                         <div className="menu-right">
+                            <VectorMemorySettings />
                             <Toggle checked={config.vectorMemoryEnabled ?? false} onChange={(v) => {
                                 const next = { ...config, vectorMemoryEnabled: v };
                                 setConfig(next);
