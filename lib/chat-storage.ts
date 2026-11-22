@@ -14,7 +14,7 @@ import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-h
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import { findUserAvatarChangeIntent, inferAvatarDecisionFromReply } from "./chat-avatar-intent";
-import { syncChatMessageChunkToVectorCloud, refreshChatMessageBucketsToVectorCloud } from "./vector-memory-chat-sync";
+import { syncChatMessageChunkToVectorCloud, refreshChatMessageBucketsToVectorCloud, deleteChatMessageBucketsFromVectorCloud } from "./vector-memory-chat-sync";
 
 \nfunction refreshVectorChunksForMessages(messages: ChatMessage[]): void {
     if (typeof window === "undefined" || messages.length === 0) return;
@@ -1404,9 +1404,13 @@ export function createGroupSession(groupName: string, participantIds: string[], 
 
 export function deleteChatSession(sessionId: string) {
     const sessions = loadChatSessions();
+    const targetSession = sessions.find(s => s.id === sessionId);
+    const sessionMessages = _messagesCache.filter(message => message.sessionId === sessionId);
+    const affectedBuckets = [...new Set(sessionMessages.map(message => Math.floor(Math.max(0, message.order ?? 0) / 4)))];
     const filtered = sessions.filter(s => s.id !== sessionId);
     saveChatSessions(filtered);
     dbDeleteSession(sessionId);
+    if (targetSession) deleteChatMessageBucketsFromVectorCloud(targetSession, affectedBuckets);
     clearChatSessionMessages(sessionId); // Cleanup associated messages
 }
 
