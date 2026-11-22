@@ -640,8 +640,6 @@ export function DataManagement({ onNotice }: DataManagementProps) {
     void executeClearSelected(request.moduleIds);
   };
 
-  return (
-    <div className="page-menu data-management-menu" style={{ padding: 0 }}>
   const confirmImportedVectorSync = async () => {
     if (pendingVectorSyncBusy || pendingVectorEntriesCount <= 0) return;
     setPendingVectorSyncBusy(true);
@@ -654,6 +652,8 @@ export function DataManagement({ onNotice }: DataManagementProps) {
     }
   };
 
+  return (
+    <div className="page-menu data-management-menu" style={{ padding: 0 }}>
       {pendingVectorEntriesCount > 0 && (
         <div className="data-section" role="status" style={{ marginBottom: 12 }}>
           <div className="menu-item data-readonly-item">
