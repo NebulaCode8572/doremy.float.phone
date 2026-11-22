@@ -50,6 +50,7 @@ import {
 } from "@/lib/data-management/backup";
 import { loadCharacters } from "@/lib/character-storage";
 import { deleteCharacterMemoryVectorsFromVectorCloud, addImportedMemoryPending, loadImportedMemoryPending, syncImportedMemoryPending } from "@/lib/vector-memory-sync";
+import { hydrateKvDb } from "@/lib/kv-db";
 import {
   cleanupOrphanThemeAssets,
   DEFAULT_MEDIA_MAINTENANCE_CONFIG,
@@ -317,7 +318,7 @@ export function DataManagement({ onNotice }: DataManagementProps) {
   const [pendingVectorSyncBusy, setPendingVectorSyncBusy] = useState(false);
 
   useEffect(() => {
-    setPendingVectorEntriesCount(loadImportedMemoryPending().length);
+    void hydrateKvDb().then(() => setPendingVectorEntriesCount(loadImportedMemoryPending().length));
     setCloudConfig(loadCloudBackupConfig());
     setCloudState(loadCloudBackupState());
   }, []);
