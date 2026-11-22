@@ -14,9 +14,25 @@ import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-h
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import { findUserAvatarChangeIntent, inferAvatarDecisionFromReply } from "./chat-avatar-intent";
-import { syncChatMessageChunkToVectorCloud } from "./vector-memory-chat-sync";
+import { syncChatMessageChunkToVectorCloud, refreshChatMessageBucketsToVectorCloud } from "./vector-memory-chat-sync";
 
-export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
+\nfunction refreshVectorChunksForMessages(messages: ChatMessage[]): void {
+    if (typeof window === "undefined" || messages.length === 0) return;
+    const bySession = new Map<string, Set<number>>();
+    for (const message of messages) {
+        const bucket = Math.floor(Math.max(0, message.order ?? 0) / 4);
+        const set = bySession.get(message.sessionId) ?? new Set<number>();
+        set.add(bucket);
+        bySession.set(message.sessionId, set);
+    }
+    for (const [sessionId, buckets] of bySession) {
+        const session = loadChatSessions().find(item => item.id === sessionId);
+        if (session && !session.isGroup && session.contactId) {
+            refreshChatMessageBucketsToVectorCloud(session, _messagesCache, [...buckets]);
+        }
+    }
+}
+\nexport const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
 export const CHAT_INITIAL_VISIBLE_MESSAGE_COUNT = 50;
 export const CHAT_LOAD_MORE_MESSAGE_COUNT = 30;
@@ -1844,7 +1860,7 @@ export function deleteChatMessage(messageId: string) {
     const deletedIds = new Set(deletedMessages.map(message => message.id));
     _messagesCache = _messagesCache.filter(message => !deletedIds.has(message.id));
     syncDeletedResponseBatchMetadata(deletedMessages);
-    dbDeleteMessagesByIds([...deletedIds]);
+    dbDeleteMessagesByIds([...deletedIds]);\n    refreshVectorChunksForMessages(deletedMessages);
 
     // Recalculate the last message for the session to update the preview
     const lastMsg = getLastVisibleSessionMessage(sessionId);
@@ -1880,7 +1896,7 @@ export function deleteChatMessagesFrom(messageId: string) {
 
     _messagesCache = _messagesCache.filter(m => !deletedIdSet.has(m.id));
     syncDeletedResponseBatchMetadata(deletedMessages);
-    dbDeleteMessagesByIds(deletedIds);
+    dbDeleteMessagesByIds(deletedIds);\n    refreshVectorChunksForMessages(deletedMessages);
 
     const lastMsg = getLastVisibleSessionMessage(sessionId);
 
@@ -1940,7 +1956,7 @@ export function editChatMessage(messageId: string, newContent: string) {
     const msgIdx = _messagesCache.findIndex(m => m.id === messageId);
     if (msgIdx !== -1) {
         _messagesCache[msgIdx] = { ..._messagesCache[msgIdx], content: newContent };
-        dbPutMessage(_messagesCache[msgIdx]);
+        dbPutMessage(_messagesCache[msgIdx]);\n        refreshVectorChunksForMessages([_messagesCache[msgIdx]]);
 
         const sessionId = _messagesCache[msgIdx].sessionId;
         const lastMsg = getLastVisibleSessionMessage(sessionId);
@@ -1975,7 +1991,7 @@ export function retractChatMessage(messageId: string) {
 export function clearChatSessionMessages(sessionId: string) {
     const deletedMessages = _messagesCache.filter(m => m.sessionId === sessionId);
     _messagesCache = _messagesCache.filter(m => m.sessionId !== sessionId);
-    dbDeleteMessagesBySession(sessionId);
+    dbDeleteMessagesBySession(sessionId);\n    refreshVectorChunksForMessages(deletedMessages);
 
     // Update session to remove last message preview
     const sessions = loadChatSessions();
