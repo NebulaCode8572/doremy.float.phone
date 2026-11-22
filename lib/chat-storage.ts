@@ -1868,7 +1868,8 @@ export function deleteChatMessage(messageId: string) {
     const deletedIds = new Set(deletedMessages.map(message => message.id));
     _messagesCache = _messagesCache.filter(message => !deletedIds.has(message.id));
     syncDeletedResponseBatchMetadata(deletedMessages);
-    dbDeleteMessagesByIds([...deletedIds]);\n    refreshVectorChunksForMessages(deletedMessages);
+    dbDeleteMessagesByIds([...deletedIds]);
+    refreshVectorChunksForMessages(deletedMessages);
 
     // Recalculate the last message for the session to update the preview
     const lastMsg = getLastVisibleSessionMessage(sessionId);
@@ -1904,7 +1905,8 @@ export function deleteChatMessagesFrom(messageId: string) {
 
     _messagesCache = _messagesCache.filter(m => !deletedIdSet.has(m.id));
     syncDeletedResponseBatchMetadata(deletedMessages);
-    dbDeleteMessagesByIds(deletedIds);\n    refreshVectorChunksForMessages(deletedMessages);
+    dbDeleteMessagesByIds(deletedIds);
+    refreshVectorChunksForMessages(deletedMessages);
 
     const lastMsg = getLastVisibleSessionMessage(sessionId);
 
@@ -1939,8 +1941,8 @@ export function deleteChatMessagesByIds(sessionId: string, messageIds: string[])
     _messagesCache = _messagesCache.filter(m => m.sessionId !== sessionId || !deletedIdSet.has(m.id));
     syncDeletedResponseBatchMetadata(deletedMessages);
     dbDeleteMessagesByIds(deletedIds);
-    refreshVectorChunksForMessages(deletedMessages);
     reindexSessionMessageOrders(sessionId);
+    refreshVectorChunksForMessages(deletedMessages);
 
     const lastMsg = getLastVisibleSessionMessage(sessionId);
     const sessions = loadChatSessions();
@@ -2001,7 +2003,8 @@ export function retractChatMessage(messageId: string) {
 export function clearChatSessionMessages(sessionId: string) {
     const deletedMessages = _messagesCache.filter(m => m.sessionId === sessionId);
     _messagesCache = _messagesCache.filter(m => m.sessionId !== sessionId);
-    dbDeleteMessagesBySession(sessionId);\n    refreshVectorChunksForMessages(deletedMessages);
+    dbDeleteMessagesBySession(sessionId);
+    refreshVectorChunksForMessages(deletedMessages);
 
     // Update session to remove last message preview
     const sessions = loadChatSessions();
