@@ -43,6 +43,18 @@ async function deleteChatChunk(characterId: string, sessionId: string, bucket: n
   if (!response.ok) console.warn(`[VectorMemory] Chat chunk deletion returned HTTP ${response.status}`);
 }
 
+export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
+  if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
+  void fetch("/api/vector-memory-chat-chunks", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ characterId: session.contactId, sessionId: session.id }),
+  }).then(response => {
+    if (!response.ok) console.warn(`[VectorMemory] Session vector cleanup returned HTTP ${response.status}`);
+  }).catch(error => console.warn("[VectorMemory] Session vector cleanup failed; local chat remains unaffected.", error));
+}
+
 export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, buckets: number[]): void {
   if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
   for (const bucket of [...new Set(buckets.filter(value => Number.isInteger(value) && value >= 0))]) {
@@ -66,12 +78,12 @@ export function refreshChatMessageBucketsToVectorCloud(
       .filter(entry => entry.text);
     const sourceId = `session:${session.id}:chunk:${bucket}`;
     if (!loadMemoryConfig().vectorMemoryEnabled || selected.length < 2) {
-      void deleteChatChunk(session.contactId, session.id, bucket);
+      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), () => deleteChatChunk(session.contactId!, session.id, bucket));
       continue;
     }
     const content = selected.map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`).join("\n").slice(0, MAX_CHUNK_CONTENT);
     if (!content.trim()) {
-      void deleteChatChunk(session.contactId, session.id, bucket);
+      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), () => deleteChatChunk(session.contactId!, session.id, bucket));
       continue;
     }
     const payload = {
