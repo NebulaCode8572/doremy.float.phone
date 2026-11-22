@@ -29,6 +29,7 @@ import { resolveAuxiliaryApiConfig, resolveUserIdentity } from "@/lib/settings-s
 import { generateEmbedding, resolveEmbeddingModel } from "@/lib/memory-embedding";
 import { BINDING_ACCENTS } from "@/lib/ui-accent-colors";
 import { VectorMemorySettings } from "./vector-memory-settings";
+import { syncMemoryEntriesToVectorCloud, deleteMemoryEntriesFromVectorCloud } from "@/lib/vector-memory-sync";
 
 type MemoryView = "list" | "detail" | "settings";
 type MemoryTab = "short" | "shared" | "core" | "long";
@@ -354,7 +355,9 @@ export function MemoryBankPage({
     };
 
     const handleDeleteEntry = async (id: string) => {
+        const entry = [...coreEntries, ...longTermEntries].find(item => item.id === id);
         await deleteMemoryEntry(id);
+        if (entry) void deleteMemoryEntriesFromVectorCloud([entry]);
         setCoreEntries(prev => prev.filter(e => e.id !== id));
         setLongTermEntries(prev => prev.filter(e => e.id !== id));
         setEntryMenuId(null);
@@ -363,7 +366,9 @@ export function MemoryBankPage({
 
     const handleClearEntries = async (type: "core" | "long_term") => {
         if (!selectedCharId) return;
+        const entries = type === "core" ? coreEntries : longTermEntries;
         await deleteCharacterMemoriesByType(selectedCharId, type);
+        void deleteMemoryEntriesFromVectorCloud(entries);
         if (type === "core") setCoreEntries([]);
         else setLongTermEntries([]);
         loadCharacterList();
@@ -580,6 +585,7 @@ export function MemoryBankPage({
                 };
 
             await saveMemoryEntry(entry);
+            if (loadMemoryConfig().vectorMemoryEnabled) void syncMemoryEntriesToVectorCloud([entry]);
             if (type === "core") {
                 setCoreEntries(prev => source ? prev.map(item => item.id === entry.id ? entry : item) : [...prev, entry]);
             } else {
