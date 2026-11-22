@@ -1931,6 +1931,7 @@ export function deleteChatMessagesByIds(sessionId: string, messageIds: string[])
     _messagesCache = _messagesCache.filter(m => m.sessionId !== sessionId || !deletedIdSet.has(m.id));
     syncDeletedResponseBatchMetadata(deletedMessages);
     dbDeleteMessagesByIds(deletedIds);
+    refreshVectorChunksForMessages(deletedMessages);
     reindexSessionMessageOrders(sessionId);
 
     const lastMsg = getLastVisibleSessionMessage(sessionId);
@@ -1975,6 +1976,7 @@ export function retractChatMessage(messageId: string) {
     if (msgIdx !== -1) {
         _messagesCache[msgIdx] = { ..._messagesCache[msgIdx], isRetracted: true };
         dbPutMessage(_messagesCache[msgIdx]);
+        refreshVectorChunksForMessages([_messagesCache[msgIdx]]);
 
         const sessionId = _messagesCache[msgIdx].sessionId;
         const lastMsg = getLastVisibleSessionMessage(sessionId);
@@ -2232,6 +2234,7 @@ export function updateChatMessage(
     _messagesCache[idx] = { ..._messagesCache[idx], ...patch };
     const updated = _messagesCache[idx];
     dbPutMessage(updated);
+    refreshVectorChunksForMessages([updated]);
 
     const sessions = loadChatSessions();
     const sessIdx = sessions.findIndex(s => s.id === updated.sessionId);
