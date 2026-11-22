@@ -125,7 +125,17 @@ export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[])
           metadata: entry.metadata ?? {},
         })) }),
       });
-      if (!response.ok) { allSucceeded = false; console.warn(`[VectorMemory] Index endpoint returned HTTP ${response.status}`); }
+      if (!response.ok) {
+        allSucceeded = false;
+        console.warn("[VectorMemory] Index endpoint returned HTTP " + response.status);
+      } else {
+        const payload = await response.json().catch(() => null);
+        const results = payload && Array.isArray(payload.results) ? payload.results : null;
+        if (!results || results.length !== batch.length || results.some((item: unknown) => !item || typeof item !== "object" || (item as { success?: unknown }).success !== true) {
+          allSucceeded = false;
+          console.warn("[VectorMemory] Index endpoint reported partial or malformed batch success");
+        }
+      }
     } catch (error) {
       allSucceeded = false;
       console.warn("[VectorMemory] Incremental indexing failed; chat/memory save remains unaffected.", error);
