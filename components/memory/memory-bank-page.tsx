@@ -586,6 +586,7 @@ export function MemoryBankPage({
 
             await saveMemoryEntry(entry);
             if (loadMemoryConfig().vectorMemoryEnabled) void syncMemoryEntriesToVectorCloud([entry]);
+            else void deleteMemoryEntriesFromVectorCloud([entry]);
             if (type === "core") {
                 setCoreEntries(prev => source ? prev.map(item => item.id === entry.id ? entry : item) : [...prev, entry]);
             } else {
