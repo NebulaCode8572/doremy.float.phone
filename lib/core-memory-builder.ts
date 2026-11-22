@@ -4,6 +4,7 @@ import {
     loadMemoryConfig,
     loadMemoryEntriesByType,
     saveMemoryEntry,
+    deleteMemoryEntries,
     getCoreMemoryCounter,
     resetCoreMemoryCounter,
     getLastCoreSummarizedTimestamp,
@@ -11,7 +12,7 @@ import {
 } from "./memory-storage";
 import { resolveAuxiliaryApiConfig } from "./settings-storage";
 import { simpleLLMCall } from "./api-helpers";
-import { syncMemoryEntriesToVectorCloud } from "./vector-memory-sync";
+import { syncMemoryEntriesToVectorCloud, deleteMemoryEntriesFromVectorCloud } from "./vector-memory-sync";
 
 const coreBuildingSet = new Set<string>();
 
@@ -131,6 +132,14 @@ export async function runCoreMemoryPipeline(
             sourceSessionIds,
         },
     };
+    // On forced rebuild, replace previous core summaries after generation succeeds.
+    if (options?.force) {
+        const previousCoreEntries = await loadMemoryEntriesByType(characterId, "core");
+        if (previousCoreEntries.length) {
+            await deleteMemoryEntries(previousCoreEntries.map(entry => entry.id));
+            void deleteMemoryEntriesFromVectorCloud(previousCoreEntries);
+        }
+    }
     await saveMemoryEntry(coreEntry);
     if (config.vectorMemoryEnabled) void syncMemoryEntriesToVectorCloud([coreEntry]);
 
