@@ -1420,6 +1420,11 @@ export function deleteChatSession(sessionId: string) {
 // 两边的 order 序号各自从 0 起，直接混排会串位，挪完后按时间重排目标会话。
 export function reassignChatSessionMessages(fromSessionId: string, toSessionId: string): number {
     if (fromSessionId === toSessionId) return 0;
+    const sessions = loadChatSessions();
+    const fromSession = sessions.find(session => session.id === fromSessionId);
+    const toSession = sessions.find(session => session.id === toSessionId);
+    // Duplicate-session merges must never transfer chat history across characters.
+    if (!fromSession || !toSession || fromSession.isGroup || toSession.isGroup || fromSession.contactId !== toSession.contactId) return 0;
     const changed: ChatMessage[] = [];
     _messagesCache = _messagesCache.map(message => {
         if (message.sessionId !== fromSessionId) return message;
@@ -1430,6 +1435,10 @@ export function reassignChatSessionMessages(fromSessionId: string, toSessionId: 
     if (changed.length === 0) return 0;
     dbPutMessages(changed);
     reindexSessionMessageOrdersByTime(toSessionId);
+    deleteChatSessionVectorsFromCloud(fromSession);
+    const targetMessages = _messagesCache.filter(message => message.sessionId === toSessionId);
+    const targetBuckets = [...new Set(targetMessages.map(message => Math.floor(Math.max(0, message.order ?? 0) / 4)))];
+    refreshChatMessageBucketsToVectorCloud(toSession, targetMessages, targetBuckets);
     return changed.length;
 }
 
