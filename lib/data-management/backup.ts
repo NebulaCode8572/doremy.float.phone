@@ -511,7 +511,7 @@ export async function importBackupBlob(blob: Blob, moduleIds?: DataModuleId[], o
   await parseManifestFile(manifestFile);
 
   const selected = moduleIds && moduleIds.length > 0 ? new Set(moduleIds) : null;
-  const total: ImportResult = { added: 0, skipped: 0, overwritten: 0, errors: [] };
+  const total: ImportResult = { added: 0, skipped: 0, overwritten: 0, errors: [], importedMemoryEntries: [] };
 
   // Pull each media binary straight from the zip, one at a time (low peak memory).
   // v1 backups have no media/ entries — markers there are inline base64, resolver is never hit.
@@ -544,7 +544,13 @@ export async function importBackupBlob(blob: Blob, moduleIds?: DataModuleId[], o
     }
     if (selected && !selected.has(modulePayload.moduleId)) continue;
     for (const sourcePayload of modulePayload.sources) {
-      const result = await importSource(sourcePayload, Boolean(options.overwrite), resolver);
+      const result = await importSource(sourcePayload, Boolean(options.overwrite), resolver, undefined, (entry) => {
+        const imported = total.importedMemoryEntries ?? (total.importedMemoryEntries = []);
+        const key = `${entry.characterId}:${entry.id}:${entry.sourceApp}:${entry.type}`;
+        const existingIndex = imported.findIndex((item) => `${item.characterId}:${item.id}:${item.sourceApp}:${item.type}` === key);
+        if (existingIndex >= 0) imported[existingIndex] = entry;
+        else imported.push(entry);
+      });
       total.added += result.added;
       total.skipped += result.skipped;
       total.overwritten += result.overwritten;
