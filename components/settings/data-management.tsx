@@ -49,7 +49,7 @@ import {
   readBackupManifest,
 } from "@/lib/data-management/backup";
 import { loadCharacters } from "@/lib/character-storage";
-import { deleteCharacterMemoryVectorsFromVectorCloud, addImportedMemoryPending } from "@/lib/vector-memory-sync";
+import { deleteCharacterMemoryVectorsFromVectorCloud, addImportedMemoryPending, loadImportedMemoryPending, syncImportedMemoryPending } from "@/lib/vector-memory-sync";
 import {
   cleanupOrphanThemeAssets,
   DEFAULT_MEDIA_MAINTENANCE_CONFIG,
@@ -532,6 +532,7 @@ export function DataManagement({ onNotice }: DataManagementProps) {
     if (!pendingImport) return "请先选择备份文件。";
     const result: ImportResult = await importBackupBlob(pendingImport.file, moduleIds, { overwrite });
     const pendingVectorCount = await addImportedMemoryPending(result.importedMemoryEntries ?? []);
+    setPendingVectorEntriesCount(loadImportedMemoryPending().length);
     const importedCount = result.added + result.overwritten;
     if (importedCount === 0 && result.errors.length > 0) {
       throw new Error(`导入失败：${result.errors[0]}`);
@@ -641,6 +642,34 @@ export function DataManagement({ onNotice }: DataManagementProps) {
 
   return (
     <div className="page-menu data-management-menu" style={{ padding: 0 }}>
+  const confirmImportedVectorSync = async () => {
+    if (pendingVectorSyncBusy || pendingVectorEntriesCount <= 0) return;
+    setPendingVectorSyncBusy(true);
+    try {
+      const result = await syncImportedMemoryPending();
+      setPendingVectorEntriesCount(loadImportedMemoryPending().length);
+      onNotice?.(result.success ? `已同步 ${result.synced} 条导入记忆到 Vector Memory。` : "同步失败或 Vector Memory 未启用，待同步记录仍保留。");
+    } finally {
+      setPendingVectorSyncBusy(false);
+    }
+  };
+
+      {pendingVectorEntriesCount > 0 && (
+        <div className="data-section" role="status" style={{ marginBottom: 12 }}>
+          <div className="menu-item data-readonly-item">
+            <DataSettingsIcon icon={Brain} color={BINDING_ACCENTS.memory} />
+            <div className="menu-label-group">
+              <span className="menu-label">导入记忆待同步</span>
+              <span className="menu-desc">有 {pendingVectorEntriesCount} 条导入记忆尚未上传。只有点击下方按钮才会发送到云端。</span>
+            </div>
+          </div>
+          <div className="data-menu-actions data-menu-actions-single">
+            <button type="button" className="ui-btn ui-btn-primary" onClick={() => void confirmImportedVectorSync()} disabled={pendingVectorSyncBusy}>
+              {pendingVectorSyncBusy ? <Loader2 size={16} className="animate-spin" /> : <CloudUpload size={16} />} 确认同步 {pendingVectorEntriesCount} 条记忆
+            </button>
+          </div>
+        </div>
+      )}
       <div className="data-section">
         <DataSectionTitle>Module Breakdown</DataSectionTitle>
         <div className="menu-group">
