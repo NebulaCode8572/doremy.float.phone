@@ -12,35 +12,68 @@ function cleanMessageText(message: ChatMessage): string {
   return text.slice(0, 5000);
 }
 
-/** Incrementally refresh the fixed four-message bucket containing the newly saved message. */
+function bucketForOrder(order: number | undefined): number {
+  return Math.floor(Math.max(0, typeof order === "number" && Number.isFinite(order) ? order : 0) / CHUNK_SIZE);
+}
+
+async function deleteChatChunk(characterId: string, sessionId: string, bucket: number): Promise<void> {
+  try {
+    const response = await fetch("/api/vector-memory-chat-chunks", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ characterId, sourceId: `session:${sessionId}:chunk:${bucket}` }),
+    });
+    if (!response.ok) console.warn(`[VectorMemory] Chat chunk deletion returned HTTP ${response.status}`);
+  } catch (error) {
+    console.warn("[VectorMemory] Chat chunk deletion failed; local chat remains unaffected.", error);
+  }
+}
+
+export function refreshChatMessageBucketsToVectorCloud(
+  session: ChatSession,
+  allMessages: ChatMessage[],
+  buckets: number[],
+): void {
+  if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
+  const uniqueBuckets = [...new Set(buckets.filter(bucket => Number.isInteger(bucket) && bucket >= 0))];
+  for (const bucket of uniqueBuckets) {
+    const selected = allMessages
+      .filter(item => item.sessionId === session.id && bucketForOrder(item.order) === bucket)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map(item => ({ item, text: cleanMessageText(item) }))
+      .filter(entry => entry.text);
+    const sourceId = `session:${session.id}:chunk:${bucket}`;
+    if (!loadMemoryConfig().vectorMemoryEnabled || selected.length < 2) {
+      void deleteChatChunk(session.contactId, session.id, bucket);
+      continue;
+    }
+    const content = selected.map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`).join("\\n").slice(0, MAX_CHUNK_CONTENT);
+    if (!content.trim()) {
+      void deleteChatChunk(session.contactId, session.id, bucket);
+      continue;
+    }
+    const payload = {
+      id: sourceId,
+      characterId: session.contactId,
+      sourceApp: "chat",
+      sourceKind: "chat_chunk",
+      content,
+      metadata: { sessionId: session.id, chunkIndex: bucket, messageIds: selected.map(entry => entry.item.id), updatedAt: new Date().toISOString() },
+    };
+    void fetch("/api/vector-memory-index", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ entries: [payload] }),
+    }).then(response => {
+      if (!response.ok) console.warn(`[VectorMemory] Chat chunk indexing returned HTTP ${response.status}`);
+    }).catch(error => console.warn("[VectorMemory] Chat chunk sync failed; chat save remains unaffected.", error));
+  }
+}
+
+/** Refresh the fixed four-message bucket containing the saved assistant turn. */
 export function syncChatMessageChunkToVectorCloud(session: ChatSession, message: ChatMessage, allMessages: ChatMessage[]): void {
-  if (typeof window === "undefined" || session.isGroup || !session.contactId || !loadMemoryConfig().vectorMemoryEnabled) return;
   if (message.sessionId !== session.id || message.role !== "assistant") return;
-  const order = typeof message.order === "number" && Number.isFinite(message.order) ? message.order : 0;
-  const bucket = Math.floor(Math.max(0, order) / CHUNK_SIZE);
-  const selected = allMessages
-    .filter(item => item.sessionId === session.id && Math.floor(Math.max(0, typeof item.order === "number" ? item.order : 0) / CHUNK_SIZE) === bucket)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    .map(item => ({ item, text: cleanMessageText(item) }))
-    .filter(entry => entry.text);
-  if (selected.length < 2) return;
-  const content = selected.map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`).join("\n").slice(0, MAX_CHUNK_CONTENT);
-  if (!content.trim()) return;
-  const sourceId = `session:${session.id}:chunk:${bucket}`;
-  const payload = {
-    id: sourceId,
-    characterId: session.contactId,
-    sourceApp: "chat",
-    sourceKind: "chat_chunk",
-    content,
-    metadata: { sessionId: session.id, chunkIndex: bucket, messageIds: selected.map(entry => entry.item.id), updatedAt: new Date().toISOString() },
-  };
-  void fetch("/api/vector-memory-index", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify({ entries: [payload] }),
-  }).then(response => {
-    if (!response.ok) console.warn(`[VectorMemory] Chat chunk indexing returned HTTP ${response.status}`);
-  }).catch(error => console.warn("[VectorMemory] Chat chunk sync failed; chat save remains unaffected.", error));
+  refreshChatMessageBucketsToVectorCloud(session, allMessages, [bucketForOrder(message.order)]);
 }
