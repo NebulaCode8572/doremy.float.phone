@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentAccount } from "@/lib/server/account-auth";
 import { getSupabaseServerConfig } from "@/lib/server/supabase-rest";
 import { readLimitedJson } from "@/lib/server/read-limited-json";
-import { deleteVectorMemorySource } from "@/lib/server/vector-memory-store";
+import { deleteVectorMemorySource, deleteVectorMemorySessionChatChunks } from "@/lib/server/vector-memory-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,9 +16,16 @@ export async function DELETE(request: Request) {
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
     const characterId = typeof parsed.value.characterId === "string" ? parsed.value.characterId.trim() : "";
     const sourceId = typeof parsed.value.sourceId === "string" ? parsed.value.sourceId.trim() : "";
-    const match = /^session:([A-Za-z0-9_-]{1,180}):chunk:(\d{1,8})$/.exec(sourceId);
-    if (!characterId || characterId.length > 160 || !match) return NextResponse.json({ error: "聊天向量删除参数无效" }, { status: 400 });
-    await deleteVectorMemorySource(account.id, characterId, "chat", sourceId, "chat_chunk");
+    const sessionId = typeof parsed.value.sessionId === "string" ? parsed.value.sessionId.trim() : "";
+    if (!characterId || characterId.length > 160) return NextResponse.json({ error: "聊天向量删除参数无效" }, { status: 400 });
+
+    if (sessionId) {
+      if (!/^[A-Za-z0-9_-]{1,180}$/.test(sessionId)) return NextResponse.json({ error: "会话 ID 无效" }, { status: 400 });
+      await deleteVectorMemorySessionChatChunks(account.id, characterId, sessionId);
+    } else {
+      if (!/^session:[A-Za-z0-9_-]{1,180}:chunk:\d{1,8}$/.test(sourceId)) return NextResponse.json({ error: "聊天向量删除参数无效" }, { status: 400 });
+      await deleteVectorMemorySource(account.id, characterId, "chat", sourceId, "chat_chunk");
+    }
     return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ error: "聊天向量删除失败" }, { status: 500 });
