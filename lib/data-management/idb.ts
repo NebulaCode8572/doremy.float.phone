@@ -583,11 +583,37 @@ async function ensureStores(dbName: string, specs: StoreSpec[]): Promise<IDBData
   return db;
 }
 
+type ImportedMemoryEntry = {
+  id: string;
+  characterId: string;
+  sourceApp: string;
+  type: "core" | "long_term";
+  content: string;
+  importance: number;
+  createdAt: string;
+  updatedAt: string;
+  sourceMessageIds?: string[];
+  metadata?: Record<string, unknown>;
+};
+
+function isImportedMemoryEntry(value: unknown): value is ImportedMemoryEntry {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string"
+    && typeof value.characterId === "string"
+    && typeof value.sourceApp === "string"
+    && (value.type === "core" || value.type === "long_term")
+    && typeof value.content === "string"
+    && typeof value.importance === "number"
+    && typeof value.createdAt === "string"
+    && typeof value.updatedAt === "string";
+}
+
 export async function importSource(
   payload: SourceBackup,
   overwrite = false,
   resolver?: MediaResolver,
   onProgress?: (done: number, total: number) => void,
+  onMemoryImported?: (entry: ImportedMemoryEntry, action: "added" | "overwritten") => void,
 ): Promise<{ added: number; skipped: number; overwritten: number; errors: string[] }> {
   const result = { added: 0, skipped: 0, overwritten: 0, errors: [] as string[] };
   const totalRecords = payload.type === "indexeddb"
@@ -699,6 +725,9 @@ export async function importSource(
           await done;
           if (existing !== undefined) result.overwritten += 1;
           else result.added += 1;
+          if (payload.dbName === MEMORY_DB_NAME && storePayload.name === MEMORY_STORE_NAME && isImportedMemoryEntry(value)) {
+            onMemoryImported?.(value, existing !== undefined ? "overwritten" : "added");
+          }
         } catch (error) {
           await done?.catch(() => undefined);
           result.errors.push(`${payload.dbName}.${storePayload.name}#${recordIndex + 1}: ${formatImportError(error)}`);
