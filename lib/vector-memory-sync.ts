@@ -34,6 +34,22 @@ export async function clearImportedMemoryPending(): Promise<void> {
   await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify([]));
 }
 
+function pendingEntryKey(entry: ImportedMemoryPendingEntry): string {
+  return entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type;
+}
+
+export async function removeSyncedImportedMemoryPending(entries: ImportedMemoryPendingEntry[]): Promise<void> {
+  if (!entries.length) return;
+  const current = loadImportedMemoryPending();
+  const synced = new Map(entries.map((entry) => [pendingEntryKey(entry), entry]));
+  const remaining = current.filter((entry) => {
+    const uploaded = synced.get(pendingEntryKey(entry));
+    // Preserve a record changed or re-imported while the upload was in flight.
+    return !uploaded || uploaded.content !== entry.content || uploaded.updatedAt !== entry.updatedAt;
+  });
+  await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify(remaining));
+}
+
 function vectorSourceKind(entry: VectorSyncEntry): "summary" | "core_memory" | "long_term_memory" {
   return entry.type === "core" ? "core_memory" : entry.type === "long_term" ? "long_term_memory" : "summary";
 }
@@ -123,6 +139,6 @@ export async function syncImportedMemoryPending(): Promise<{ synced: number; suc
   if (!pending.length) return { synced: 0, success: true };
   if (!loadMemoryConfig().vectorMemoryEnabled) return { synced: 0, success: false };
   const success = await syncMemoryEntriesToVectorCloud(pending);
-  if (success) await clearImportedMemoryPending();
+  if (success) await removeSyncedImportedMemoryPending(pending);
   return { synced: success ? pending.length : 0, success };
 }
