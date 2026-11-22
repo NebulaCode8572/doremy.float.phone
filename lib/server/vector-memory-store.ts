@@ -58,6 +58,14 @@ export async function deleteVectorMemorySessionChatChunks(userId: string, charac
   if (!result.ok) throw new Error(result.error);
 }
 
+export async function deleteVectorMemoryEntriesForCharacter(userId: string, characterId: string): Promise<void> {
+  for (const sourceKind of ["summary", "core_memory", "long_term_memory"] as const) {
+    const query = `user_id=eq.${encodeSupabaseFilter(userId)}&character_id=eq.${encodeSupabaseFilter(characterId)}&source_kind=eq.${sourceKind}`;
+    const result = await supabaseRestFetch<unknown[]>(`${TABLE}?${query}`, { method: "DELETE", headers: { Prefer: "return=minimal" } });
+    if (!result.ok) throw new Error(result.error);
+  }
+}
+
 export async function deleteVectorMemoriesForCharacter(userId: string, characterId: string): Promise<void> {
   const result = await supabaseRestFetch<unknown[]>(`${TABLE}?user_id=eq.${encodeSupabaseFilter(userId)}&character_id=eq.${encodeSupabaseFilter(characterId)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } });
   if (!result.ok) throw new Error(result.error);
