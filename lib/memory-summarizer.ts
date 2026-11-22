@@ -20,6 +20,7 @@ import { loadNativeTimeline, formatTimelineForSummarization, filterTimelineByAll
 import { generateEmbedding, resolveEmbeddingModel } from "./memory-embedding";
 import { simpleLLMCall } from "./api-helpers";
 import { maybeRunCoreMemoryPipeline } from "./core-memory-builder";
+import { syncMemoryEntriesToVectorCloud } from "./vector-memory-sync";
 
 /** Per-character lock to prevent concurrent summarization. */
 const summarizingSet = new Set<string>();
@@ -165,6 +166,7 @@ export async function runSummarizationPipeline(
         },
     };
     await saveMemoryEntry(longTermEntry);
+    if (config.vectorMemoryEnabled) void syncMemoryEntriesToVectorCloud([longTermEntry]);
 
     // Update last summarized timestamp + reset counter
     setLastSummarizedTimestamp(characterId, latest);
