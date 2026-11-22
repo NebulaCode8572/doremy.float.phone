@@ -2053,7 +2053,7 @@ export async function buildChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
-    if (memConfig.vectorMemoryEnabled) {
+    if (memConfig.vectorMemoryEnabled && !session.isGroup) {
         const vectorRecallText = await retrieveVectorMemoryForPrompt(character.id, wbActivationContext).catch(() => "");
         if (vectorRecallText) llmMessages.push({ role: "system", content: vectorRecallText });
     }
