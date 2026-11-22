@@ -45,12 +45,17 @@ async function deleteChatChunk(characterId: string, sessionId: string, bucket: n
 
 export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
   if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
-  void fetch("/api/vector-memory-chat-chunks", {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify({ characterId: session.contactId, sessionId: session.id }),
-  }).then(response => {
+  const prefix = `${session.contactId}:${session.id}:`;
+  const pending = [...chunkOperationQueues.entries()]
+    .filter(([key]) => key.startsWith(prefix))
+    .map(([, promise]) => promise);
+  void Promise.all(pending).then(async () => {
+    const response = await fetch("/api/vector-memory-chat-chunks", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ characterId: session.contactId, sessionId: session.id }),
+    });
     if (!response.ok) console.warn(`[VectorMemory] Session vector cleanup returned HTTP ${response.status}`);
   }).catch(error => console.warn("[VectorMemory] Session vector cleanup failed; local chat remains unaffected.", error));
 }
