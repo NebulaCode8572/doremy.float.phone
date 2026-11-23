@@ -75,6 +75,15 @@ async function enqueuePendingMemoryDeletes(entries: PendingMemoryDelete[]): Prom
   for (const item of entries) merged.set(pendingDeleteKey(item), item);
   await kvSetAsync(DELETE_PENDING_KEY, JSON.stringify(Array.from(merged.values()).slice(-1000)));
 }
+async function cancelPendingMemoryDeletesForEntries(entries: VectorSyncEntry[]): Promise<void> {
+  if (!entries.length) return;
+  await hydrateKvDb();
+  const keys = new Set(entries.map(pendingDeleteKey));
+  const remaining = loadPendingMemoryDeletes().filter(item => !keys.has(pendingDeleteKey(item)));
+  await kvSetAsync(DELETE_PENDING_KEY, JSON.stringify(remaining));
+}
+
+
 export async function retryPendingMemoryVectorDeletes(): Promise<number> {
   if (typeof window === "undefined") return 0;
   await hydrateKvDb();
@@ -146,7 +155,8 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
 
 export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[]): Promise<boolean> {
   if (!entries.length || typeof window === "undefined") return false;
-  // Flush deletion tombstones before upserts so an older failed delete cannot erase a fresh re-index in this pass.
+  // A re-index supersedes a queued deletion for the same stable source ID.
+  await cancelPendingMemoryDeletesForEntries(entries);
   await retryPendingMemoryVectorDeletes();
   let allSucceeded = true;
   // Incremental and idempotent: only newly saved entries are sent, and source IDs
