@@ -22,7 +22,7 @@ export async function retrieveVectorMemoryForPrompt(characterId: string, query: 
       const content = typeof match.content === "string" ? match.content.trim() : "";
       if (!content) continue;
       // Avoid injecting the same text from multiple cloud sources in one recall.
-      const dedupeKey = content.replace(/\\s+/g, " ").toLocaleLowerCase();
+      const dedupeKey = content.replace(/\s+/g, " ").toLocaleLowerCase();
       if (seenContent.has(dedupeKey)) continue;
       const cost = estimateTokens(content) + 4;
       if (usedTokens + cost > budget) continue;
