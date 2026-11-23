@@ -107,7 +107,7 @@ export function refreshChatMessageBucketsToVectorCloud(
         body: JSON.stringify({ entries: [payload] }),
       });
       if (!response.ok) {
-        console.warn(`[VectorMemory] Chat chunk indexing returned HTTP ${response.status`);
+        console.warn(`[VectorMemory] Chat chunk indexing returned HTTP ${response.status}`);
         return;
       }
       const result = await response.json().catch(() => null);
