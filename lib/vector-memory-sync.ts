@@ -61,6 +61,13 @@ function vectorSourceKind(entry: VectorSyncEntry): "summary" | "core_memory" | "
   return entry.type === "core" ? "core_memory" : entry.type === "long_term" ? "long_term_memory" : "summary";
 }
 
+// Serialize cloud mutations so an in-flight upsert cannot overtake a deletion.
+let vectorCloudMutationQueue: Promise<void> = Promise.resolve();
+function withVectorCloudMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const run = vectorCloudMutationQueue.then(operation, operation);
+  vectorCloudMutationQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
 const DELETE_PENDING_KEY = "ai_phone_vector_memory_delete_pending_v1";
 registerKvMigration(DELETE_PENDING_KEY);
 type PendingMemoryDelete = Pick<VectorSyncEntry, "characterId" | "id" | "sourceApp" | "type">;
@@ -90,7 +97,7 @@ async function cancelPendingMemoryDeletesForEntries(entries: VectorSyncEntry[]):
 }
 
 
-export async function retryPendingMemoryVectorDeletes(): Promise<number> {
+async function retryPendingMemoryVectorDeletesUnlocked(): Promise<number> {
   if (typeof window === "undefined") return 0;
   await hydrateKvDb();
   const pending = loadPendingMemoryDeletes();
@@ -114,6 +121,7 @@ export async function retryPendingMemoryVectorDeletes(): Promise<number> {
 }
 
 export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntry[]): Promise<void> {
+  return withVectorCloudMutation(async () => {
   if (!entries.length || typeof window === "undefined") return;
   await hydrateKvDb();
   const deletedKeys = new Set(entries.map(pendingEntryKey));
@@ -129,9 +137,12 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
     } catch { failed.push(entry); }
   }
   if (failed.length) await enqueuePendingMemoryDeletes(failed);
+  });
 }
 
+
 export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: string): Promise<void> {
+  return withVectorCloudMutation(async () => {
   if (!characterId || typeof window === "undefined") return;
   await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId && (entry.type === "core" || entry.type === "long_term"));
   try {
@@ -145,9 +156,12 @@ export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: s
   } catch (error) {
     console.warn("[VectorMemory] Memory vector cleanup failed; local cleanup remains unaffected.", error);
   }
+  });
 }
 
+
 export async function deleteCharacterVectorsFromVectorCloud(characterId: string): Promise<void> {
+  return withVectorCloudMutation(async () => {
   if (!characterId || typeof window === "undefined") return;
   await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId);
   try {
@@ -161,13 +175,15 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
   } catch (error) {
     console.warn("[VectorMemory] Character vector cleanup failed; local character deletion remains unaffected.", error);
   }
+  });
 }
 
-export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[]): Promise<boolean> {
+
+async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]): Promise<boolean> {
   if (!entries.length || typeof window === "undefined") return false;
   // A re-index supersedes a queued deletion for the same stable source ID.
   await cancelPendingMemoryDeletesForEntries(entries);
-  await retryPendingMemoryVectorDeletes();
+  await retryPendingMemoryVectorDeletesUnlocked();
   let allSucceeded = true;
   // Incremental and idempotent: only newly saved entries are sent, and source IDs
   // are stable for upsert. Keep indexing non-blocking for ordinary memory writes.
@@ -208,13 +224,21 @@ export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[])
   }
   return allSucceeded;
 }
+export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[]): Promise<boolean> {
+  return withVectorCloudMutation(() => syncMemoryEntriesToVectorCloudUnlocked(entries));
+}
+export async function retryPendingMemoryVectorDeletes(): Promise<number> {
+  return withVectorCloudMutation(retryPendingMemoryVectorDeletesUnlocked);
+}
 
 export async function syncImportedMemoryPending(): Promise<{ synced: number; success: boolean }> {
-  await hydrateKvDb();
-  const pending = loadImportedMemoryPending();
-  if (!pending.length) return { synced: 0, success: true };
-  if (!loadMemoryConfig().vectorMemoryEnabled) return { synced: 0, success: false };
-  const success = await syncMemoryEntriesToVectorCloud(pending);
-  if (success) await removeSyncedImportedMemoryPending(pending);
-  return { synced: success ? pending.length : 0, success };
+  return withVectorCloudMutation(async () => {
+    await hydrateKvDb();
+    const pending = loadImportedMemoryPending();
+    if (!pending.length) return { synced: 0, success: true };
+    if (!loadMemoryConfig().vectorMemoryEnabled) return { synced: 0, success: false };
+    const success = await syncMemoryEntriesToVectorCloudUnlocked(pending);
+    if (success) await removeSyncedImportedMemoryPending(pending);
+    return { synced: success ? pending.length : 0, success };
+  });
 }
