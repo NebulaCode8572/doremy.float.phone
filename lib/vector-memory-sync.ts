@@ -114,6 +114,18 @@ async function enqueuePendingBulkVectorDelete(item: PendingBulkVectorDelete): Pr
   merged.set(bulkDeleteKey(item), item);
   await kvSetAsync(BULK_DELETE_PENDING_KEY, JSON.stringify(Array.from(merged.values()).slice(-500)));
 }
+async function cancelPendingBulkVectorDeletesForEntries(entries: VectorSyncEntry[]): Promise<void> {
+  if (!entries.length) return;
+  await hydrateKvDb();
+  const characterIds = new Set(entries.map(entry => entry.characterId));
+  const hasMemoryEntries = entries.some(entry => entry.type === "core" || entry.type === "long_term");
+  const remaining = loadPendingBulkVectorDeletes().filter(item => {
+    if (!characterIds.has(item.characterId)) return true;
+    // Re-indexing supersedes queued cleanup for that character.
+    return item.memoryOnly ? !hasMemoryEntries : false;
+  });
+  await kvSetAsync(BULK_DELETE_PENDING_KEY, JSON.stringify(remaining));
+}
 async function removePendingBulkVectorDelete(item: PendingBulkVectorDelete): Promise<void> {
   await hydrateKvDb();
   const remaining = loadPendingBulkVectorDeletes().filter(entry => bulkDeleteKey(entry) !== bulkDeleteKey(item));
@@ -233,6 +245,7 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
   if (!entries.length || typeof window === "undefined") return false;
   // A re-index supersedes a queued deletion for the same stable source ID.
   await cancelPendingMemoryDeletesForEntries(entries);
+  await cancelPendingBulkVectorDeletesForEntries(entries);
   await retryPendingMemoryVectorDeletesUnlocked();
   await retryPendingBulkVectorDeletesUnlocked();
   let allSucceeded = true;
