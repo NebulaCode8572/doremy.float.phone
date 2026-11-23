@@ -35,6 +35,12 @@ export async function clearImportedMemoryPending(): Promise<void> {
   await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify([]));
 }
 
+async function removeImportedMemoryPendingWhere(predicate: (entry: ImportedMemoryPendingEntry) => boolean): Promise<void> {
+  await hydrateKvDb();
+  const remaining = loadImportedMemoryPending().filter(entry => !predicate(entry));
+  await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify(remaining));
+}
+
 function pendingEntryKey(entry: ImportedMemoryPendingEntry): string {
   return entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type;
 }
@@ -110,6 +116,8 @@ export async function retryPendingMemoryVectorDeletes(): Promise<number> {
 export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntry[]): Promise<void> {
   if (!entries.length || typeof window === "undefined") return;
   await hydrateKvDb();
+  const deletedKeys = new Set(entries.map(pendingEntryKey));
+  await removeImportedMemoryPendingWhere(entry => deletedKeys.has(pendingEntryKey(entry)));
   const failed: PendingMemoryDelete[] = [];
   for (const entry of entries) {
     try {
@@ -125,6 +133,7 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
 
 export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: string): Promise<void> {
   if (!characterId || typeof window === "undefined") return;
+  await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId && (entry.type === "core" || entry.type === "long_term"));
   try {
     const response = await fetch("/api/vector-memory-entry", {
       method: "DELETE",
@@ -140,6 +149,7 @@ export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: s
 
 export async function deleteCharacterVectorsFromVectorCloud(characterId: string): Promise<void> {
   if (!characterId || typeof window === "undefined") return;
+  await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId);
   try {
     const response = await fetch("/api/vector-memory-entry", {
       method: "DELETE",
