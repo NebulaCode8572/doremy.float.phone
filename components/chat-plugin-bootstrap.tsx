@@ -25,8 +25,8 @@ export function ChatPluginBootstrap() {
             await hydrateKvDb();
 
             // Best-effort cleanup of persisted vector delete queues on app startup.
-            // Failures remain queued; this must never block plugin startup.
-            await retryPendingMemoryVectorDeletes().catch(() => 0);
+            // Run in the background so slow/offline cleanup never delays plugin startup.
+            void retryPendingMemoryVectorDeletes().catch(() => 0);
             // 只要已确认会锁死触控的插件仍处于启用状态，就进入安全模式。
             // 这里只改变插件启动状态，不删除角色、聊天、图片、API 或备份数据。
             const hasBlockedPlugin = loadChatPlugins().some(
