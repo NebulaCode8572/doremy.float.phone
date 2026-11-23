@@ -279,7 +279,11 @@ export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[])
   return withVectorCloudMutation(() => syncMemoryEntriesToVectorCloudUnlocked(entries));
 }
 export async function retryPendingMemoryVectorDeletes(): Promise<number> {
-  return withVectorCloudMutation(retryPendingMemoryVectorDeletesUnlocked);
+  return withVectorCloudMutation(async () => {
+    const individual = await retryPendingMemoryVectorDeletesUnlocked();
+    const bulk = await retryPendingBulkVectorDeletesUnlocked();
+    return individual + bulk;
+  });
 }
 
 export async function syncImportedMemoryPending(): Promise<{ synced: number; success: boolean }> {
