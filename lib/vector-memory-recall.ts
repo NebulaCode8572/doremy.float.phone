@@ -15,13 +15,18 @@ export async function retrieveVectorMemoryForPrompt(characterId: string, query: 
     const payload = await response.json() as { matches?: Match[] };
     const matches = Array.isArray(payload.matches) ? payload.matches.slice(0, 8) : [];
     const selected: string[] = [];
+    const seenContent = new Set<string>();
     let usedTokens = 0;
     const budget = 1600;
     for (const match of matches) {
       const content = typeof match.content === "string" ? match.content.trim() : "";
       if (!content) continue;
+      // Avoid injecting the same text from multiple cloud sources in one recall.
+      const dedupeKey = content.replace(/\\s+/g, " ").toLocaleLowerCase();
+      if (seenContent.has(dedupeKey)) continue;
       const cost = estimateTokens(content) + 4;
       if (usedTokens + cost > budget) continue;
+      seenContent.add(dedupeKey);
       selected.push(content);
       usedTokens += cost;
     }
