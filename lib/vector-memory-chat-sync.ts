@@ -106,7 +106,15 @@ export function refreshChatMessageBucketsToVectorCloud(
         credentials: "same-origin",
         body: JSON.stringify({ entries: [payload] }),
       });
-      if (!response.ok) console.warn(`[VectorMemory] Chat chunk indexing returned HTTP ${response.status}`);
+      if (!response.ok) {
+        console.warn(`[VectorMemory] Chat chunk indexing returned HTTP ${response.status`);
+        return;
+      }
+      const result = await response.json().catch(() => null);
+      const itemResult = Array.isArray(result?.results) ? result.results[0] : null;
+      if (!itemResult || itemResult.success !== true) {
+        console.warn("[VectorMemory] Chat chunk indexing endpoint returned HTTP 200 but did not confirm indexing success.");
+      }
     });
   }
 }
