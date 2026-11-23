@@ -52,7 +52,12 @@ export async function removeSyncedImportedMemoryPending(entries: ImportedMemoryP
   const remaining = current.filter((entry) => {
     const uploaded = synced.get(pendingEntryKey(entry));
     // Preserve a record changed or re-imported while the upload was in flight.
-    return !uploaded || uploaded.content !== entry.content || uploaded.updatedAt !== entry.updatedAt;
+    // Content/timestamps alone are insufficient: metadata can affect retrieval scope.
+    return !uploaded ||
+      uploaded.content !== entry.content ||
+      uploaded.createdAt !== entry.createdAt ||
+      uploaded.updatedAt !== entry.updatedAt ||
+      JSON.stringify(uploaded.metadata ?? {}) !== JSON.stringify(entry.metadata ?? {});
   });
   await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify(remaining));
 }
