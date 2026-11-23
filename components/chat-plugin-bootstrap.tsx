@@ -6,6 +6,7 @@
 
 import { useEffect } from "react";
 import { hydrateKvDb } from "@/lib/kv-db";
+import { retryPendingMemoryVectorDeletes } from "@/lib/vector-memory-sync";
 import { loadChatPlugins } from "@/lib/chat-plugin-storage";
 import {
     getChatPluginRuntime,
