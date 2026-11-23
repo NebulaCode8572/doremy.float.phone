@@ -97,6 +97,48 @@ async function cancelPendingMemoryDeletesForEntries(entries: VectorSyncEntry[]):
 }
 
 
+const BULK_DELETE_PENDING_KEY = "ai_phone_vector_memory_bulk_delete_pending_v1";
+registerKvMigration(BULK_DELETE_PENDING_KEY);
+type PendingBulkVectorDelete = { characterId: string; memoryOnly: boolean };
+function bulkDeleteKey(item: PendingBulkVectorDelete): string { return item.characterId + ":" + (item.memoryOnly ? "memoryOnly" : "all"); }
+function loadPendingBulkVectorDeletes(): PendingBulkVectorDelete[] {
+  try {
+    const raw = kvGet(BULK_DELETE_PENDING_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.characterId === "string" && typeof item.memoryOnly === "boolean") : [];
+  } catch { return []; }
+}
+async function enqueuePendingBulkVectorDelete(item: PendingBulkVectorDelete): Promise<void> {
+  await hydrateKvDb();
+  const merged = new Map(loadPendingBulkVectorDeletes().map((entry) => [bulkDeleteKey(entry), entry]));
+  merged.set(bulkDeleteKey(item), item);
+  await kvSetAsync(BULK_DELETE_PENDING_KEY, JSON.stringify(Array.from(merged.values()).slice(-500)));
+}
+async function removePendingBulkVectorDelete(item: PendingBulkVectorDelete): Promise<void> {
+  await hydrateKvDb();
+  const remaining = loadPendingBulkVectorDeletes().filter(entry => bulkDeleteKey(entry) !== bulkDeleteKey(item));
+  await kvSetAsync(BULK_DELETE_PENDING_KEY, JSON.stringify(remaining));
+}
+async function retryPendingBulkVectorDeletesUnlocked(): Promise<number> {
+  if (typeof window === "undefined") return 0;
+  await hydrateKvDb();
+  const pending = loadPendingBulkVectorDeletes();
+  let completed = 0;
+  for (const item of pending) {
+    try {
+      const response = await fetch("/api/vector-memory-entry", {
+        method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        body: JSON.stringify(item.memoryOnly ? { characterId: item.characterId, memoryOnly: true } : { characterId: item.characterId }),
+      });
+      if (response.ok) {
+        await removePendingBulkVectorDelete(item);
+        completed++;
+      }
+    } catch { /* Keep the item queued for a later attempt. */ }
+  }
+  return completed;
+}
+
 async function retryPendingMemoryVectorDeletesUnlocked(): Promise<number> {
   if (typeof window === "undefined") return 0;
   await hydrateKvDb();
@@ -144,16 +186,20 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
 export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: string): Promise<void> {
   return withVectorCloudMutation(async () => {
   if (!characterId || typeof window === "undefined") return;
+  const pendingDelete = { characterId, memoryOnly: true };
   await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId && (entry.type === "core" || entry.type === "long_term"));
   try {
     const response = await fetch("/api/vector-memory-entry", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
+      method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
       body: JSON.stringify({ characterId, memoryOnly: true }),
     });
-    if (!response.ok) console.warn("[VectorMemory] Memory cleanup endpoint returned HTTP " + response.status);
+    if (response.ok) await removePendingBulkVectorDelete(pendingDelete);
+    else {
+      await enqueuePendingBulkVectorDelete(pendingDelete);
+      console.warn("[VectorMemory] Memory cleanup endpoint returned HTTP " + response.status);
+    }
   } catch (error) {
+    await enqueuePendingBulkVectorDelete(pendingDelete);
     console.warn("[VectorMemory] Memory vector cleanup failed; local cleanup remains unaffected.", error);
   }
   });
@@ -163,16 +209,20 @@ export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: s
 export async function deleteCharacterVectorsFromVectorCloud(characterId: string): Promise<void> {
   return withVectorCloudMutation(async () => {
   if (!characterId || typeof window === "undefined") return;
+  const pendingDelete = { characterId, memoryOnly: false };
   await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId);
   try {
     const response = await fetch("/api/vector-memory-entry", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
+      method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
       body: JSON.stringify({ characterId }),
     });
-    if (!response.ok) console.warn("[VectorMemory] Character cleanup endpoint returned HTTP " + response.status);
+    if (response.ok) await removePendingBulkVectorDelete(pendingDelete);
+    else {
+      await enqueuePendingBulkVectorDelete(pendingDelete);
+      console.warn("[VectorMemory] Character cleanup endpoint returned HTTP " + response.status);
+    }
   } catch (error) {
+    await enqueuePendingBulkVectorDelete(pendingDelete);
     console.warn("[VectorMemory] Character vector cleanup failed; local character deletion remains unaffected.", error);
   }
   });
@@ -184,6 +234,7 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
   // A re-index supersedes a queued deletion for the same stable source ID.
   await cancelPendingMemoryDeletesForEntries(entries);
   await retryPendingMemoryVectorDeletesUnlocked();
+  await retryPendingBulkVectorDeletesUnlocked();
   let allSucceeded = true;
   // Incremental and idempotent: only newly saved entries are sent, and source IDs
   // are stable for upsert. Keep indexing non-blocking for ordinary memory writes.
