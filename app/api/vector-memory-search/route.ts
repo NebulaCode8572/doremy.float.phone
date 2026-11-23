@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     const characterId = typeof body.characterId === "string" ? body.characterId.trim() : "";
     if (!query || query.length > 5000 || !characterId || characterId.length > 160) return NextResponse.json({ error: "检索参数无效" }, { status: 400 });
     const embedding = await generateVectorMemoryEmbedding(account.id, query);
-    const result = await supabaseRestFetch<Match[]>("rpc/match_vector", {
+    const result = await supabaseRestFetch<Match[]>("rpc/match_vector_memory", {
       method: "POST",
       body: JSON.stringify({
         query_embedding: embedding,
