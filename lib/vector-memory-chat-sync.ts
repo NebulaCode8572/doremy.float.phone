@@ -137,7 +137,7 @@ export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
 export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, buckets: number[]): void {
   if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
   for (const bucket of [...new Set(buckets.filter(value => Number.isInteger(value) && value >= 0))]) {
-    enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), () => deleteChatChunk(session.contactId!, session.id, bucket));
+    enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {\n      await deleteChatChunk(session.contactId!, session.id, bucket);\n      await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });\n    });
   }
 }
 
