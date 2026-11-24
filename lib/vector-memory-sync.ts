@@ -111,9 +111,6 @@ function loadPendingMemoryIndexes(): VectorSyncEntry[] {
     return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.characterId === "string" && typeof item.id === "string" && typeof item.sourceApp === "string" && (item.type === "core" || item.type === "long_term" || item.type === "summary") && typeof item.content === "string" && typeof item.createdAt === "string" && typeof item.updatedAt === "string") : [];
   } catch { return []; }
 }
-function sameIndexSnapshot(a: VectorSyncEntry, b: VectorSyncEntry): boolean {
-  return pendingEntryKey(a) === pendingEntryKey(b) && a.content === b.content && a.createdAt === b.createdAt && a.updatedAt === b.updatedAt && JSON.stringify(a.metadata ?? {}) === JSON.stringify(b.metadata ?? {});
-}
 async function enqueuePendingMemoryIndexes(entries: VectorSyncEntry[]): Promise<void> {
   if (!entries.length) return;
   await hydrateKvDb();
