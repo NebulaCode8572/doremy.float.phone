@@ -99,3 +99,7 @@ revoke all on public.app_user_vector_memories from public, anon, authenticated;
 revoke all on public.app_user_vector_memory_settings from public, anon, authenticated;
 grant all on public.app_user_vector_memories to service_role;
 grant all on public.app_user_vector_memory_settings to service_role;
+
+
+-- After this base schema is installed, also apply docs/vector-memory-revision-guards.sql.
+-- It adds private per-source revision metadata and atomic revision/deletion RPCs.
