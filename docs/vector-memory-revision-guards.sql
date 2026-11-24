@@ -84,12 +84,12 @@ create or replace function public.delete_vector_memory_session_chunks(
 ) returns void
 language plpgsql security invoker set search_path = ''
 as $$
-declare v_prefix text := 'session:' || p_session_id || ':chunk:%';
+declare v_prefix text := 'session:' || p_session_id || ':chunk:';
 begin
   update public.app_user_vector_memory_versions
   set revision=revision+1,updated_at=now()
   where user_id=p_user_id and character_id=p_character_id and source_app='chat'
-    and source_kind='chat_chunk' and source_id like v_prefix;
+    and source_kind='chat_chunk' and left(source_id,length(v_prefix))=v_prefix;
   delete from public.app_user_vector_memories
   where user_id=p_user_id and character_id=p_character_id and source_app='chat'
     and source_kind='chat_chunk' and metadata->>'sessionId'=p_session_id;
