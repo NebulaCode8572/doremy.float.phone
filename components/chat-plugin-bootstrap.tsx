@@ -8,6 +8,8 @@ import { useEffect } from "react";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { retryPendingMemoryVectorDeletes, retryPendingMemoryIndexes, syncImportedMemoryPending } from "@/lib/vector-memory-sync";
 import { loadChatPlugins } from "@/lib/chat-plugin-storage";
+import { hydrateChatStorage, isChatStorageHydrated, loadChatMessages, loadChatSessions } from "@/lib/chat-storage";
+import { retryPendingChatVectorChunks } from "@/lib/vector-memory-chat-sync";
 import {
     getChatPluginRuntime,
     setChatPluginSafeMode,
@@ -31,6 +33,13 @@ export function ChatPluginBootstrap() {
             void retryPendingMemoryIndexes().catch(() => 0);
             // Retry explicitly queued imported memories once local config is hydrated.
             void syncImportedMemoryPending().catch(() => ({ synced: 0, success: false }));
+            // Chat chunk retries store only stable IDs; rebuild content from the hydrated local chat DB.
+            void hydrateChatStorage().then(() => {
+                if (isChatStorageHydrated()) {
+                    return retryPendingChatVectorChunks(loadChatSessions(), loadChatMessages);
+                }
+                return 0;
+            }).catch(error => console.warn("[VectorMemory] Chat retry hydration failed; markers are preserved.", error));
             // 只要已确认会锁死触控的插件仍处于启用状态，就进入安全模式。
             // 这里只改变插件启动状态，不删除角色、聊天、图片、API 或备份数据。
             const hasBlockedPlugin = loadChatPlugins().some(
