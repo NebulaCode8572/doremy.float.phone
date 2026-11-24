@@ -333,7 +333,12 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
   return allSucceeded;
 }
 export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[]): Promise<boolean> {
-  return withVectorCloudMutation(() => syncMemoryEntriesToVectorCloudUnlocked(entries));
+  return withVectorCloudMutation(async () => {
+    // The Vector Memory toggle is the master gate for ordinary indexing.
+    // Keep local saves unaffected and preserve any queued retries while disabled.
+    if (!loadMemoryConfig().vectorMemoryEnabled) return false;
+    return syncMemoryEntriesToVectorCloudUnlocked(entries);
+  });
 }
 export async function retryPendingMemoryIndexes(): Promise<number> {
   return withVectorCloudMutation(async () => {
