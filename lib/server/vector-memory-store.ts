@@ -1,6 +1,5 @@
 import { supabaseRestFetch } from "@/lib/server/supabase-rest";
 
-const TABLE = "app_user_vector_memories";
 export type VectorMemorySourceKind = "summary" | "chat_chunk" | "core_memory" | "long_term_memory";
 export type VectorMemoryRecord = {
   userId: string;
