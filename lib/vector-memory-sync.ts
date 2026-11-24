@@ -102,6 +102,31 @@ async function cancelPendingMemoryDeletesForEntries(entries: VectorSyncEntry[]):
 }
 
 
+const INDEX_PENDING_KEY = "ai_phone_vector_memory_index_pending_v1";
+registerKvMigration(INDEX_PENDING_KEY);
+function loadPendingMemoryIndexes(): VectorSyncEntry[] {
+  try {
+    const raw = kvGet(INDEX_PENDING_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.characterId === "string" && typeof item.id === "string" && typeof item.sourceApp === "string" && (item.type === "core" || item.type === "long_term" || item.type === "summary") && typeof item.content === "string" && typeof item.createdAt === "string" && typeof item.updatedAt === "string") : [];
+  } catch { return []; }
+}
+function sameIndexSnapshot(a: VectorSyncEntry, b: VectorSyncEntry): boolean {
+  return pendingEntryKey(a) === pendingEntryKey(b) && a.content === b.content && a.createdAt === b.createdAt && a.updatedAt === b.updatedAt && JSON.stringify(a.metadata ?? {}) === JSON.stringify(b.metadata ?? {});
+}
+async function enqueuePendingMemoryIndexes(entries: VectorSyncEntry[]): Promise<void> {
+  if (!entries.length) return;
+  await hydrateKvDb();
+  const merged = new Map(loadPendingMemoryIndexes().map(entry => [pendingEntryKey(entry), entry]));
+  for (const entry of entries) merged.set(pendingEntryKey(entry), entry);
+  await kvSetAsync(INDEX_PENDING_KEY, JSON.stringify(Array.from(merged.values()).slice(-2000)));
+}
+async function removePendingMemoryIndexes(entries: VectorSyncEntry[]): Promise<void> {
+  if (!entries.length) return;
+  await hydrateKvDb();
+  const remaining = loadPendingMemoryIndexes().filter(current => !entries.some(snapshot => sameIndexSnapshot(current, snapshot)));
+  await kvSetAsync(INDEX_PENDING_KEY, JSON.stringify(remaining));
+}
 const BULK_DELETE_PENDING_KEY = "ai_phone_vector_memory_bulk_delete_pending_v1";
 registerKvMigration(BULK_DELETE_PENDING_KEY);
 type PendingBulkVectorDelete = { characterId: string; memoryOnly: boolean };
@@ -246,7 +271,7 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
 }
 
 
-async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]): Promise<boolean> {
+async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[], persistFailures = true): Promise<boolean> {
   if (!entries.length || typeof window === "undefined") return false;
   // A re-index supersedes a queued deletion for the same stable source ID.
   await cancelPendingMemoryDeletesForEntries(entries);
@@ -277,17 +302,22 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
       });
       if (!response.ok) {
         allSucceeded = false;
+        if (persistFailures) await enqueuePendingMemoryIndexes(batch);
         console.warn("[VectorMemory] Index endpoint returned HTTP " + response.status);
       } else {
         const payload = await response.json().catch(() => null);
         const results = payload && Array.isArray(payload.results) ? payload.results : null;
         if (!results || results.length !== batch.length || results.some((item: unknown) => !item || typeof item !== "object" || (item as { success?: unknown }).success !== true) {
           allSucceeded = false;
+          if (persistFailures) await enqueuePendingMemoryIndexes(batch);
           console.warn("[VectorMemory] Index endpoint reported partial or malformed batch success");
+        } else {
+          await removePendingMemoryIndexes(batch);
         }
       }
     } catch (error) {
       allSucceeded = false;
+      if (persistFailures) await enqueuePendingMemoryIndexes(batch);
       console.warn("[VectorMemory] Incremental indexing failed; chat/memory save remains unaffected.", error);
     }
   }
@@ -296,6 +326,18 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
 export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[]): Promise<boolean> {
   return withVectorCloudMutation(() => syncMemoryEntriesToVectorCloudUnlocked(entries));
 }
+export async function retryPendingMemoryIndexes(): Promise<number> {
+  return withVectorCloudMutation(async () => {
+    await hydrateKvDb();
+    if (!loadMemoryConfig().vectorMemoryEnabled) return 0;
+    const pending = loadPendingMemoryIndexes();
+    if (!pending.length) return 0;
+    const success = await syncMemoryEntriesToVectorCloudUnlocked(pending, false);
+    if (success) await removePendingMemoryIndexes(pending);
+    return success ? pending.length : 0;
+  });
+}
+
 export async function retryPendingMemoryVectorDeletes(): Promise<number> {
   return withVectorCloudMutation(async () => {
     const individual = await retryPendingMemoryVectorDeletesUnlocked();
@@ -310,7 +352,7 @@ export async function syncImportedMemoryPending(): Promise<{ synced: number; suc
     const pending = loadImportedMemoryPending();
     if (!pending.length) return { synced: 0, success: true };
     if (!loadMemoryConfig().vectorMemoryEnabled) return { synced: 0, success: false };
-    const success = await syncMemoryEntriesToVectorCloudUnlocked(pending);
+    const success = await syncMemoryEntriesToVectorCloudUnlocked(pending, false);
     if (success) await removeSyncedImportedMemoryPending(pending);
     return { synced: success ? pending.length : 0, success };
   });
