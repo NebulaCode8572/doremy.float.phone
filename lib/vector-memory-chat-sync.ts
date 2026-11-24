@@ -124,6 +124,7 @@ export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
     .filter(([key]) => key.startsWith(prefix))
     .map(([, promise]) => promise);
   void Promise.all(pending).then(async () => {
+    await clearChatSessionPending(session.contactId!, session.id);
     const response = await fetch("/api/vector-memory-chat-chunks", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
