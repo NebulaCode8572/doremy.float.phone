@@ -35,21 +35,23 @@ export async function POST(request: Request) {
         continue;
       }
       try {
-        const record = {
+        const identity = {
           userId: account.id,
           characterId,
           sourceApp,
           sourceId: id,
           sourceKind: sourceKind as "summary" | "core_memory" | "long_term_memory" | "chat_chunk",
-          content,
-          embedding: [] as number[],
-          metadata: item.metadata && typeof item.metadata === "object" ? item.metadata : {},
         };
         // Reserve an atomic per-source revision before the slower embedding call.
         // A later request (or deletion) advances the revision and makes this write stale.
-        const revision = await reserveVectorMemoryRevision(record);
-        record.embedding = await generateVectorMemoryEmbedding(account.id, content);
-        const committed = await upsertVectorMemory(record, revision);
+        const revision = await reserveVectorMemoryRevision(identity);
+        const embedding = await generateVectorMemoryEmbedding(account.id, content);
+        const committed = await upsertVectorMemory({
+          ...identity,
+          content,
+          embedding,
+          metadata: item.metadata && typeof item.metadata === "object" ? item.metadata : {},
+        }, revision);
         results.push(committed
           ? { id, success: true }
           : { id, success: false, error: "索引内容已被更新请求取代" });
