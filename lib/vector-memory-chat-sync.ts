@@ -193,20 +193,30 @@ export function refreshChatMessageBucketsToVectorCloud(
         // Settings may have changed while queued. Skip upload but preserve cloud data.
         return;
       }
-      const response = await fetch("/api/vector-memory-index", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ entries: [payload] }),
-      });
+      let response: Response;
+      try {
+        response = await fetch("/api/vector-memory-index", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ entries: [payload] }),
+        });
+      } catch (error) {
+        await markChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
+        throw error;
+      }
       if (!response.ok) {
+        await markChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
         console.warn(`[VectorMemory] Chat chunk indexing returned HTTP ${response.status}`);
         return;
       }
       const result = await response.json().catch(() => null);
       const itemResult = Array.isArray(result?.results) ? result.results[0] : null;
       if (!itemResult || itemResult.success !== true) {
+        await markChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
         console.warn("[VectorMemory] Chat chunk indexing endpoint returned HTTP 200 but did not confirm indexing success.");
+      } else {
+        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
       }
     });
   }
