@@ -168,14 +168,16 @@ export function refreshChatMessageBucketsToVectorCloud(
     if (selected.length < 2) {
       enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
         await deleteChatChunk(session.contactId!, session.id, bucket);
-        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });\n      });
+        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
+      });
       continue;
     }
     const content = selected.map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`).join("\n").slice(0, MAX_CHUNK_CONTENT);
     if (!content.trim()) {
       enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
         await deleteChatChunk(session.contactId!, session.id, bucket);
-        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });\n      });
+        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
+      });
       continue;
     }
     const payload = {
