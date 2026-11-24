@@ -110,7 +110,7 @@ async function deleteChatChunk(characterId: string, sessionId: string, bucket: n
     credentials: "same-origin",
     body: JSON.stringify({ characterId, sourceId: `session:${sessionId}:chunk:${bucket}` }),
   });
-  if (!response.ok) console.warn(`[VectorMemory] Chat chunk deletion returned HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`[VectorMemory] Chat chunk deletion returned HTTP ${response.status}`);
 }
 
 export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
@@ -162,7 +162,7 @@ export function refreshChatMessageBucketsToVectorCloud(
       continue;
     }
     if (selected.length < 2) {
-      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), () => deleteChatChunk(session.contactId!, session.id, bucket));
+      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {\n        await deleteChatChunk(session.contactId!, session.id, bucket);\n        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });\n      });
       continue;
     }
     const content = selected.map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`).join("\n").slice(0, MAX_CHUNK_CONTENT);
