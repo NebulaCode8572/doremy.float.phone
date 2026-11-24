@@ -130,7 +130,11 @@ async function removePendingMemoryIndexesForCharacter(characterId: string, memor
 async function removePendingMemoryIndexes(entries: VectorSyncEntry[]): Promise<void> {
   if (!entries.length) return;
   await hydrateKvDb();
-  const remaining = loadPendingMemoryIndexes().filter(current => !entries.some(snapshot => sameIndexSnapshot(current, snapshot)));
+  // All callers run inside vectorCloudMutationQueue. Once this serialized operation
+  // succeeds (or a delete is accepted), its stable source IDs supersede every older
+  // queued snapshot for those IDs, even when the queued content differs.
+  const keys = new Set(entries.map(pendingEntryKey));
+  const remaining = loadPendingMemoryIndexes().filter(current => !keys.has(pendingEntryKey(current)));
   await kvSetAsync(INDEX_PENDING_KEY, JSON.stringify(remaining));
 }
 const BULK_DELETE_PENDING_KEY = "ai_phone_vector_memory_bulk_delete_pending_v1";
