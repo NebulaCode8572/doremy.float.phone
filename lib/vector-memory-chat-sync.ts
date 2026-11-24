@@ -1,4 +1,5 @@
 import { loadMemoryConfig } from "@/lib/memory-storage";
+import { hydrateKvDb, kvGet, kvSetAsync, registerKvMigration } from "@/lib/kv-db";
 import type { ChatMessage, ChatSession } from "@/lib/chat-storage";
 
 const CHUNK_SIZE = 4;
@@ -7,6 +8,69 @@ const MAX_CHUNK_CONTENT = 10_000;
 const chunkOperationQueues = new Map<string, Promise<void>>();
 // A deleted session must not be re-indexed by stale refresh calls.
 const deletedChatSessions = new Set<string>();
+
+const CHAT_CHUNK_PENDING_KEY = "ai_phone_vector_memory_chat_chunk_pending_v1";
+registerKvMigration(CHAT_CHUNK_PENDING_KEY);
+type PendingChatChunk = { characterId: string; sessionId: string; bucket: number };
+let pendingStateQueue: Promise<void> = Promise.resolve();
+
+function readPendingChatChunks(): PendingChatChunk[] {
+  try {
+    const parsed = JSON.parse(kvGet(CHAT_CHUNK_PENDING_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((item): item is PendingChatChunk =>
+      item && typeof item.characterId === "string" && typeof item.sessionId === "string"
+      && Number.isInteger(item.bucket) && item.bucket >= 0
+    ) : [];
+  } catch { return []; }
+}
+
+function updatePendingChatChunks(change: (items: PendingChatChunk[]) => PendingChatChunk[]): Promise<void> {
+  const next = pendingStateQueue.catch(() => undefined).then(async () => {
+    await hydrateKvDb();
+    const items = change(readPendingChatChunks());
+    await kvSetAsync(CHAT_CHUNK_PENDING_KEY, JSON.stringify(items.slice(-2000)));
+  });
+  pendingStateQueue = next;
+  return next;
+}
+
+function markChatChunkPending(entry: PendingChatChunk): Promise<void> {
+  return updatePendingChatChunks(items => {
+    const key = chunkQueueKey(entry.characterId, entry.sessionId, entry.bucket);
+    const next = items.filter(item => chunkQueueKey(item.characterId, item.sessionId, item.bucket) !== key);
+    next.push(entry);
+    return next;
+  });
+}
+
+function clearChatChunkPending(entry: PendingChatChunk): Promise<void> {
+  const key = chunkQueueKey(entry.characterId, entry.sessionId, entry.bucket);
+  return updatePendingChatChunks(items => items.filter(item => chunkQueueKey(item.characterId, item.sessionId, item.bucket) !== key));
+}
+
+function clearChatSessionPending(characterId: string, sessionId: string): Promise<void> {
+  return updatePendingChatChunks(items => items.filter(item => item.characterId !== characterId || item.sessionId !== sessionId));
+}
+
+export async function retryPendingChatVectorChunks(
+  sessions: ChatSession[],
+  loadMessages: (sessionId: string) => ChatMessage[],
+): Promise<number> {
+  await hydrateKvDb();
+  if (!loadMemoryConfig().vectorMemoryEnabled) return 0;
+  const pending = readPendingChatChunks();
+  let queued = 0;
+  for (const entry of pending) {
+    const session = sessions.find(item => item.id === entry.sessionId && item.contactId === entry.characterId && !item.isGroup);
+    if (!session) {
+      await clearChatChunkPending(entry);
+      continue;
+    }
+    refreshChatMessageBucketsToVectorCloud(session, loadMessages(session.id), [entry.bucket]);
+    queued++;
+  }
+  return queued;
+}
 
 function chatSessionKey(characterId: string, sessionId: string): string {
   return characterId + ":" + sessionId;
@@ -54,6 +118,7 @@ export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
   // Mark synchronously before taking the queue snapshot. Stale UI callbacks
   // arriving after this point cannot enqueue work that resurrects the vectors.
   deletedChatSessions.add(chatSessionKey(session.contactId, session.id));
+  void clearChatSessionPending(session.contactId, session.id).catch(error => console.warn("[VectorMemory] Could not clear deleted session retry markers.", error));
   const prefix = session.contactId + ":" + session.id + ":";
   const pending = [...chunkOperationQueues.entries()]
     .filter(([key]) => key.startsWith(prefix))
