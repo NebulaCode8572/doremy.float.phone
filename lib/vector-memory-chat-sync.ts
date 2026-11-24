@@ -5,6 +5,12 @@ const CHUNK_SIZE = 4;
 const MAX_CHUNK_CONTENT = 10_000;
 
 const chunkOperationQueues = new Map<string, Promise<void>>();
+// A deleted session must not be re-indexed by stale refresh calls.
+const deletedChatSessions = new Set<string>();
+
+function chatSessionKey(characterId: string, sessionId: string): string {
+  return characterId + ":" + sessionId;
+}
 
 function enqueueChatChunkOperation(key: string, operation: () => Promise<void>): void {
   const previous = chunkOperationQueues.get(key) ?? Promise.resolve();
@@ -45,7 +51,10 @@ async function deleteChatChunk(characterId: string, sessionId: string, bucket: n
 
 export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
   if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
-  const prefix = `${session.contactId}:${session.id}:`;
+  // Mark synchronously before taking the queue snapshot. Stale UI callbacks
+  // arriving after this point cannot enqueue work that resurrects the vectors.
+  deletedChatSessions.add(chatSessionKey(session.contactId, session.id));
+  const prefix = session.contactId + ":" + session.id + ":";
   const pending = [...chunkOperationQueues.entries()]
     .filter(([key]) => key.startsWith(prefix))
     .map(([, promise]) => promise);
@@ -56,7 +65,7 @@ export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
       credentials: "same-origin",
       body: JSON.stringify({ characterId: session.contactId, sessionId: session.id }),
     });
-    if (!response.ok) console.warn(`[VectorMemory] Session vector cleanup returned HTTP ${response.status}`);
+    if (!response.ok) console.warn("[VectorMemory] Session vector cleanup returned HTTP " + response.status);
   }).catch(error => console.warn("[VectorMemory] Session vector cleanup failed; local chat remains unaffected.", error));
 }
 
@@ -74,6 +83,7 @@ export function refreshChatMessageBucketsToVectorCloud(
   buckets: number[],
 ): void {
   if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
+  if (deletedChatSessions.has(chatSessionKey(session.contactId, session.id))) return;
   const uniqueBuckets = [...new Set(buckets.filter(bucket => Number.isInteger(bucket) && bucket >= 0))];
   for (const bucket of uniqueBuckets) {
     const selected = allMessages
@@ -104,7 +114,8 @@ export function refreshChatMessageBucketsToVectorCloud(
       metadata: { sessionId: session.id, chunkIndex: bucket, messageIds: selected.map(entry => entry.item.id), updatedAt: new Date().toISOString() },
     };
     enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
-      // Re-check at execution time: settings may change while this operation waits in the queue.
+      // Re-check deletion and settings when the queued operation actually runs.
+      if (deletedChatSessions.has(chatSessionKey(session.contactId!, session.id))) return;
       if (!loadMemoryConfig().vectorMemoryEnabled) {
         // Settings may have changed while queued. Skip upload but preserve cloud data.
         return;
