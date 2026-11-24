@@ -6,7 +6,7 @@
 
 import { useEffect } from "react";
 import { hydrateKvDb } from "@/lib/kv-db";
-import { retryPendingMemoryVectorDeletes, syncImportedMemoryPending } from "@/lib/vector-memory-sync";
+import { retryPendingMemoryVectorDeletes, retryPendingMemoryIndexes, syncImportedMemoryPending } from "@/lib/vector-memory-sync";
 import { loadChatPlugins } from "@/lib/chat-plugin-storage";
 import {
     getChatPluginRuntime,
@@ -27,6 +27,8 @@ export function ChatPluginBootstrap() {
             // Best-effort cleanup of persisted vector delete queues on app startup.
             // Run in the background so slow/offline cleanup never delays plugin startup.
             void retryPendingMemoryVectorDeletes().catch(() => 0);
+            // Retry persisted ordinary memory indexing failures.
+            void retryPendingMemoryIndexes().catch(() => 0);
             // Retry explicitly queued imported memories once local config is hydrated.
             void syncImportedMemoryPending().catch(() => ({ synced: 0, success: false }));
             // 只要已确认会锁死触控的插件仍处于启用状态，就进入安全模式。
