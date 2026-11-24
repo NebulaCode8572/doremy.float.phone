@@ -82,7 +82,11 @@ export function refreshChatMessageBucketsToVectorCloud(
       .map(item => ({ item, text: cleanMessageText(item) }))
       .filter(entry => entry.text);
     const sourceId = `session:${session.id}:chunk:${bucket}`;
-    if (!loadMemoryConfig().vectorMemoryEnabled || selected.length < 2) {
+    if (!loadMemoryConfig().vectorMemoryEnabled) {
+      // Disabling Vector Memory pauses indexing; it must not erase previously stored vectors.
+      continue;
+    }
+    if (selected.length < 2) {
       enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), () => deleteChatChunk(session.contactId!, session.id, bucket));
       continue;
     }
@@ -102,7 +106,7 @@ export function refreshChatMessageBucketsToVectorCloud(
     enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
       // Re-check at execution time: settings may change while this operation waits in the queue.
       if (!loadMemoryConfig().vectorMemoryEnabled) {
-        await deleteChatChunk(session.contactId!, session.id, bucket);
+        // Settings may have changed while queued. Skip upload but preserve cloud data.
         return;
       }
       const response = await fetch("/api/vector-memory-index", {
