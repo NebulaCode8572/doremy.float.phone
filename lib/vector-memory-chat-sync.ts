@@ -137,7 +137,10 @@ export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
 export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, buckets: number[]): void {
   if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
   for (const bucket of [...new Set(buckets.filter(value => Number.isInteger(value) && value >= 0))]) {
-    enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {\n      await deleteChatChunk(session.contactId!, session.id, bucket);\n      await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });\n    });
+    enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
+      await deleteChatChunk(session.contactId!, session.id, bucket);
+      await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
+    });
   }
 }
 
@@ -162,12 +165,16 @@ export function refreshChatMessageBucketsToVectorCloud(
       continue;
     }
     if (selected.length < 2) {
-      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {\n        await deleteChatChunk(session.contactId!, session.id, bucket);\n        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });\n      });
+      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
+        await deleteChatChunk(session.contactId!, session.id, bucket);
+        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });\n      });
       continue;
     }
     const content = selected.map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`).join("\n").slice(0, MAX_CHUNK_CONTENT);
     if (!content.trim()) {
-      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {\n        await deleteChatChunk(session.contactId!, session.id, bucket);\n        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });\n      });
+      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
+        await deleteChatChunk(session.contactId!, session.id, bucket);
+        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });\n      });
       continue;
     }
     const payload = {
