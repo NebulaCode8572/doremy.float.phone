@@ -1,4 +1,4 @@
-import { encodeSupabaseFilter, supabaseRestFetch } from "@/lib/server/supabase-rest";
+import { supabaseRestFetch } from "@/lib/server/supabase-rest";
 
 const TABLE = "app_user_vector_memories";
 export type VectorMemorySourceKind = "summary" | "chat_chunk" | "core_memory" | "long_term_memory";
@@ -25,48 +25,75 @@ function validateRecord(record: VectorMemoryRecord): void {
   if (!["summary", "chat_chunk", "core_memory", "long_term_memory"].includes(record.sourceKind)) throw new Error("Vector Memory 来源类型无效");
 }
 
-export async function upsertVectorMemory(record: VectorMemoryRecord): Promise<void> {
-  validateRecord(record);
-  const payload = {
-    user_id: record.userId,
-    character_id: record.characterId,
-    source_app: record.sourceApp,
-    source_id: record.sourceId,
-    source_kind: record.sourceKind,
-    content: record.content.trim(),
-    embedding: `[${record.embedding.join(",")}]`,
-    metadata: record.metadata ?? {},
-    updated_at: new Date().toISOString(),
-  };
-  const result = await supabaseRestFetch<unknown[]>(`${TABLE}?on_conflict=user_id,character_id,source_app,source_id,source_kind`, {
+type RevisionIdentity = Pick<VectorMemoryRecord, "userId" | "characterId" | "sourceApp" | "sourceId" | "sourceKind">;
+
+export async function reserveVectorMemoryRevision(identity: RevisionIdentity): Promise<number> {
+  const result = await supabaseRestFetch<unknown>("rpc/reserve_vector_memory_revision", {
     method: "POST",
-    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      p_user_id: identity.userId,
+      p_character_id: identity.characterId,
+      p_source_app: identity.sourceApp,
+      p_source_id: identity.sourceId,
+      p_source_kind: identity.sourceKind,
+    }),
+  });
+  if (!result.ok) throw new Error(result.error);
+  const revision = typeof result.data === "number" ? result.data : Number(result.data);
+  if (!Number.isSafeInteger(revision) || revision < 1) throw new Error("Vector Memory revision response invalid");
+  return revision;
+}
+
+export async function upsertVectorMemory(record: VectorMemoryRecord, revision: number): Promise<boolean> {
+  validateRecord(record);
+  if (!Number.isSafeInteger(revision) || revision < 1) throw new Error("Vector Memory revision 无效");
+  const result = await supabaseRestFetch<unknown>("rpc/commit_vector_memory_revision", {
+    method: "POST",
+    body: JSON.stringify({
+      p_user_id: record.userId,
+      p_character_id: record.characterId,
+      p_source_app: record.sourceApp,
+      p_source_id: record.sourceId,
+      p_source_kind: record.sourceKind,
+      p_revision: revision,
+      p_content: record.content.trim(),
+      p_embedding: `[${record.embedding.join(",")}]`,
+      p_metadata: record.metadata ?? {},
+    }),
+  });
+  if (!result.ok) throw new Error(result.error);
+  return result.data === true;
+}
+
+async function callDeleteRpc(name: string, body: Record<string, unknown>): Promise<void> {
+  const result = await supabaseRestFetch<unknown>(`rpc/${name}`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
   if (!result.ok) throw new Error(result.error);
 }
 
 export async function deleteVectorMemorySource(userId: string, characterId: string, sourceApp: string, sourceId: string, sourceKind?: VectorMemorySourceKind): Promise<void> {
-  const query = `user_id=eq.${encodeSupabaseFilter(userId)}&character_id=eq.${encodeSupabaseFilter(characterId)}&source_app=eq.${encodeSupabaseFilter(sourceApp)}&source_id=eq.${encodeSupabaseFilter(sourceId)}${sourceKind ? `&source_kind=eq.${encodeSupabaseFilter(sourceKind)}` : ""}`;
-  const result = await supabaseRestFetch<unknown[]>(`${TABLE}?${query}`, { method: "DELETE", headers: { Prefer: "return=minimal" } });
-  if (!result.ok) throw new Error(result.error);
+  await callDeleteRpc("delete_vector_memory_source", {
+    p_user_id: userId, p_character_id: characterId, p_source_app: sourceApp,
+    p_source_id: sourceId, p_source_kind: sourceKind ?? null,
+  });
 }
 
 export async function deleteVectorMemorySessionChatChunks(userId: string, characterId: string, sessionId: string): Promise<void> {
-  const query = `user_id=eq.${encodeSupabaseFilter(userId)}&character_id=eq.${encodeSupabaseFilter(characterId)}&source_app=eq.chat&source_kind=eq.chat_chunk&metadata->>sessionId=eq.${encodeSupabaseFilter(sessionId)}`;
-  const result = await supabaseRestFetch<unknown[]>(`${TABLE}?${query}`, { method: "DELETE", headers: { Prefer: "return=minimal" } });
-  if (!result.ok) throw new Error(result.error);
+  await callDeleteRpc("delete_vector_memory_session_chunks", {
+    p_user_id: userId, p_character_id: characterId, p_session_id: sessionId,
+  });
 }
 
 export async function deleteVectorMemoryEntriesForCharacter(userId: string, characterId: string): Promise<void> {
-  for (const sourceKind of ["summary", "core_memory", "long_term_memory"] as const) {
-    const query = `user_id=eq.${encodeSupabaseFilter(userId)}&character_id=eq.${encodeSupabaseFilter(characterId)}&source_kind=eq.${sourceKind}`;
-    const result = await supabaseRestFetch<unknown[]>(`${TABLE}?${query}`, { method: "DELETE", headers: { Prefer: "return=minimal" } });
-    if (!result.ok) throw new Error(result.error);
-  }
+  await callDeleteRpc("delete_vector_memory_character", {
+    p_user_id: userId, p_character_id: characterId, p_memory_only: true,
+  });
 }
 
 export async function deleteVectorMemoriesForCharacter(userId: string, characterId: string): Promise<void> {
-  const result = await supabaseRestFetch<unknown[]>(`${TABLE}?user_id=eq.${encodeSupabaseFilter(userId)}&character_id=eq.${encodeSupabaseFilter(characterId)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } });
-  if (!result.ok) throw new Error(result.error);
+  await callDeleteRpc("delete_vector_memory_character", {
+    p_user_id: userId, p_character_id: characterId, p_memory_only: false,
+  });
 }
