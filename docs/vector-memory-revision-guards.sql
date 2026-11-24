@@ -38,24 +38,26 @@ create or replace function public.commit_vector_memory_revision(
 ) returns boolean
 language plpgsql security invoker set search_path = ''
 as $$
-declare v_rows integer;
+declare
+  v_current_revision bigint;
+  v_rows integer;
 begin
+  -- Lock the revision row so reserve/delete RPCs serialize with this commit.
+  select revision into v_current_revision
+  from public.app_user_vector_memory_versions
+  where user_id=p_user_id and character_id=p_character_id and source_app=p_source_app
+    and source_id=p_source_id and source_kind=p_source_kind
+  for update;
+  if not found or v_current_revision <> p_revision then
+    return false;
+  end if;
   insert into public.app_user_vector_memories(
     user_id,character_id,source_app,source_id,source_kind,content,embedding,metadata,updated_at
-  )
-  select p_user_id,p_character_id,p_source_app,p_source_id,p_source_kind,p_content,p_embedding,coalesce(p_metadata,'{}'::jsonb),now()
-  where exists (
-    select 1 from public.app_user_vector_memory_versions v
-    where v.user_id=p_user_id and v.character_id=p_character_id and v.source_app=p_source_app
-      and v.source_id=p_source_id and v.source_kind=p_source_kind and v.revision=p_revision
+  ) values (
+    p_user_id,p_character_id,p_source_app,p_source_id,p_source_kind,p_content,p_embedding,coalesce(p_metadata,'{}'::jsonb),now()
   )
   on conflict (user_id,character_id,source_app,source_id,source_kind)
-  do update set content=excluded.content, embedding=excluded.embedding, metadata=excluded.metadata, updated_at=now()
-  where exists (
-    select 1 from public.app_user_vector_memory_versions v
-    where v.user_id=p_user_id and v.character_id=p_character_id and v.source_app=p_source_app
-      and v.source_id=p_source_id and v.source_kind=p_source_kind and v.revision=p_revision
-  );
+  do update set content=excluded.content, embedding=excluded.embedding, metadata=excluded.metadata, updated_at=now();
   get diagnostics v_rows = row_count;
   return v_rows > 0;
 end;
