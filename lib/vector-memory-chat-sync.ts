@@ -100,6 +100,11 @@ export function refreshChatMessageBucketsToVectorCloud(
       metadata: { sessionId: session.id, chunkIndex: bucket, messageIds: selected.map(entry => entry.item.id), updatedAt: new Date().toISOString() },
     };
     enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
+      // Re-check at execution time: settings may change while this operation waits in the queue.
+      if (!loadMemoryConfig().vectorMemoryEnabled) {
+        await deleteChatChunk(session.contactId!, session.id, bucket);
+        return;
+      }
       const response = await fetch("/api/vector-memory-index", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
