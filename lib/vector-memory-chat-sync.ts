@@ -167,7 +167,7 @@ export function refreshChatMessageBucketsToVectorCloud(
     }
     const content = selected.map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`).join("\n").slice(0, MAX_CHUNK_CONTENT);
     if (!content.trim()) {
-      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), () => deleteChatChunk(session.contactId!, session.id, bucket));
+      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {\n        await deleteChatChunk(session.contactId!, session.id, bucket);\n        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });\n      });
       continue;
     }
     const payload = {
