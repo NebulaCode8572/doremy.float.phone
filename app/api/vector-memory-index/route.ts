@@ -3,7 +3,7 @@ import { getCurrentAccount } from "@/lib/server/account-auth";
 import { getSupabaseServerConfig } from "@/lib/server/supabase-rest";
 import { readLimitedJson } from "@/lib/server/read-limited-json";
 import { generateVectorMemoryEmbedding } from "@/lib/server/vector-memory-embedding";
-import { upsertVectorMemory } from "@/lib/server/vector-memory-store";
+import { reserveVectorMemoryRevision, upsertVectorMemory } from "@/lib/server/vector-memory-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,18 +35,24 @@ export async function POST(request: Request) {
         continue;
       }
       try {
-        const embedding = await generateVectorMemoryEmbedding(account.id, content);
-        await upsertVectorMemory({
+        const record = {
           userId: account.id,
           characterId,
           sourceApp,
           sourceId: id,
           sourceKind: sourceKind as "summary" | "core_memory" | "long_term_memory" | "chat_chunk",
           content,
-          embedding,
+          embedding: [] as number[],
           metadata: item.metadata && typeof item.metadata === "object" ? item.metadata : {},
-        });
-        results.push({ id, success: true });
+        };
+        // Reserve an atomic per-source revision before the slower embedding call.
+        // A later request (or deletion) advances the revision and makes this write stale.
+        const revision = await reserveVectorMemoryRevision(record);
+        record.embedding = await generateVectorMemoryEmbedding(account.id, content);
+        const committed = await upsertVectorMemory(record, revision);
+        results.push(committed
+          ? { id, success: true }
+          : { id, success: false, error: "索引内容已被更新请求取代" });
       } catch {
         results.push({ id, success: false, error: "云端向量索引失败" });
       }
