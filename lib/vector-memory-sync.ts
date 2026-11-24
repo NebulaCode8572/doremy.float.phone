@@ -121,6 +121,12 @@ async function enqueuePendingMemoryIndexes(entries: VectorSyncEntry[]): Promise<
   for (const entry of entries) merged.set(pendingEntryKey(entry), entry);
   await kvSetAsync(INDEX_PENDING_KEY, JSON.stringify(Array.from(merged.values()).slice(-2000)));
 }
+async function removePendingMemoryIndexesForCharacter(characterId: string): Promise<void> {
+  if (!characterId) return;
+  await hydrateKvDb();
+  const remaining = loadPendingMemoryIndexes().filter(entry => entry.characterId !== characterId);
+  await kvSetAsync(INDEX_PENDING_KEY, JSON.stringify(remaining));
+}
 async function removePendingMemoryIndexes(entries: VectorSyncEntry[]): Promise<void> {
   if (!entries.length) return;
   await hydrateKvDb();
@@ -209,6 +215,7 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
   if (!entries.length || typeof window === "undefined") return;
   await hydrateKvDb();
   const deletedKeys = new Set(entries.map(pendingEntryKey));
+  await removePendingMemoryIndexes(entries);
   await removeImportedMemoryPendingWhere(entry => deletedKeys.has(pendingEntryKey(entry)));
   const failed: PendingMemoryDelete[] = [];
   for (const entry of entries) {
@@ -229,6 +236,7 @@ export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: s
   return withVectorCloudMutation(async () => {
   if (!characterId || typeof window === "undefined") return;
   const pendingDelete = { characterId, memoryOnly: true };
+  await removePendingMemoryIndexesForCharacter(characterId);
   await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId && (entry.type === "core" || entry.type === "long_term"));
   try {
     const response = await fetch("/api/vector-memory-entry", {
@@ -252,6 +260,7 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
   return withVectorCloudMutation(async () => {
   if (!characterId || typeof window === "undefined") return;
   const pendingDelete = { characterId, memoryOnly: false };
+  await removePendingMemoryIndexesForCharacter(characterId);
   await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId);
   try {
     const response = await fetch("/api/vector-memory-entry", {
