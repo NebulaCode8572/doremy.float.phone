@@ -1407,9 +1407,11 @@ export function createOrGetSession(contactId: string): ChatSession {
 export function createGroupSession(groupName: string, participantIds: string[], options?: { isSpectator?: boolean }): ChatSession {
     const sessions = loadChatSessions();
     const isSpectator = options?.isSpectator === true;
+    const accountId = loadActiveAccountId();
     const newSession: ChatSession = {
         id: `sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         contactId: `group_${Date.now()}`, // synthetic contactId for group
+        ...(accountId ? { vectorMemoryAccountId: accountId } : {}),
         unreadCount: 0,
         updatedAt: new Date().toISOString(),
         isPinned: false,
@@ -1505,14 +1507,15 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
         newMsg = pluginResult.message;
     }
     const messageSession = _sessionsCache.find(session => session.id === newMsg.sessionId);
-    if (messageSession && !messageSession.isGroup) {
+    if (messageSession) {
         const accountId = loadActiveAccountId();
         if (!newMsg.vectorMemoryAccountId && accountId && messageSession.vectorMemoryAccountId === accountId) {
             newMsg.vectorMemoryAccountId = accountId;
         }
-        // Only messages created inside a session owned by this account may be indexed.
-        // Reconnection may refresh the cache for future messages, never this message.
-        if (messageSession.vectorMemoryAccountId === accountId
+        // Group messages receive account ownership for local summarization isolation,
+        // but only private-chat messages receive a Vector Memory generation.
+        if (!messageSession.isGroup
+            && messageSession.vectorMemoryAccountId === accountId
             && newMsg.vectorMemoryAccountId === accountId
             && newMsg.vectorMemoryCharacterGeneration === undefined) {
             const generation = loadCachedVectorMemoryGeneration(accountId, messageSession.contactId);
