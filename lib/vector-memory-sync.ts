@@ -4,7 +4,7 @@ import { loadMemoryConfig, loadMemoryEntries, saveMemoryEntry } from "@/lib/memo
 import { loadActiveAccountId } from "@/lib/account-client";
 import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
-export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata" | "vectorMemoryAccountId" | "vectorMemoryCharacterGeneration" | "vectorMemoryMemoryGeneration" | "vectorMemoryRevision" | "vectorMemoryConflictRevision" | "vectorMemoryPendingOperationId" | "vectorMemoryPendingFingerprint">, "sourceApp"> & { sourceApp: string };
+export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata" | "vectorMemoryAccountId" | "vectorMemoryCharacterGeneration" | "vectorMemoryMemoryGeneration" | "vectorMemoryRevision" | "vectorMemoryConflictRevision" | "vectorMemoryPendingOperationId" | "vectorMemoryPendingFingerprint">, "sourceApp"> & { sourceApp: string; expectedRevision?: number };
 
 function hasValidGeneration(entry: VectorSyncEntry): boolean {
   return typeof entry.vectorMemoryAccountId === "string" && entry.vectorMemoryAccountId.length > 0
@@ -490,21 +490,34 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
   }
   entries = entries.map(entry => {
     const local = localByIdentity.get(JSON.stringify([entry.characterId, entry.sourceApp, entry.id]));
-    return local ? { ...entry, ...local } : entry;
+    return local ? {
+      ...entry,
+      ...local,
+      // Keep the durable retry token/snapshot base from the queue. If the local
+      // content changed, the fingerprint comparison below discards this token.
+      vectorMemoryPendingOperationId: entry.vectorMemoryPendingOperationId,
+      vectorMemoryPendingFingerprint: entry.vectorMemoryPendingFingerprint,
+      expectedRevision: entry.expectedRevision,
+    } : entry;
   }).filter(entry => entry.vectorMemoryAccountId === accountId && hasValidGeneration(entry));
 
   const prepared = entries.map(entry => {
     const fingerprint = vectorMemoryPayloadFingerprint(entry);
-    const operationId = entry.vectorMemoryPendingFingerprint === fingerprint
-      && typeof entry.vectorMemoryPendingOperationId === "string"
-      ? entry.vectorMemoryPendingOperationId
+    const samePendingSnapshot = entry.vectorMemoryPendingFingerprint === fingerprint
+      && typeof entry.vectorMemoryPendingOperationId === "string";
+    const operationId = samePendingSnapshot
+      ? entry.vectorMemoryPendingOperationId!
       : createVectorMemoryOperationId();
+    const expectedRevision = samePendingSnapshot
+      && Number.isSafeInteger(entry.expectedRevision) && (entry.expectedRevision ?? -1) >= 0
+      ? entry.expectedRevision!
+      : Number.isSafeInteger(entry.vectorMemoryRevision) && (entry.vectorMemoryRevision ?? -1) >= 0
+        ? entry.vectorMemoryRevision! : 0;
     return {
       ...entry,
       vectorMemoryPendingOperationId: operationId,
       vectorMemoryPendingFingerprint: fingerprint,
-      expectedRevision: Number.isSafeInteger(entry.vectorMemoryRevision) && (entry.vectorMemoryRevision ?? -1) >= 0
-        ? entry.vectorMemoryRevision! : 0,
+      expectedRevision,
     };
   });
 
