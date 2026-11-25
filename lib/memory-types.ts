@@ -12,6 +12,9 @@ export type MemoryEntry = {
     importance: number;         // 0-1
     createdAt: string;
     updatedAt: string;
+    /** Server-issued Vector Memory generations captured when this source is created. */
+    vectorMemoryCharacterGeneration?: number;
+    vectorMemoryMemoryGeneration?: number;
     sourceMessageIds?: string[];
     metadata?: Record<string, unknown>;
 };
