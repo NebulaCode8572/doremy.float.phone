@@ -142,9 +142,12 @@ export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
 export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, buckets: number[]): void {
   if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
   for (const bucket of [...new Set(buckets.filter(value => Number.isInteger(value) && value >= 0))]) {
-    enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
-      await deleteChatChunk(session.contactId!, session.id, bucket);
-      await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
+    const generation = session.vectorMemoryCharacterGeneration;
+    enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, generation), async () => {
+      await deleteChatChunk(session.contactId!, session.id, bucket, generation);
+      if (generation !== undefined) {
+        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket, characterGeneration: generation });
+      }
     });
   }
 }
@@ -176,7 +179,7 @@ export function refreshChatMessageBucketsToVectorCloud(
       const sourceId = `session:${session.id}:g:${characterGeneration}:chunk:${bucket}`;
       const queueEntry = { characterId: session.contactId, sessionId: session.id, bucket, characterGeneration };
       if (!loadMemoryConfig().vectorMemoryEnabled) continue;
-      if (selected.length < 2) {
+      if (selected.length === 0) {
         enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, characterGeneration), async () => {
           await deleteChatChunk(session.contactId!, session.id, bucket, characterGeneration);
           await clearChatChunkPending(queueEntry);
