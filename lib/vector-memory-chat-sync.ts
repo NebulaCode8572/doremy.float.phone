@@ -204,13 +204,19 @@ export function refreshChatMessageBucketsToVectorCloud(
   for (const bucket of uniqueBuckets) {
     const bucketMessages = allMessages
       .filter(item => item.sessionId === session.id && bucketForOrder(item.order) === bucket);
+    const affectedInBucket = affectedMessages
+      .filter(item => item.sessionId === session.id && bucketForOrder(item.order) === bucket);
     const generations = [...new Set(bucketMessages
       .map(item => item.vectorMemoryCharacterGeneration)
-      .concat(affectedMessages
-        .filter(item => item.sessionId === session.id && bucketForOrder(item.order) === bucket)
-        .map(item => item.vectorMemoryCharacterGeneration))
+      .concat(affectedInBucket.map(item => item.vectorMemoryCharacterGeneration))
       .filter((value): value is number => Number.isSafeInteger(value) && (value ?? -1) >= 0)
       .filter(value => generationFilter === undefined || value === generationFilter))];
+
+    if (generationFilter === undefined && affectedInBucket.some(item => !Number.isSafeInteger(item.vectorMemoryCharacterGeneration))) {
+      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
+        await deleteChatChunk(session.contactId!, `session:${session.id}:chunk:${bucket}`);
+      });
+    }
 
     for (const characterGeneration of generations) {
       const selected = bucketMessages
