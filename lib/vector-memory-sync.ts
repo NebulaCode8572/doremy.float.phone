@@ -11,7 +11,8 @@ function hasValidGeneration(entry: VectorSyncEntry): boolean {
     && Number.isSafeInteger(entry.vectorMemoryCharacterGeneration)
     && (entry.vectorMemoryCharacterGeneration ?? -1) >= 0
     && Number.isSafeInteger(entry.vectorMemoryMemoryGeneration)
-    && (entry.vectorMemoryMemoryGeneration ?? -1) >= 0;
+    && (entry.vectorMemoryMemoryGeneration ?? -1) >= 0
+    && entry.metadata?.includesGroupChat !== true;
 }
 
 
