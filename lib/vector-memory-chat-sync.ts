@@ -396,6 +396,7 @@ export function refreshChatMessageBucketsToVectorCloud(
         }
         if (!loadMemoryConfig().vectorMemoryEnabled) return;
         try {
+          await hydrateKvDb();
           const state = loadActiveChunkState(stateKey);
           if (state.sourceId && state.fingerprint === fingerprint
             && Number.isSafeInteger(state.revision) && !state.operationId) {
