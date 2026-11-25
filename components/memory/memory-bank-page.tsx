@@ -30,6 +30,7 @@ import { generateEmbedding, resolveEmbeddingModel } from "@/lib/memory-embedding
 import { BINDING_ACCENTS } from "@/lib/ui-accent-colors";
 import { VectorMemorySettings } from "./vector-memory-settings";
 import { syncMemoryEntriesToVectorCloud, deleteMemoryEntriesFromVectorCloud } from "@/lib/vector-memory-sync";
+import { stampNewMemoryEntry } from "@/lib/vector-memory-generation";
 
 type MemoryView = "list" | "detail" | "settings";
 type MemoryTab = "short" | "shared" | "core" | "long";
@@ -569,7 +570,7 @@ export function MemoryBankPage({
                         editedByUser: true,
                     },
                 }
-                : {
+                : stampNewMemoryEntry({
                     id: createManualMemoryId(type),
                     characterId: selectedCharId,
                     sourceApp: "chat",
@@ -582,7 +583,7 @@ export function MemoryBankPage({
                     metadata: {
                         origin: "user_manual",
                     },
-                };
+                });
 
             await saveMemoryEntry(entry);
             if (loadMemoryConfig().vectorMemoryEnabled) void syncMemoryEntriesToVectorCloud([entry]);
