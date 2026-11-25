@@ -64,6 +64,8 @@ export type NativeTimelineEntry = {
     customAppId?: string;
     customAppName?: string;
     customAppLabel?: string;
+    vectorMemoryAccountId?: string;
+    vectorMemoryCharacterGeneration?: number;
 };
 
 export type NativeMomentComment = {
@@ -267,6 +269,8 @@ export function loadNativeTimeline(
             entries.push({
                 id: msg.id,
                 sourceApp: "chat",
+                vectorMemoryAccountId: msg.vectorMemoryAccountId,
+                vectorMemoryCharacterGeneration: msg.vectorMemoryCharacterGeneration,
                 sourceDetail: "group",
                 groupSessionId: gs.id,
                 groupName: gs.groupName || "群聊",
@@ -296,6 +300,8 @@ export function loadNativeTimeline(
                     entries.push({
                         id: msg.id,
                         sourceApp: "chat",
+                vectorMemoryAccountId: msg.vectorMemoryAccountId,
+                vectorMemoryCharacterGeneration: msg.vectorMemoryCharacterGeneration,
                         // 内部备注/头像等事件明确进入私聊短期记忆；普通手动系统指令
                         // 仍保留 system 分类，避免改变已有记忆行为。
                         sourceDetail: msg.mediaData?.shortTermMemoryEvent ? "direct" : "system",
@@ -310,6 +316,8 @@ export function loadNativeTimeline(
                     entries.push({
                         id: msg.id,
                         sourceApp: "chat",
+                vectorMemoryAccountId: msg.vectorMemoryAccountId,
+                vectorMemoryCharacterGeneration: msg.vectorMemoryCharacterGeneration,
                         sourceDetail: "system",
                         timestamp: msg.createdAt,
                         content: `${msgLabel} ${mTitle}未被检索到，播放失败`,
@@ -319,6 +327,8 @@ export function loadNativeTimeline(
                 entries.push({
                     id: msg.id,
                     sourceApp: "chat",
+                vectorMemoryAccountId: msg.vectorMemoryAccountId,
+                vectorMemoryCharacterGeneration: msg.vectorMemoryCharacterGeneration,
                     sourceDetail: "system",
                     timestamp: msg.createdAt,
                     content: `${msgLabel} ${msg.content || ""}`,
@@ -389,6 +399,8 @@ export function loadNativeTimeline(
             entries.push({
                 id: msg.id,
                 sourceApp: "chat",
+                vectorMemoryAccountId: msg.vectorMemoryAccountId,
+                vectorMemoryCharacterGeneration: msg.vectorMemoryCharacterGeneration,
                 sourceDetail: "direct",
                 timestamp: msg.createdAt,
                 content: `${msgLabel} ${sender}: ${content}`,
@@ -549,6 +561,8 @@ export function loadNativeTimeline(
         entries.push({
             id: offlineEntry.id,
             sourceApp: "chat",
+                vectorMemoryAccountId: msg.vectorMemoryAccountId,
+                vectorMemoryCharacterGeneration: msg.vectorMemoryCharacterGeneration,
             sourceDetail: "chat_offline",
             sessionId: offlineEntry.sessionId,
             groupSessionId: offlineEntry.groupSessionId,
