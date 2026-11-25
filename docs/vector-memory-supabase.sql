@@ -103,3 +103,6 @@ grant all on public.app_user_vector_memory_settings to service_role;
 
 -- After this base schema is installed, also apply docs/vector-memory-revision-guards.sql.
 -- It adds private per-source revision metadata and atomic revision/deletion RPCs.
+
+
+-- Follow-up hardening: after the revision-guards SQL, also apply docs/vector-memory-tombstone-guards.sql.
