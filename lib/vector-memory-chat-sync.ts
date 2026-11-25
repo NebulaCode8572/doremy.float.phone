@@ -84,7 +84,7 @@ function markChatChunkPending(entry: PendingChatChunk): Promise<void> {
 }
 
 function clearChatChunkPending(entry: PendingChatChunk): Promise<void> {
-  const key = chunkQueueKey(entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration);
+  const key = chunkQueueKey(entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration, entry.accountId);
   return updatePendingChatChunks(items => items.filter(item => chunkQueueKey(item.characterId, item.sessionId, item.bucket, item.characterGeneration, item.accountId) !== key));
 }
 
