@@ -36,6 +36,11 @@ function getChatVectorDeviceId(): Promise<string> {
   }
   return chatVectorDeviceIdPromise;
 }
+function createChatVectorSourceNonce(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID().replace(/-/g, "").slice(0, 12)
+    : Math.random().toString(36).slice(2, 14).padEnd(12, "0");
+}
 function createChatVectorOperationId(): string {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
@@ -413,7 +418,7 @@ export function refreshChatMessageBucketsToVectorCloud(
             const nextVersion = state.version + 1;
             // Device-scoped identity prevents two devices with independent local
             // counters from overwriting or reserving the same chat source.
-            sourceId = `session:${session.id}:g:${characterGeneration}:device:${deviceId}:chunk:${bucket}:v:${nextVersion}`;
+            sourceId = `session:${session.id}:g:${characterGeneration}:device:${deviceId}:chunk:${bucket}:v:${nextVersion}-${createChatVectorSourceNonce()}`;
             if (state.sourceId) await deleteChatChunk(accountId, session.contactId!, state.sourceId);
             nextState = { version: nextVersion, sourceId, fingerprint };
           }
