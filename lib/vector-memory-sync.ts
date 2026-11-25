@@ -441,6 +441,7 @@ async function persistVectorMemoryRevision(entry: VectorSyncEntry, revision: num
     // this revision is the server-acknowledged base that the newer edit must CAS
     // against. Preserve the newer content and any newer pending operation.
     vectorMemoryRevision: revision,
+    vectorMemoryConflictRevision: undefined,
     ...(sameOperation ? {
       vectorMemoryPendingOperationId: undefined,
       vectorMemoryPendingFingerprint: undefined,
