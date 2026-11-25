@@ -9,6 +9,7 @@ create table if not exists public.app_user_vector_memory_versions (
   source_id text not null,
   source_kind text not null check (source_kind in ('summary','chat_chunk','core_memory','long_term_memory')),
   revision bigint not null default 0 check (revision >= 0),
+  source_updated_at timestamptz,
   updated_at timestamptz not null default now(),
   primary key (user_id, character_id, source_app, source_id, source_kind)
 );
