@@ -12,6 +12,8 @@ export type MemoryEntry = {
     importance: number;         // 0-1
     createdAt: string;
     updatedAt: string;
+    /** Local account that owned this Vector Memory source when it was created/imported. */
+    vectorMemoryAccountId?: string;
     /** Server-issued Vector Memory generations captured when this source is created. */
     vectorMemoryCharacterGeneration?: number;
     vectorMemoryMemoryGeneration?: number;
