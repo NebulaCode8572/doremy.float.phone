@@ -73,8 +73,11 @@ begin
     return pg_catalog.jsonb_build_object('status','invalid');
   end if;
 
+  -- The embedding is a deterministic derivative of the text and may differ by
+  -- tiny floating-point amounts across retries. Fingerprint the source snapshot,
+  -- not the embedding representation.
   v_fingerprint := pg_catalog.md5(
-    p_content || chr(31) || p_embedding::text || chr(31) || coalesce(p_metadata,'{}'::jsonb)::text
+    p_content || chr(31) || coalesce(p_metadata,'{}'::jsonb)::text
   );
 
   -- Keep the established lock order: character -> optional session -> source.
