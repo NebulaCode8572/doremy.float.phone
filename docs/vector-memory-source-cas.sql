@@ -28,12 +28,17 @@ create table if not exists public.app_user_vector_memory_operations (
   source_id text not null,
   source_kind text not null,
   expected_revision bigint not null check (expected_revision >= 0),
+  character_generation bigint not null default 0 check (character_generation >= 0),
+  memory_generation bigint not null default 0 check (memory_generation >= 0),
   committed_revision bigint,
   payload_fingerprint text not null,
   status text not null check (status in ('committed')),
   created_at timestamptz not null default now(),
   primary key (user_id, operation_id)
 );
+alter table public.app_user_vector_memory_operations
+  add column if not exists character_generation bigint not null default 0 check (character_generation >= 0),
+  add column if not exists memory_generation bigint not null default 0 check (memory_generation >= 0);
 alter table public.app_user_vector_memory_operations enable row level security;
 revoke all on public.app_user_vector_memory_operations from public, anon, authenticated;
 grant all on public.app_user_vector_memory_operations to service_role;
@@ -134,6 +139,9 @@ begin
       or v_existing.source_app <> p_source_app
       or v_existing.source_id <> p_source_id
       or v_existing.source_kind <> p_source_kind
+      or v_existing.expected_revision <> p_expected_revision
+      or v_existing.character_generation <> p_character_generation
+      or v_existing.memory_generation <> p_memory_generation
       or v_existing.payload_fingerprint <> v_fingerprint then
       return pg_catalog.jsonb_build_object('status','operation_id_reused');
     end if;
@@ -182,10 +190,10 @@ begin
 
   insert into public.app_user_vector_memory_operations(
     user_id,operation_id,character_id,source_app,source_id,source_kind,
-    expected_revision,committed_revision,payload_fingerprint,status
+    expected_revision,character_generation,memory_generation,committed_revision,payload_fingerprint,status
   ) values (
     p_user_id,p_operation_id,p_character_id,p_source_app,p_source_id,p_source_kind,
-    p_expected_revision,v_next_revision,v_fingerprint,'committed'
+    p_expected_revision,p_character_generation,p_memory_generation,v_next_revision,v_fingerprint,'committed'
   );
 
   return pg_catalog.jsonb_build_object('status','committed','revision',v_next_revision);
