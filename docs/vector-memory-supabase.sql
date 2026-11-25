@@ -106,3 +106,21 @@ grant all on public.app_user_vector_memory_settings to service_role;
 
 
 -- Follow-up hardening: after the revision-guards SQL, also apply docs/vector-memory-tombstone-guards.sql.
+
+
+-- Current migration order for an existing Vector Memory installation:
+-- 1. docs/vector-memory-revision-guards.sql (historical only; do not re-run after
+--    docs/vector-memory-revision-guards.sql has been superseded/marked deprecated).
+-- 2. docs/vector-memory-tombstone-guards.sql.
+-- 3. docs/vector-memory-generation-guards.sql.
+-- 4. docs/vector-memory-source-cas.sql.
+--
+-- Important: docs/vector-memory-revision-guards.sql is now a deprecation notice,
+-- not executable migration SQL. Existing installations should already have its
+-- tables/RPCs from the earlier rollout. A fresh installation needs the original
+-- revision metadata schema supplied by the deployment's archived migration before
+-- applying tombstone, generation, and CAS guards.
+--
+-- The CAS migration must be applied before deploying the CAS-enabled application.
+-- It is metadata-only except for initializing committed_revision from the existence
+-- of matching source rows; it does not read or rewrite memory content/embeddings.
