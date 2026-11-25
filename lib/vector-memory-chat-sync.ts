@@ -186,7 +186,7 @@ export function refreshChatMessageBucketsToVectorCloud(
         });
         continue;
       }
-      const content = selected.map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`).join("\\n").slice(0, MAX_CHUNK_CONTENT);
+      const content = selected.map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`).join("\n").slice(0, MAX_CHUNK_CONTENT);
       if (!content.trim()) continue;
       const sourceUpdatedAt = selected.reduce((latest, entry) => {
         const candidate = entry.item.updatedAt ?? entry.item.createdAt;
