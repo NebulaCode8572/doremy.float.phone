@@ -66,3 +66,29 @@ export function stampNewMemoryEntry<T extends { characterId: string }>(entry: T)
 } {
   return attachCurrentMemoryGeneration(entry, loadActiveAccountId());
 }
+
+export async function refreshCachedVectorMemoryGeneration(characterId: string): Promise<void> {
+  const accountId = loadActiveAccountId();
+  if (!accountId || !characterId || typeof window === "undefined") return;
+  try {
+    const response = await fetch("/api/vector-memory-generation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      cache: "no-store",
+      body: JSON.stringify({ characterIds: [characterId] }),
+    });
+    if (!response.ok) return;
+    const payload = await response.json().catch(() => null) as {
+      results?: Array<{ characterId: string; success: boolean; characterGeneration?: number; memoryGeneration?: number }>;
+    } | null;
+    const result = payload?.results?.find(item => item.characterId === characterId && item.success);
+    if (!result || !Number.isSafeInteger(result.characterGeneration) || !Number.isSafeInteger(result.memoryGeneration)) return;
+    saveCachedVectorMemoryGeneration(accountId, characterId, {
+      characterGeneration: result.characterGeneration!,
+      memoryGeneration: result.memoryGeneration!,
+    });
+  } catch {
+    // Failed refresh leaves the old generation in place, so new uploads fail closed.
+  }
+}
