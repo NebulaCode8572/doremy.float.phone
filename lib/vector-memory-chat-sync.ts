@@ -22,7 +22,7 @@ async function getChatVectorDeviceId(): Promise<string> {
   const existing = kvGet(CHAT_DEVICE_ID_KEY);
   if (existing && /^[A-Za-z0-9_-]{12,80}$/.test(existing)) return existing;
   const created = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID().replace(/-/g, "")
+    ? crypto.randomUUID().replace(/-/g, "").slice(0, 16)
     : "d" + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
   await kvSetAsync(CHAT_DEVICE_ID_KEY, created);
   return created;
