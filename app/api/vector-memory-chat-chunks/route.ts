@@ -23,7 +23,7 @@ export async function DELETE(request: Request) {
       if (!/^[A-Za-z0-9_-]{1,180}$/.test(sessionId)) return NextResponse.json({ error: "会话 ID 无效" }, { status: 400 });
       await deleteVectorMemorySessionChatChunks(account.id, characterId, sessionId);
     } else {
-      if (!/^session:[A-Za-z0-9_-]{1,180}:(?:g:\d+:)?chunk:\d{1,8}$/.test(sourceId)) return NextResponse.json({ error: "聊天向量删除参数无效" }, { status: 400 });
+      if (!/^session:[A-Za-z0-9_-]{1,180}:(?:g:\d+:)?chunk:\d{1,8}(?::v:\d{1,12})?$/.test(sourceId)) return NextResponse.json({ error: "聊天向量删除参数无效" }, { status: 400 });
       await deleteVectorMemorySource(account.id, characterId, "chat", sourceId, "chat_chunk");
     }
     return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
