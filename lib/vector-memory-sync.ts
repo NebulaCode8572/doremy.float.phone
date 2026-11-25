@@ -478,6 +478,21 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
   entries = entries.filter(entry => entry.vectorMemoryAccountId === accountId && hasValidGeneration(entry));
   if (!entries.length || typeof window === "undefined") return false;
 
+  // Cloud mutations are serialized, but callers may have captured an entry before
+  // an earlier queued upload acknowledged a newer revision. Refresh from IndexedDB
+  // inside the serialized operation so the next snapshot uses the latest local
+  // content and the latest server-acknowledged CAS base.
+  const localByIdentity = new Map<string, MemoryEntry>();
+  for (const characterId of new Set(entries.map(entry => entry.characterId))) {
+    for (const local of await loadMemoryEntries(characterId)) {
+      localByIdentity.set(local.characterId + ":" + local.sourceApp + ":" + local.id, local);
+    }
+  }
+  entries = entries.map(entry => {
+    const local = localByIdentity.get(entry.characterId + ":" + entry.sourceApp + ":" + entry.id);
+    return local ? { ...entry, ...local } : entry;
+  }).filter(entry => entry.vectorMemoryAccountId === accountId && hasValidGeneration(entry));
+
   const prepared = entries.map(entry => {
     const fingerprint = vectorMemoryPayloadFingerprint(entry);
     const operationId = entry.vectorMemoryPendingFingerprint === fingerprint
