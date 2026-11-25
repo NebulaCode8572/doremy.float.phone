@@ -448,7 +448,10 @@ export function refreshChatMessageBucketsToVectorCloud(
           }
           const result = await response.json().catch(() => null);
           const itemResult = Array.isArray(result?.results) ? result.results[0] : null;
-          if (!itemResult || itemResult.success !== true
+          if (itemResult?.success === true && ["deleted", "stale_generation"].includes(itemResult.status)) {
+            await saveActiveChunkState(stateKey, { version: nextState.version });
+            await clearChatChunkPending(queueEntry);
+          } else if (!itemResult || itemResult.success !== true
             || !["committed", "already_committed"].includes(itemResult.status)
             || !Number.isSafeInteger(itemResult.revision)) {
             await markChatChunkPending(queueEntry);
