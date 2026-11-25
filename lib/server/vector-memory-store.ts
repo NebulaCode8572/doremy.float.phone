@@ -24,10 +24,31 @@ function validateRecord(record: VectorMemoryRecord): void {
   if (!["summary", "chat_chunk", "core_memory", "long_term_memory"].includes(record.sourceKind)) throw new Error("Vector Memory 来源类型无效");
 }
 
+export type VectorMemoryGeneration = { characterGeneration: number; memoryGeneration: number };
+
 type RevisionIdentity = Pick<VectorMemoryRecord, "userId" | "characterId" | "sourceApp" | "sourceId" | "sourceKind"> & {
   sourceUpdatedAt: string;
   sessionId?: string;
+  characterGeneration: number;
+  memoryGeneration: number;
 };
+
+export async function getVectorMemoryGeneration(userId: string, characterId: string): Promise<VectorMemoryGeneration> {
+  const result = await supabaseRestFetch<unknown>("rpc/get_vector_memory_generation", {
+    method: "POST",
+    body: JSON.stringify({ p_user_id: userId, p_character_id: characterId }),
+  });
+  if (!result.ok) throw new Error(result.error);
+  const row = Array.isArray(result.data) ? result.data[0] : result.data;
+  const value = row as { character_generation?: unknown; memory_generation?: unknown } | null;
+  const characterGeneration = Number(value?.character_generation);
+  const memoryGeneration = Number(value?.memory_generation);
+  if (!Number.isSafeInteger(characterGeneration) || characterGeneration < 0
+    || !Number.isSafeInteger(memoryGeneration) || memoryGeneration < 0) {
+    throw new Error("Vector Memory generation response invalid");
+  }
+  return { characterGeneration, memoryGeneration };
+}
 
 export async function reserveVectorMemoryRevision(identity: RevisionIdentity): Promise<number> {
   const result = await supabaseRestFetch<unknown>("rpc/reserve_vector_memory_revision", {
@@ -40,6 +61,8 @@ export async function reserveVectorMemoryRevision(identity: RevisionIdentity): P
       p_source_kind: identity.sourceKind,
       p_source_updated_at: identity.sourceUpdatedAt,
       p_session_id: identity.sessionId ?? null,
+      p_character_generation: identity.characterGeneration,
+      p_memory_generation: identity.memoryGeneration,
     }),
   });
   if (!result.ok) throw new Error(result.error);
