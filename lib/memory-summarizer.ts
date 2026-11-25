@@ -163,7 +163,7 @@ export async function runSummarizationPipeline(
             || entry.vectorMemoryCharacterGeneration !== currentGeneration.characterGeneration
         )
     );
-    const longTermEntryData = {
+    const longTermEntryData: MemoryEntry = {
         id: `mem_lt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         characterId,
         sourceApp: dominantSource as MemoryEntry["sourceApp"],
