@@ -87,6 +87,7 @@ export async function refreshCachedVectorMemoryGeneration(characterId: string): 
     const payload = await response.json().catch(() => null) as {
       results?: Array<{ characterId: string; success: boolean; characterGeneration?: number; memoryGeneration?: number }>;
     } | null;
+    if (loadActiveAccountId() !== accountId) return;
     const result = payload?.results?.find(item => item.characterId === characterId && item.success);
     if (!result || !Number.isSafeInteger(result.characterGeneration) || !Number.isSafeInteger(result.memoryGeneration)) return;
     saveCachedVectorMemoryGeneration(accountId, characterId, {
