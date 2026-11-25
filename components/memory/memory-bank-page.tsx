@@ -743,9 +743,7 @@ export function MemoryBankPage({
             };
             await saveMemoryEntry(updated);
             const synced = await syncMemoryEntriesToVectorCloud([updated]);
-            const refreshed = synced && selectedCharId
-                ? await loadMemoryEntriesByType(selectedCharId, entry.type)
-                : [];
+            const refreshed = await loadMemoryEntriesByType(entry.characterId, entry.type);
             const latest = refreshed.find(item => item.id === entry.id) ?? updated;
             if (entry.type === "core") {
                 setCoreEntries(prev => prev.map(item => item.id === entry.id ? latest : item));
