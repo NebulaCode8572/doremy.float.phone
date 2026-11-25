@@ -61,15 +61,21 @@ begin
     select 1
     from public.app_user_vector_memory_tombstones t
     where t.user_id = p_user_id and t.character_id = p_character_id
-      and t.deleted_at >= p_source_updated_at
       and (
-        (t.scope_type = 'character' and t.scope_id = 'all')
-        or (t.scope_type = 'character_memory' and t.scope_id = 'memory'
-            and p_source_kind in ('summary','core_memory','long_term_memory'))
-        or (t.scope_type = 'source' and t.source_app = p_source_app
+        -- Exact source/session tombstones are permanent for that identity. A
+        -- deliberate recreation must use a new source/session ID; client clocks
+        -- can never move a deleted identity past its tombstone.
+        (t.scope_type = 'source' and t.source_app = p_source_app
             and t.source_id = p_source_id and t.source_kind in (p_source_kind, '*'))
         or (t.scope_type = 'session' and p_source_kind = 'chat_chunk'
             and p_source_app = 'chat' and t.scope_id = p_session_id)
+        -- Broad character tombstones still use the source timestamp until the
+        -- explicit generation handshake is implemented for those scopes.
+        or (t.deleted_at >= p_source_updated_at and (
+          (t.scope_type = 'character' and t.scope_id = 'all')
+          or (t.scope_type = 'character_memory' and t.scope_id = 'memory'
+              and p_source_kind in ('summary','core_memory','long_term_memory'))
+        ))
       )
   ) then
     return 0;
