@@ -388,6 +388,11 @@ export function refreshChatMessageBucketsToVectorCloud(
         if (!loadMemoryConfig().vectorMemoryEnabled) return;
         try {
           const state = loadActiveChunkState(stateKey);
+          if (state.sourceId && state.fingerprint === fingerprint
+            && Number.isSafeInteger(state.revision) && !state.operationId) {
+            // The current snapshot is already committed for this device/bucket.
+            return;
+          }
           const deviceId = await getChatVectorDeviceId();
           let sourceId: string;
           let nextState: ActiveChunkState;
