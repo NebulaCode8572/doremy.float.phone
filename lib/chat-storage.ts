@@ -143,7 +143,9 @@ export type ChatMessage = {
     status: ChatMessageStatus;
     createdAt: string; // ISO date
     updatedAt?: string; // Last content edit time; createdAt remains the original message time.
-    /** Inherited from the session at message creation; retries must never refresh it. */
+    /** Account ownership captured when this message was created/imported. */
+    vectorMemoryAccountId?: string;
+    /** Server generation captured when this message was created; retries never refresh it. */
     vectorMemoryCharacterGeneration?: number;
     order?: number; // Stable per-session display order
     responseBatchId?: string; // Assistant raw-response batch id
@@ -1499,12 +1501,15 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
         newMsg = pluginResult.message;
     }
     const messageSession = _sessionsCache.find(session => session.id === newMsg.sessionId);
-    if (messageSession && !messageSession.isGroup && newMsg.vectorMemoryCharacterGeneration === undefined) {
-        // Capture the cache at message-creation time, not the session's creation time.
-        // New messages after reconnect use the refreshed generation, while older/offline
-        // messages keep their original generation (or remain untagged).
-        const generation = loadCachedVectorMemoryGeneration(loadActiveAccountId(), messageSession.contactId);
-        if (generation) newMsg.vectorMemoryCharacterGeneration = generation.characterGeneration;
+    if (messageSession && !messageSession.isGroup) {
+        const accountId = loadActiveAccountId();
+        if (!newMsg.vectorMemoryAccountId && accountId) newMsg.vectorMemoryAccountId = accountId;
+        // Capture the generation at message-creation time. Reconnection may refresh
+        // the cache for future messages, but never rewrites this message's generation.
+        if (newMsg.vectorMemoryAccountId === accountId && newMsg.vectorMemoryCharacterGeneration === undefined) {
+            const generation = loadCachedVectorMemoryGeneration(accountId, messageSession.contactId);
+            if (generation) newMsg.vectorMemoryCharacterGeneration = generation.characterGeneration;
+        }
     }
 
     // 仿真拉黑（私聊）：用户把角色拉黑后，角色发出去的消息会被用户拒收——
