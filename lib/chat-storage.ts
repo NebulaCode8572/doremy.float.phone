@@ -1499,10 +1499,12 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
         newMsg = pluginResult.message;
     }
     const messageSession = _sessionsCache.find(session => session.id === newMsg.sessionId);
-    if (messageSession && !messageSession.isGroup
-        && newMsg.vectorMemoryCharacterGeneration === undefined
-        && Number.isSafeInteger(messageSession.vectorMemoryCharacterGeneration)) {
-        newMsg.vectorMemoryCharacterGeneration = messageSession.vectorMemoryCharacterGeneration;
+    if (messageSession && !messageSession.isGroup && newMsg.vectorMemoryCharacterGeneration === undefined) {
+        // Capture the cache at message-creation time, not the session's creation time.
+        // New messages after reconnect use the refreshed generation, while older/offline
+        // messages keep their original generation (or remain untagged).
+        const generation = loadCachedVectorMemoryGeneration(loadActiveAccountId(), messageSession.contactId);
+        if (generation) newMsg.vectorMemoryCharacterGeneration = generation.characterGeneration;
     }
 
     // 仿真拉黑（私聊）：用户把角色拉黑后，角色发出去的消息会被用户拒收——
