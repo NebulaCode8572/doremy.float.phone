@@ -18,28 +18,32 @@ export function VectorMemoryGenerationBootstrap() {
   const { account } = useAccount();
 
   const refresh = useCallback(async () => {
-    if (!account.id) return;
+    if (!account.id || account.id !== loadActiveAccountId()) return;
     await hydrateKvDb();
     const characterIds = [...new Set(loadCharacters().map(character => character.id))];
     if (!characterIds.length) return;
     try {
-      const response = await fetch("/api/vector-memory-generation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        cache: "no-store",
-        body: JSON.stringify({ characterIds }),
-      });
-      if (!response.ok) return;
-      const payload = await response.json().catch(() => null) as { results?: GenerationResult[] } | null;
-      if (!Array.isArray(payload?.results) || account.id !== loadActiveAccountId()) return;
-      for (const item of payload.results) {
-        if (!item.success || !item.characterId
-          || !Number.isSafeInteger(item.characterGeneration) || !Number.isSafeInteger(item.memoryGeneration)) continue;
-        saveCachedVectorMemoryGeneration(account.id, item.characterId, {
-          characterGeneration: item.characterGeneration!,
-          memoryGeneration: item.memoryGeneration!,
+      for (let offset = 0; offset < characterIds.length; offset += 200) {
+        if (account.id !== loadActiveAccountId()) return;
+        const batch = characterIds.slice(offset, offset + 200);
+        const response = await fetch("/api/vector-memory-generation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          cache: "no-store",
+          body: JSON.stringify({ characterIds: batch }),
         });
+        if (!response.ok) continue;
+        const payload = await response.json().catch(() => null) as { results?: GenerationResult[] } | null;
+        if (!Array.isArray(payload?.results) || account.id !== loadActiveAccountId()) return;
+        for (const item of payload.results) {
+          if (!item.success || !item.characterId
+            || !Number.isSafeInteger(item.characterGeneration) || !Number.isSafeInteger(item.memoryGeneration)) continue;
+          saveCachedVectorMemoryGeneration(account.id, item.characterId, {
+            characterGeneration: item.characterGeneration!,
+            memoryGeneration: item.memoryGeneration!,
+          });
+        }
       }
     } catch {
       // Generation unavailable means cloud indexing pauses; local chat/memory writes continue.
