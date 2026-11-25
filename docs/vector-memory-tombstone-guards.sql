@@ -1,4 +1,8 @@
+-- HISTORICAL MIGRATION STEP.
 -- Durable deletion tombstones and source timestamp ordering for Vector Memory.
+-- For a fresh installation, run this before generation-guards.sql, then source-cas.sql.
+-- Do not re-run it on an installation that already has generation guards: doing so
+-- would restore the older 7-argument timestamp-based reservation RPC.
 -- Stores only source identities and timestamps; never reads or changes memory content.
 -- All table access remains server-only through SECURITY INVOKER RPCs.
 
