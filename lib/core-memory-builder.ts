@@ -124,6 +124,7 @@ export async function runCoreMemoryPipeline(
         entry.vectorMemoryAccountId === accountId
         && Number.isSafeInteger(entry.vectorMemoryCharacterGeneration)
         && Number.isSafeInteger(entry.vectorMemoryMemoryGeneration)
+        && entry.metadata?.includesGroupChat !== true
     );
     const coreEntryData = {
         id: `mem_core_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
