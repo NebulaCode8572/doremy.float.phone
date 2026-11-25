@@ -4,10 +4,11 @@ import { loadMemoryConfig } from "@/lib/memory-storage";
 import { loadActiveAccountId } from "@/lib/account-client";
 import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
-export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata" | "vectorMemoryCharacterGeneration" | "vectorMemoryMemoryGeneration">, "sourceApp"> & { sourceApp: string };
+export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata" | "vectorMemoryAccountId" | "vectorMemoryCharacterGeneration" | "vectorMemoryMemoryGeneration">, "sourceApp"> & { sourceApp: string };
 
 function hasValidGeneration(entry: VectorSyncEntry): boolean {
-  return Number.isSafeInteger(entry.vectorMemoryCharacterGeneration)
+  return typeof entry.vectorMemoryAccountId === "string" && entry.vectorMemoryAccountId.length > 0
+    && Number.isSafeInteger(entry.vectorMemoryCharacterGeneration)
     && (entry.vectorMemoryCharacterGeneration ?? -1) >= 0
     && Number.isSafeInteger(entry.vectorMemoryMemoryGeneration)
     && (entry.vectorMemoryMemoryGeneration ?? -1) >= 0;
@@ -23,7 +24,7 @@ export function loadImportedMemoryPending(): ImportedMemoryPendingEntry[] {
     const raw = kvGet(IMPORT_PENDING_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry.id === "string" && typeof entry.characterId === "string" && typeof entry.sourceApp === "string" && (entry.type === "core" || entry.type === "long_term") && typeof entry.content === "string" && typeof entry.createdAt === "string" && typeof entry.updatedAt === "string" && hasValidGeneration(entry)) : [];
+    return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry.id === "string" && typeof entry.characterId === "string" && typeof entry.sourceApp === "string" && (entry.type === "core" || entry.type === "long_term") && typeof entry.content === "string" && typeof entry.createdAt === "string" && typeof entry.updatedAt === "string" && hasValidGeneration(entry) && entry.vectorMemoryAccountId === loadActiveAccountId()) : [];
   } catch {
     return [];
   }
@@ -39,6 +40,7 @@ export async function addImportedMemoryPending(entries: ImportedMemoryPendingEnt
     // If offline/no cache, leave the imported data local-only.
     return current ? [{
       ...entry,
+      vectorMemoryAccountId: accountId,
       vectorMemoryCharacterGeneration: current.characterGeneration,
       vectorMemoryMemoryGeneration: current.memoryGeneration,
     }] : [];
@@ -58,12 +60,13 @@ export async function clearImportedMemoryPending(): Promise<void> {
 
 async function removeImportedMemoryPendingWhere(predicate: (entry: ImportedMemoryPendingEntry) => boolean): Promise<void> {
   await hydrateKvDb();
-  const remaining = loadImportedMemoryPending().filter(entry => !predicate(entry));
+  const accountId = loadActiveAccountId();
+  const remaining = loadImportedMemoryPending().filter(entry => entry.vectorMemoryAccountId !== accountId || !predicate(entry));
   await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify(remaining));
 }
 
 function pendingEntryKey(entry: ImportedMemoryPendingEntry): string {
-  return entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type;
+  return (entry.vectorMemoryAccountId ?? "") + ":" + entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type;
 }
 
 export async function removeSyncedImportedMemoryPending(entries: ImportedMemoryPendingEntry[]): Promise<void> {
@@ -98,15 +101,15 @@ function withVectorCloudMutation<T>(operation: () => Promise<T>): Promise<T> {
 }
 const DELETE_PENDING_KEY = "ai_phone_vector_memory_delete_pending_v1";
 registerKvMigration(DELETE_PENDING_KEY);
-type PendingMemoryDelete = Pick<VectorSyncEntry, "characterId" | "id" | "sourceApp" | "type">;
+type PendingMemoryDelete = { accountId: string; characterId: string; id: string; sourceApp: string; type: "core" | "long_term" };
 function pendingDeleteKey(entry: PendingMemoryDelete): string {
-  return entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type;
+  return entry.accountId + ":" + entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type;
 }
 function loadPendingMemoryDeletes(): PendingMemoryDelete[] {
   try {
     const raw = kvGet(DELETE_PENDING_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.characterId === "string" && typeof item.id === "string" && typeof item.sourceApp === "string" && (item.type === "core" || item.type === "long_term")) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.characterId === "string" && typeof item.id === "string" && typeof item.sourceApp === "string" && typeof item.accountId === "string" && item.accountId.length > 0 && (item.type === "core" || item.type === "long_term")) : [];
   } catch { return []; }
 }
 async function enqueuePendingMemoryDeletes(entries: PendingMemoryDelete[]): Promise<void> {
@@ -131,11 +134,12 @@ function loadPendingMemoryIndexes(): VectorSyncEntry[] {
   try {
     const raw = kvGet(INDEX_PENDING_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.characterId === "string" && typeof item.id === "string" && typeof item.sourceApp === "string" && (item.type === "core" || item.type === "long_term" || item.type === "summary") && typeof item.content === "string" && typeof item.createdAt === "string" && typeof item.updatedAt === "string" && hasValidGeneration(item)) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.characterId === "string" && typeof item.id === "string" && typeof item.sourceApp === "string" && (item.type === "core" || item.type === "long_term" || item.type === "summary") && typeof item.content === "string" && typeof item.createdAt === "string" && typeof item.updatedAt === "string" && hasValidGeneration(item) && item.vectorMemoryAccountId === loadActiveAccountId()) : [];
   } catch { return []; }
 }
 async function enqueuePendingMemoryIndexes(entries: VectorSyncEntry[]): Promise<void> {
-  entries = entries.filter(hasValidGeneration);
+  const accountId = loadActiveAccountId();
+  entries = entries.filter(entry => entry.vectorMemoryAccountId === accountId && hasValidGeneration(entry));
   if (!entries.length) return;
   await hydrateKvDb();
   const merged = new Map(loadPendingMemoryIndexes().map(entry => [pendingEntryKey(entry), entry]));
@@ -145,7 +149,8 @@ async function enqueuePendingMemoryIndexes(entries: VectorSyncEntry[]): Promise<
 async function removePendingMemoryIndexesForCharacter(characterId: string, memoryOnly = false): Promise<void> {
   if (!characterId) return;
   await hydrateKvDb();
-  const remaining = loadPendingMemoryIndexes().filter(entry => entry.characterId !== characterId || (memoryOnly && entry.type !== "core" && entry.type !== "long_term"));
+  const accountId = loadActiveAccountId();
+  const remaining = loadPendingMemoryIndexes().filter(entry => entry.vectorMemoryAccountId !== accountId || entry.characterId !== characterId || (memoryOnly && entry.type !== "core" && entry.type !== "long_term"));
   await kvSetAsync(INDEX_PENDING_KEY, JSON.stringify(remaining));
 }
 async function removePendingMemoryIndexes(entries: VectorSyncEntry[]): Promise<void> {
@@ -160,13 +165,13 @@ async function removePendingMemoryIndexes(entries: VectorSyncEntry[]): Promise<v
 }
 const BULK_DELETE_PENDING_KEY = "ai_phone_vector_memory_bulk_delete_pending_v1";
 registerKvMigration(BULK_DELETE_PENDING_KEY);
-type PendingBulkVectorDelete = { characterId: string; memoryOnly: boolean };
-function bulkDeleteKey(item: PendingBulkVectorDelete): string { return item.characterId + ":" + (item.memoryOnly ? "memoryOnly" : "all"); }
+type PendingBulkVectorDelete = { accountId: string; characterId: string; memoryOnly: boolean };
+function bulkDeleteKey(item: PendingBulkVectorDelete): string { return item.accountId + ":" + item.characterId + ":" + (item.memoryOnly ? "memoryOnly" : "all"); }
 function loadPendingBulkVectorDeletes(): PendingBulkVectorDelete[] {
   try {
     const raw = kvGet(BULK_DELETE_PENDING_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.characterId === "string" && typeof item.memoryOnly === "boolean") : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.accountId === "string" && item.accountId.length > 0 && typeof item.characterId === "string" && typeof item.memoryOnly === "boolean") : [];
   } catch { return []; }
 }
 async function enqueuePendingBulkVectorDelete(item: PendingBulkVectorDelete): Promise<void> {
@@ -178,10 +183,11 @@ async function enqueuePendingBulkVectorDelete(item: PendingBulkVectorDelete): Pr
 async function cancelPendingBulkVectorDeletesForEntries(entries: VectorSyncEntry[]): Promise<void> {
   if (!entries.length) return;
   await hydrateKvDb();
-  const characterIds = new Set(entries.map(entry => entry.characterId));
+  const accountId = loadActiveAccountId();
+  const characterIds = new Set(entries.filter(entry => entry.vectorMemoryAccountId === accountId).map(entry => entry.characterId));
   const hasMemoryEntries = entries.some(entry => entry.type === "core" || entry.type === "long_term");
   const remaining = loadPendingBulkVectorDeletes().filter(item => {
-    if (!characterIds.has(item.characterId)) return true;
+    if (item.accountId !== accountId || !characterIds.has(item.characterId)) return true;
     // Re-indexing supersedes queued cleanup for that character.
     return item.memoryOnly ? !hasMemoryEntries : false;
   });
@@ -195,7 +201,8 @@ async function removePendingBulkVectorDelete(item: PendingBulkVectorDelete): Pro
 async function retryPendingBulkVectorDeletesUnlocked(): Promise<number> {
   if (typeof window === "undefined") return 0;
   await hydrateKvDb();
-  const pending = loadPendingBulkVectorDeletes();
+  const accountId = loadActiveAccountId();
+  const pending = loadPendingBulkVectorDeletes().filter(item => item.accountId === accountId);
   let completed = 0;
   for (const item of pending) {
     try {
@@ -216,7 +223,8 @@ async function retryPendingBulkVectorDeletesUnlocked(): Promise<number> {
 async function retryPendingMemoryVectorDeletesUnlocked(): Promise<number> {
   if (typeof window === "undefined") return 0;
   await hydrateKvDb();
-  const pending = loadPendingMemoryDeletes();
+  const accountId = loadActiveAccountId();
+  const pending = loadPendingMemoryDeletes().filter(item => item.accountId === accountId);
   if (!pending.length) return 0;
   const completed: PendingMemoryDelete[] = [];
   for (const entry of pending) {
@@ -239,6 +247,9 @@ async function retryPendingMemoryVectorDeletesUnlocked(): Promise<number> {
 export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntry[]): Promise<void> {
   return withVectorCloudMutation(async () => {
   if (!entries.length || typeof window === "undefined") return;
+  const accountId = loadActiveAccountId();
+  entries = entries.filter(entry => accountId && entry.vectorMemoryAccountId === accountId);
+  if (!entries.length) return;
   await hydrateKvDb();
   const deletedKeys = new Set(entries.map(pendingEntryKey));
   await removePendingMemoryIndexes(entries);
@@ -250,8 +261,8 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
         method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
         body: JSON.stringify({ characterId: entry.characterId, sourceApp: entry.sourceApp, sourceId: entry.id, sourceKind: vectorSourceKind(entry) }),
       });
-      if (!response.ok) failed.push(entry);
-    } catch { failed.push(entry); }
+      if (!response.ok) failed.push({ accountId, characterId: entry.characterId, id: entry.id, sourceApp: entry.sourceApp, type: entry.type });
+    } catch { failed.push({ accountId, characterId: entry.characterId, id: entry.id, sourceApp: entry.sourceApp, type: entry.type }); }
   }
   if (failed.length) await enqueuePendingMemoryDeletes(failed);
   });
@@ -261,7 +272,9 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
 export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: string): Promise<void> {
   return withVectorCloudMutation(async () => {
   if (!characterId || typeof window === "undefined") return;
-  const pendingDelete = { characterId, memoryOnly: true };
+  const accountId = loadActiveAccountId();
+  if (!accountId) return;
+  const pendingDelete = { accountId, characterId, memoryOnly: true };
   await removePendingMemoryIndexesForCharacter(characterId, true);
   await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId && (entry.type === "core" || entry.type === "long_term"));
   try {
@@ -287,7 +300,9 @@ export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: s
 export async function deleteCharacterVectorsFromVectorCloud(characterId: string): Promise<void> {
   return withVectorCloudMutation(async () => {
   if (!characterId || typeof window === "undefined") return;
-  const pendingDelete = { characterId, memoryOnly: false };
+  const accountId = loadActiveAccountId();
+  if (!accountId) return;
+  const pendingDelete = { accountId, characterId, memoryOnly: false };
   await removePendingMemoryIndexesForCharacter(characterId);
   await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId);
   try {
