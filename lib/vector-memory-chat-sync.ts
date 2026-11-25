@@ -159,7 +159,7 @@ export async function retryPendingChatVectorChunks(
   await hydrateKvDb();
   await retryPendingChatSessionDeletes();
   const accountId = loadActiveAccountId();
-  if (!accountId || !loadMemoryConfig().vectorMemoryEnabled) return 0;
+  if (!accountId) return 0;
   const pending = readPendingChatChunks().filter(entry => entry.accountId === accountId);
   const indexingEnabled = loadMemoryConfig().vectorMemoryEnabled;
   let queued = 0;
