@@ -169,6 +169,7 @@ export function loadNativeTimeline(
         excludeOfflineSessionId?: string;
         timeAware?: boolean;
         promptTimestampOptions?: PromptTimestampOptions;
+        accountId?: string;
     }
 ): NativeTimelineEntry[] {
     const entries: NativeTimelineEntry[] = [];
@@ -558,11 +559,14 @@ export function loadNativeTimeline(
         excludeSessionId: options?.excludeOfflineSessionId,
     });
     for (const offlineEntry of offlineEntries) {
+        const offlineSession = sessions.find(item =>
+            item.id === offlineEntry.sessionId || item.id === offlineEntry.groupSessionId
+        );
+        if (options?.accountId !== undefined && offlineSession?.vectorMemoryAccountId !== options.accountId) continue;
         entries.push({
             id: offlineEntry.id,
             sourceApp: "chat",
-                vectorMemoryAccountId: msg.vectorMemoryAccountId,
-                vectorMemoryCharacterGeneration: msg.vectorMemoryCharacterGeneration,
+            vectorMemoryAccountId: offlineSession?.vectorMemoryAccountId,
             sourceDetail: "chat_offline",
             sessionId: offlineEntry.sessionId,
             groupSessionId: offlineEntry.groupSessionId,
