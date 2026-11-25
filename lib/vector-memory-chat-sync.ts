@@ -282,7 +282,7 @@ export function refreshChatMessageBucketsToVectorCloud(
   affectedMessages: ChatMessage[] = [],
 ): void {
   const accountId = loadActiveAccountId();
-  if (typeof window === "undefined" || !accountId || session.isGroup || !session.contactId) return;
+  if (typeof window === "undefined" || !accountId || session.vectorMemoryAccountId !== accountId || session.isGroup || !session.contactId) return;
   if (deletedChatSessions.has(chatSessionKey(accountId, session.contactId, session.id))) return;
   const uniqueBuckets = [...new Set(buckets.filter(bucket => Number.isInteger(bucket) && bucket >= 0))];
 
