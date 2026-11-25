@@ -17,6 +17,12 @@ export type MemoryEntry = {
     /** Server-issued Vector Memory generations captured when this source is created. */
     vectorMemoryCharacterGeneration?: number;
     vectorMemoryMemoryGeneration?: number;
+    /** Last server-acknowledged CAS revision for this source. */
+    vectorMemoryRevision?: number;
+    /** Stable idempotency key for the exact pending cloud payload snapshot. */
+    vectorMemoryPendingOperationId?: string;
+    /** Fingerprint of the payload snapshot associated with the pending operation. */
+    vectorMemoryPendingFingerprint?: string;
     sourceMessageIds?: string[];
     metadata?: Record<string, unknown>;
 };
