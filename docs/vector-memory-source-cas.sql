@@ -53,7 +53,7 @@ alter table public.app_user_vector_memory_operations
   add column if not exists memory_generation bigint not null default 0 check (memory_generation >= 0);
 alter table public.app_user_vector_memory_operations enable row level security;
 revoke all on public.app_user_vector_memory_operations from public, anon, authenticated;
-grant all on public.app_user_vector_memory_operations to service_role;
+grant select, insert, update on public.app_user_vector_memory_operations to service_role;
 
 create or replace function public.commit_vector_memory_cas(
   p_user_id text,
@@ -223,7 +223,7 @@ grant execute on function public.commit_vector_memory_cas(
 -- The CAS-enabled API is now the only permitted indexing writer. Keep the
 -- historical functions present for migration compatibility, but prevent old
 -- timestamp/reservation clients from bypassing committed_revision.
-do $
+do $$
 begin
   if pg_catalog.to_regprocedure(
     'public.reserve_vector_memory_revision(text,text,text,text,text,timestamptz,text,bigint,bigint)'
@@ -236,4 +236,4 @@ begin
     execute 'revoke all on function public.commit_vector_memory_revision(text,text,text,text,text,bigint,text,extensions.vector,jsonb) from public, anon, authenticated, service_role';
   end if;
 end;
-$;
+$$;
