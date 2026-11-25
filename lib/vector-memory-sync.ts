@@ -295,8 +295,10 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
       method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
       body: JSON.stringify({ characterId }),
     });
-    if (response.ok) await removePendingBulkVectorDelete(pendingDelete);
-    else {
+    if (response.ok) {
+      await removePendingBulkVectorDelete(pendingDelete);
+      await refreshCachedVectorMemoryGeneration(characterId);
+    } else {
       await enqueuePendingBulkVectorDelete(pendingDelete);
       console.warn("[VectorMemory] Character cleanup endpoint returned HTTP " + response.status);
     }
