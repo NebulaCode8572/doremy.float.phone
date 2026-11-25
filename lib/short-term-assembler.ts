@@ -179,8 +179,10 @@ export function loadNativeTimeline(
     // ── Chat messages ──
     const sessions = loadChatSessions();
     // Include direct chat session AND group sessions where this character participates
-    const session = sessions.find(s => !s.isGroup && s.contactId === characterId);
-    const groupSessions = sessions.filter(s => s.isGroup && s.participantIds?.includes(characterId));
+    const session = sessions.find(s => !s.isGroup && s.contactId === characterId
+        && (options?.accountId === undefined || s.vectorMemoryAccountId === options.accountId));
+    const groupSessions = sessions.filter(s => s.isGroup && s.participantIds?.includes(characterId)
+        && (options?.accountId === undefined || s.vectorMemoryAccountId === options.accountId));
 
     // Process group sessions
     for (const gs of groupSessions) {
