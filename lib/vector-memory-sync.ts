@@ -122,7 +122,15 @@ async function enqueuePendingMemoryDeletes(entries: PendingMemoryDelete[]): Prom
 async function cancelPendingMemoryDeletesForEntries(entries: VectorSyncEntry[]): Promise<void> {
   if (!entries.length) return;
   await hydrateKvDb();
-  const keys = new Set(entries.map(pendingDeleteKey));
+  const keys = new Set(entries
+    .filter(entry => typeof entry.vectorMemoryAccountId === "string" && entry.vectorMemoryAccountId.length > 0)
+    .map(entry => pendingDeleteKey({
+      accountId: entry.vectorMemoryAccountId!,
+      characterId: entry.characterId,
+      id: entry.id,
+      sourceApp: entry.sourceApp,
+      type: entry.type,
+    })));
   const remaining = loadPendingMemoryDeletes().filter(item => !keys.has(pendingDeleteKey(item)));
   await kvSetAsync(DELETE_PENDING_KEY, JSON.stringify(remaining));
 }
@@ -326,7 +334,8 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
 
 
 async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[], persistFailures = true): Promise<boolean> {
-  entries = entries.filter(hasValidGeneration);
+  const accountId = loadActiveAccountId();
+  entries = entries.filter(entry => entry.vectorMemoryAccountId === accountId && hasValidGeneration(entry));
   if (!entries.length || typeof window === "undefined") return false;
   // A re-index supersedes a queued deletion for the same stable source ID.
   await cancelPendingMemoryDeletesForEntries(entries);
