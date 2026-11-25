@@ -1,6 +1,6 @@
 import type { MemoryEntry } from "@/lib/memory-types";
 import { hydrateKvDb, kvGet, kvSetAsync, registerKvMigration } from "@/lib/kv-db";
-import { loadMemoryConfig } from "@/lib/memory-storage";
+import { loadMemoryConfig, loadMemoryEntries, saveMemoryEntry } from "@/lib/memory-storage";
 import { loadActiveAccountId } from "@/lib/account-client";
 import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
@@ -34,10 +34,34 @@ export async function addImportedMemoryPending(entries: ImportedMemoryPendingEnt
   await hydrateKvDb();
   if (!entries.length || !loadMemoryConfig().vectorMemoryEnabled) return 0;
   const accountId = loadActiveAccountId();
+  if (!accountId) return loadImportedMemoryPending().length;
+
+  // The import was explicitly confirmed. Stamp the local source record as belonging
+  // to this account; only attach a generation when a valid cache exists right now.
+  const generations = new Map<string, ReturnType<typeof loadCachedVectorMemoryGeneration>>();
+  for (const characterId of new Set(entries.map(entry => entry.characterId))) {
+    generations.set(characterId, loadCachedVectorMemoryGeneration(accountId, characterId));
+  }
+  for (const characterId of new Set(entries.map(entry => entry.characterId))) {
+    const localEntries = await loadMemoryEntries(characterId);
+    const importedIds = new Set(entries.filter(entry => entry.characterId === characterId).map(entry => entry.id));
+    for (const localEntry of localEntries) {
+      if (!importedIds.has(localEntry.id)) continue;
+      const generation = generations.get(characterId);
+      await saveMemoryEntry({
+        ...localEntry,
+        vectorMemoryAccountId: accountId,
+        ...(generation ? {
+          vectorMemoryCharacterGeneration: generation.characterGeneration,
+          vectorMemoryMemoryGeneration: generation.memoryGeneration,
+        } : {}),
+      });
+    }
+  }
+
   const explicitlyImported = entries.flatMap(entry => {
-    const current = loadCachedVectorMemoryGeneration(accountId, entry.characterId);
-    // Only the explicit import action may assign the current cached generation.
-    // If offline/no cache, leave the imported data local-only.
+    const current = generations.get(entry.characterId);
+    // If offline/no cache, the import remains local-only and is not queued.
     return current ? [{
       ...entry,
       vectorMemoryAccountId: accountId,
