@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
 
 import { AccountGate } from "@/components/auth/account-gate";
+import { VectorMemoryGenerationBootstrap } from "@/components/vector-memory-generation-bootstrap";
 import { ChatPluginBootstrap } from "@/components/chat-plugin-bootstrap";
 import { ChatReasoningVisibilityController } from "@/components/chat-reasoning-visibility-controller";
 import { CloudBackupScheduler } from "@/components/cloud-backup-scheduler";
@@ -316,6 +317,7 @@ export function MainApp() {
 
   return (
     <AccountGate>
+      <VectorMemoryGenerationBootstrap />
       <ChatPluginBootstrap />
       <ChatReasoningVisibilityController />
       {!splashDismissed ? (
