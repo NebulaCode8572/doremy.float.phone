@@ -448,7 +448,7 @@ async function persistVectorMemoryRevision(entry: VectorSyncEntry, revision: num
   });
 }
 
-async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[], persistFailures = true): Promise<boolean> {
+async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]): Promise<boolean> {
   const accountId = loadActiveAccountId();
   entries = entries.filter(entry => entry.vectorMemoryAccountId === accountId && hasValidGeneration(entry));
   if (!entries.length || typeof window === "undefined") return false;
@@ -470,7 +470,7 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
 
   // Persist the exact operation snapshot before the request. A retry reuses both
   // operationId and expectedRevision; changed content receives a new operationId.
-  if (persistFailures) await enqueuePendingMemoryIndexes(prepared);
+  await enqueuePendingMemoryIndexes(prepared);
   await cancelPendingMemoryDeletesForEntries(prepared);
   await cancelPendingBulkVectorDeletesForEntries(prepared);
   await retryPendingMemoryVectorDeletesUnlocked();
@@ -552,7 +552,7 @@ export async function retryPendingMemoryIndexes(): Promise<number> {
     const accountId = loadActiveAccountId();
     const pending = loadPendingMemoryIndexes().filter(entry => entry.vectorMemoryAccountId === accountId);
     if (!pending.length) return 0;
-    const success = await syncMemoryEntriesToVectorCloudUnlocked(pending, false);
+    const success = await syncMemoryEntriesToVectorCloudUnlocked(pending);
     if (success) await removePendingMemoryIndexes(pending);
     return success ? pending.length : 0;
   });
