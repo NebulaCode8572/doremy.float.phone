@@ -208,3 +208,5 @@ revoke all on function public.reserve_vector_memory_revision(text,text,text,text
 grant execute on function public.reserve_vector_memory_revision(text,text,text,text,text,timestamptz,text,bigint,bigint) to service_role;
 revoke all on function public.delete_vector_memory_character(text,text,boolean) from public, anon, authenticated;
 grant execute on function public.delete_vector_memory_character(text,text,boolean) to service_role;
+revoke all on function public.delete_vector_memory_session_chunks(text,text,text) from public, anon, authenticated;
+grant execute on function public.delete_vector_memory_session_chunks(text,text,text) to service_role;
