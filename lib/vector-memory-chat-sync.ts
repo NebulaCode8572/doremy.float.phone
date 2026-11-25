@@ -76,13 +76,16 @@ async function saveActiveChunkState(key: string, value: ActiveChunkState): Promi
   await kvSetAsync(key, JSON.stringify(value));
 }
 
-function fingerprintChunk(content: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < content.length; index++) {
-    hash ^= content.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
+function fingerprintChunk(content: string, messageIds: string[]): string {
+  const snapshot = content + "\\u001f" + messageIds.join("\\u001f");
+  let hashA = 2166136261;
+  let hashB = 0x9e3779b9;
+  for (let index = 0; index < snapshot.length; index++) {
+    const code = snapshot.charCodeAt(index);
+    hashA = Math.imul(hashA ^ code, 16777619);
+    hashB = Math.imul(hashB ^ code, 2246822519);
   }
-  return (hash >>> 0).toString(36) + ":" + content.length;
+  return (hashA >>> 0).toString(36) + ":" + (hashB >>> 0).toString(36) + ":" + snapshot.length;
 }
 type PendingChatChunk = { accountId: string; characterId: string; sessionId: string; bucket: number; characterGeneration: number; operation: "upsert" | "delete" };
 let pendingStateQueue: Promise<void> = Promise.resolve();
@@ -372,24 +375,19 @@ export function refreshChatMessageBucketsToVectorCloud(
         .slice(0, MAX_CHUNK_CONTENT);
       if (!content.trim()) continue;
 
-      const sourceUpdatedAt = selected.reduce((latest, entry) => {
-        const candidate = entry.item.updatedAt ?? entry.item.createdAt;
-        return candidate > latest ? candidate : latest;
-      }, "");
-      const fingerprint = fingerprintChunk(content);
+      const messageIds = selected.map(entry => entry.item.id);
+      const fingerprint = fingerprintChunk(content, messageIds);
       const payloadBase = {
         characterId: session.contactId,
         sourceApp: "chat",
         sourceKind: "chat_chunk",
         content,
-        updatedAt: sourceUpdatedAt,
         characterGeneration,
         memoryGeneration: 0,
         metadata: {
           sessionId: session.id,
           chunkIndex: bucket,
-          messageIds: selected.map(entry => entry.item.id),
-          updatedAt: sourceUpdatedAt,
+          messageIds,
         },
       };
 
