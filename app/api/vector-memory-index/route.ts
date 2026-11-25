@@ -42,7 +42,7 @@ export async function POST(request: Request) {
         || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0
         || !Number.isSafeInteger(characterGeneration) || characterGeneration < 0
         || !Number.isSafeInteger(memoryGeneration) || memoryGeneration < 0
-        || (sourceKind === "chat_chunk" && !/^[A-Za-z0-9_-]{1,140}$/.test(sessionId))) {
+        || (sourceKind === "chat_chunk" && (sourceApp !== "chat" || !/^[A-Za-z0-9_-]{1,140}$/.test(sessionId)))) {
         results.push({ id, success: false, error: "记忆条目格式无效" });
         continue;
       }
