@@ -91,25 +91,6 @@ begin
       || p_source_app || chr(31) || p_source_id, 0
   ));
 
-  -- Idempotency check is performed under the source lock. Reusing an operation ID
-  -- for a different payload is rejected rather than silently treated as success.
-  select * into v_existing
-  from public.app_user_vector_memory_operations o
-  where o.user_id=p_user_id and o.operation_id=p_operation_id;
-  if found then
-    if v_existing.character_id <> p_character_id
-      or v_existing.source_app <> p_source_app
-      or v_existing.source_id <> p_source_id
-      or v_existing.source_kind <> p_source_kind
-      or v_existing.payload_fingerprint <> v_fingerprint then
-      return pg_catalog.jsonb_build_object('status','operation_id_reused');
-    end if;
-    return pg_catalog.jsonb_build_object(
-      'status','already_committed',
-      'revision',v_existing.committed_revision
-    );
-  end if;
-
   insert into public.app_user_vector_memory_generations(user_id,character_id)
   values (p_user_id,p_character_id) on conflict (user_id,character_id) do nothing;
   select g.character_generation,g.memory_generation
@@ -134,6 +115,25 @@ begin
       )
   ) then
     return pg_catalog.jsonb_build_object('status','deleted');
+  end if;
+
+  -- Idempotency check is performed under the source lock. Reusing an operation ID
+  -- for a different payload is rejected rather than silently treated as success.
+  select * into v_existing
+  from public.app_user_vector_memory_operations o
+  where o.user_id=p_user_id and o.operation_id=p_operation_id;
+  if found then
+    if v_existing.character_id <> p_character_id
+      or v_existing.source_app <> p_source_app
+      or v_existing.source_id <> p_source_id
+      or v_existing.source_kind <> p_source_kind
+      or v_existing.payload_fingerprint <> v_fingerprint then
+      return pg_catalog.jsonb_build_object('status','operation_id_reused');
+    end if;
+    return pg_catalog.jsonb_build_object(
+      'status','already_committed',
+      'revision',v_existing.committed_revision
+    );
   end if;
 
   insert into public.app_user_vector_memory_versions(
