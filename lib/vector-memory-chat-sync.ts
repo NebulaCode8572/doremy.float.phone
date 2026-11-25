@@ -379,6 +379,10 @@ export function refreshChatMessageBucketsToVectorCloud(
             await saveActiveChunkState(stateKey, { version: nextVersion, sourceId, fingerprint });
           }
 
+          if (loadActiveAccountId() !== accountId) {
+            await markChatChunkPending(queueEntry);
+            return;
+          }
           const response = await fetch("/api/vector-memory-index", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
