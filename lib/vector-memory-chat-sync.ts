@@ -1,5 +1,6 @@
 import { loadMemoryConfig } from "@/lib/memory-storage";
-import { hydrateKvDb, kvGet, kvSetAsync, registerKvMigration } from "@/lib/kv-db";
+import { hydrateKvDb, kvGet, kvSetAsync, registerKvMigration, registerDynamicPrefix } from "@/lib/kv-db";
+import { loadActiveAccountId } from "@/lib/account-client";
 import type { ChatMessage, ChatSession } from "@/lib/chat-storage";
 
 const CHUNK_SIZE = 4;
@@ -10,7 +11,44 @@ const chunkOperationQueues = new Map<string, Promise<void>>();
 const deletedChatSessions = new Set<string>();
 
 const CHAT_CHUNK_PENDING_KEY = "ai_phone_vector_memory_chat_chunk_pending_v1";
+const ACTIVE_CHUNK_PREFIX = "ai_phone_vector_memory_chat_chunk_active_v1:";
 registerKvMigration(CHAT_CHUNK_PENDING_KEY);
+registerDynamicPrefix(ACTIVE_CHUNK_PREFIX);
+
+type ActiveChunkState = { version: number; sourceId?: string; fingerprint?: string };
+
+function activeChunkStateKey(characterId: string, sessionId: string, bucket: number, generation: number): string {
+  return ACTIVE_CHUNK_PREFIX + [
+    encodeURIComponent(loadActiveAccountId()), encodeURIComponent(characterId),
+    encodeURIComponent(sessionId), String(generation), String(bucket),
+  ].join(":");
+}
+
+function loadActiveChunkState(key: string): ActiveChunkState {
+  try {
+    const raw = kvGet(key);
+    if (!raw) return { version: 0 };
+    const value = JSON.parse(raw) as Partial<ActiveChunkState>;
+    return {
+      version: Number.isSafeInteger(value.version) && (value.version ?? -1) >= 0 ? value.version! : 0,
+      ...(typeof value.sourceId === "string" ? { sourceId: value.sourceId } : {}),
+      ...(typeof value.fingerprint === "string" ? { fingerprint: value.fingerprint } : {}),
+    };
+  } catch { return { version: 0 }; }
+}
+
+async function saveActiveChunkState(key: string, value: ActiveChunkState): Promise<void> {
+  await kvSetAsync(key, JSON.stringify(value));
+}
+
+function fingerprintChunk(content: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < content.length; index++) {
+    hash ^= content.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36) + ":" + content.length;
+}
 type PendingChatChunk = { characterId: string; sessionId: string; bucket: number; characterGeneration: number };
 let pendingStateQueue: Promise<void> = Promise.resolve();
 
@@ -104,10 +142,7 @@ function bucketForOrder(order: number | undefined): number {
   return Math.floor(Math.max(0, typeof order === "number" && Number.isFinite(order) ? order : 0) / CHUNK_SIZE);
 }
 
-async function deleteChatChunk(characterId: string, sessionId: string, bucket: number, characterGeneration?: number): Promise<void> {
-  const sourceId = characterGeneration === undefined
-    ? `session:${sessionId}:chunk:${bucket}`
-    : `session:${sessionId}:g:${characterGeneration}:chunk:${bucket}`;
+async function deleteChatChunk(characterId: string, sourceId: string): Promise<void> {
   const response = await fetch("/api/vector-memory-chat-chunks", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
@@ -144,7 +179,9 @@ export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, bu
   for (const bucket of [...new Set(buckets.filter(value => Number.isInteger(value) && value >= 0))]) {
     const generation = session.vectorMemoryCharacterGeneration;
     enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, generation), async () => {
-      await deleteChatChunk(session.contactId!, session.id, bucket, generation);
+      await deleteChatChunk(session.contactId!, generation === undefined
+        ? `session:${session.id}:chunk:${bucket}`
+        : `session:${session.id}:g:${generation}:chunk:${bucket}`);
       if (generation !== undefined) {
         await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket, characterGeneration: generation });
       }
@@ -158,6 +195,7 @@ export function refreshChatMessageBucketsToVectorCloud(
   allMessages: ChatMessage[],
   buckets: number[],
   generationFilter?: number,
+  affectedMessages: ChatMessage[] = [],
 ): void {
   if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
   if (deletedChatSessions.has(chatSessionKey(session.contactId, session.id))) return;
@@ -167,6 +205,9 @@ export function refreshChatMessageBucketsToVectorCloud(
       .filter(item => item.sessionId === session.id && bucketForOrder(item.order) === bucket);
     const generations = [...new Set(bucketMessages
       .map(item => item.vectorMemoryCharacterGeneration)
+      .concat(affectedMessages
+        .filter(item => item.sessionId === session.id && bucketForOrder(item.order) === bucket)
+        .map(item => item.vectorMemoryCharacterGeneration))
       .filter((value): value is number => Number.isSafeInteger(value) && (value ?? -1) >= 0)
       .filter(value => generationFilter === undefined || value === generationFilter))];
 
@@ -193,8 +234,6 @@ export function refreshChatMessageBucketsToVectorCloud(
         return candidate > latest ? candidate : latest;
       }, "");
       const payload = {
-        id: sourceId,
-        characterId: session.contactId,
         sourceApp: "chat",
         sourceKind: "chat_chunk",
         content,
@@ -206,18 +245,46 @@ export function refreshChatMessageBucketsToVectorCloud(
       enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, characterGeneration), async () => {
         if (deletedChatSessions.has(chatSessionKey(session.contactId!, session.id))) return;
         if (!loadMemoryConfig().vectorMemoryEnabled) return;
-        let response: Response;
+        let sourceId: string;
         try {
-          response = await fetch("/api/vector-memory-index", {
+          const state = loadActiveChunkState(stateKey);
+          if (state.sourceId && state.fingerprint === fingerprint) {
+            sourceId = state.sourceId;
+          } else {
+            const nextVersion = state.version + 1;
+            sourceId = `session:${session.id}:g:${characterGeneration}:chunk:${bucket}:v:${nextVersion}`;
+            if (state.sourceId) await deleteChatChunk(session.contactId!, state.sourceId);
+            await saveActiveChunkState(stateKey, { version: nextVersion, sourceId, fingerprint });
+          }
+          const response = await fetch("/api/vector-memory-index", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "same-origin",
-            body: JSON.stringify({ entries: [payload] }),
+            body: JSON.stringify({ entries: [{ ...payloadBase, id: sourceId }] }),
           });
+          if (!response.ok) {
+            await markChatChunkPending(queueEntry);
+            console.warn(`[VectorMemory] Chat chunk indexing returned HTTP ${response.status}`);
+            return;
+          }
+          const result = await response.json().catch(() => null);
+          const itemResult = Array.isArray(result?.results) ? result.results[0] : null;
+          if (!itemResult || itemResult.success !== true) {
+            await markChatChunkPending(queueEntry);
+            console.warn("[VectorMemory] Chat chunk indexing endpoint returned HTTP 200 but did not confirm indexing success.");
+          } else {
+            await clearChatChunkPending(queueEntry);
+          }
         } catch (error) {
           await markChatChunkPending(queueEntry);
           throw error;
         }
+      });
+    }
+  }
+}
+
+
         if (!response.ok) {
           await markChatChunkPending(queueEntry);
           console.warn(`[VectorMemory] Chat chunk indexing returned HTTP ${response.status}`);
