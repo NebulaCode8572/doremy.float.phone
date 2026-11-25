@@ -200,6 +200,7 @@ export function refreshChatMessageBucketsToVectorCloud(
   if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
   if (deletedChatSessions.has(chatSessionKey(session.contactId, session.id))) return;
   const uniqueBuckets = [...new Set(buckets.filter(bucket => Number.isInteger(bucket) && bucket >= 0))];
+
   for (const bucket of uniqueBuckets) {
     const bucketMessages = allMessages
       .filter(item => item.sessionId === session.id && bucketForOrder(item.order) === bucket);
@@ -217,37 +218,58 @@ export function refreshChatMessageBucketsToVectorCloud(
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
         .map(item => ({ item, text: cleanMessageText(item) }))
         .filter(entry => entry.text);
-      const sourceId = `session:${session.id}:g:${characterGeneration}:chunk:${bucket}`;
       const queueEntry = { characterId: session.contactId, sessionId: session.id, bucket, characterGeneration };
+      const stateKey = activeChunkStateKey(session.contactId, session.id, bucket, characterGeneration);
       if (!loadMemoryConfig().vectorMemoryEnabled) continue;
+
       if (selected.length === 0) {
         enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, characterGeneration), async () => {
-          await deleteChatChunk(session.contactId!, session.id, bucket, characterGeneration);
-          await clearChatChunkPending(queueEntry);
+          try {
+            const state = loadActiveChunkState(stateKey);
+            if (state.sourceId) await deleteChatChunk(session.contactId!, state.sourceId);
+            await saveActiveChunkState(stateKey, { version: state.version });
+            await clearChatChunkPending(queueEntry);
+          } catch (error) {
+            await markChatChunkPending(queueEntry);
+            throw error;
+          }
         });
         continue;
       }
-      const content = selected.map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`).join("\n").slice(0, MAX_CHUNK_CONTENT);
+
+      const content = selected
+        .map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`)
+        .join("\\n")
+        .slice(0, MAX_CHUNK_CONTENT);
       if (!content.trim()) continue;
+
       const sourceUpdatedAt = selected.reduce((latest, entry) => {
         const candidate = entry.item.updatedAt ?? entry.item.createdAt;
         return candidate > latest ? candidate : latest;
       }, "");
-      const payload = {
+      const fingerprint = fingerprintChunk(content);
+      const payloadBase = {
+        characterId: session.contactId,
         sourceApp: "chat",
         sourceKind: "chat_chunk",
         content,
         updatedAt: sourceUpdatedAt,
         characterGeneration,
         memoryGeneration: 0,
-        metadata: { sessionId: session.id, chunkIndex: bucket, messageIds: selected.map(entry => entry.item.id), updatedAt: sourceUpdatedAt },
+        metadata: {
+          sessionId: session.id,
+          chunkIndex: bucket,
+          messageIds: selected.map(entry => entry.item.id),
+          updatedAt: sourceUpdatedAt,
+        },
       };
+
       enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, characterGeneration), async () => {
         if (deletedChatSessions.has(chatSessionKey(session.contactId!, session.id))) return;
         if (!loadMemoryConfig().vectorMemoryEnabled) return;
-        let sourceId: string;
         try {
           const state = loadActiveChunkState(stateKey);
+          let sourceId: string;
           if (state.sourceId && state.fingerprint === fingerprint) {
             sourceId = state.sourceId;
           } else {
@@ -256,6 +278,7 @@ export function refreshChatMessageBucketsToVectorCloud(
             if (state.sourceId) await deleteChatChunk(session.contactId!, state.sourceId);
             await saveActiveChunkState(stateKey, { version: nextVersion, sourceId, fingerprint });
           }
+
           const response = await fetch("/api/vector-memory-index", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -278,25 +301,6 @@ export function refreshChatMessageBucketsToVectorCloud(
         } catch (error) {
           await markChatChunkPending(queueEntry);
           throw error;
-        }
-      });
-    }
-  }
-}
-
-
-        if (!response.ok) {
-          await markChatChunkPending(queueEntry);
-          console.warn(`[VectorMemory] Chat chunk indexing returned HTTP ${response.status}`);
-          return;
-        }
-        const result = await response.json().catch(() => null);
-        const itemResult = Array.isArray(result?.results) ? result.results[0] : null;
-        if (!itemResult || itemResult.success !== true) {
-          await markChatChunkPending(queueEntry);
-          console.warn("[VectorMemory] Chat chunk indexing endpoint returned HTTP 200 but did not confirm indexing success.");
-        } else {
-          await clearChatChunkPending(queueEntry);
         }
       });
     }
