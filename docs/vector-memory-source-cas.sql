@@ -223,9 +223,17 @@ grant execute on function public.commit_vector_memory_cas(
 -- The CAS-enabled API is now the only permitted indexing writer. Keep the
 -- historical functions present for migration compatibility, but prevent old
 -- timestamp/reservation clients from bypassing committed_revision.
-revoke all on function public.reserve_vector_memory_revision(
-  text,text,text,text,text,timestamptz,text,bigint,bigint
-) from public, anon, authenticated, service_role;
-revoke all on function public.commit_vector_memory_revision(
-  text,text,text,text,text,bigint,text,extensions.vector,jsonb
-) from public, anon, authenticated, service_role;
+do $
+begin
+  if pg_catalog.to_regprocedure(
+    'public.reserve_vector_memory_revision(text,text,text,text,text,timestamptz,text,bigint,bigint)'
+  ) is not null then
+    execute 'revoke all on function public.reserve_vector_memory_revision(text,text,text,text,text,timestamptz,text,bigint,bigint) from public, anon, authenticated, service_role';
+  end if;
+  if pg_catalog.to_regprocedure(
+    'public.commit_vector_memory_revision(text,text,text,text,text,bigint,text,extensions.vector,jsonb)'
+  ) is not null then
+    execute 'revoke all on function public.commit_vector_memory_revision(text,text,text,text,text,bigint,text,extensions.vector,jsonb) from public, anon, authenticated, service_role';
+  end if;
+end;
+$;
