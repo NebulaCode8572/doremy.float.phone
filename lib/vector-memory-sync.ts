@@ -327,7 +327,7 @@ export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: s
     });
     if (response.ok) {
       await removePendingBulkVectorDelete(pendingDelete);
-      await refreshCachedVectorMemoryGeneration(characterId);
+      if (loadActiveAccountId() === accountId) await refreshCachedVectorMemoryGeneration(characterId);
     } else {
       await enqueuePendingBulkVectorDelete(pendingDelete);
       console.warn("[VectorMemory] Memory cleanup endpoint returned HTTP " + response.status);
@@ -359,7 +359,7 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
     });
     if (response.ok) {
       await removePendingBulkVectorDelete(pendingDelete);
-      await refreshCachedVectorMemoryGeneration(characterId);
+      if (loadActiveAccountId() === accountId) await refreshCachedVectorMemoryGeneration(characterId);
     } else {
       await enqueuePendingBulkVectorDelete(pendingDelete);
       console.warn("[VectorMemory] Character cleanup endpoint returned HTTP " + response.status);
