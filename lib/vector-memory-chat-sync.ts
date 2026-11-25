@@ -225,9 +225,9 @@ export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
   const pending = [...chunkOperationQueues.entries()]
     .filter(([key]) => key.startsWith(prefix))
     .map(([, promise]) => promise);
-  void Promise.all(pending).then(async () => {
-    const deletion = { accountId, characterId: session.contactId!, sessionId: session.id };
-    await enqueuePendingChatSessionDelete(deletion);
+  const deletion = { accountId, characterId: session.contactId, sessionId: session.id };
+  void enqueuePendingChatSessionDelete(deletion).then(async () => {
+    await Promise.all(pending);
     await performPendingChatSessionDelete(deletion);
   }).catch(error => console.warn("[VectorMemory] Session vector cleanup failed; retry is preserved.", error));
 }
