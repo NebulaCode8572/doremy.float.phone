@@ -3,6 +3,7 @@
 import { useCallback, useEffect } from "react";
 import { useAccount } from "@/lib/account-context";
 import { hydrateKvDb } from "@/lib/kv-db";
+import { loadActiveAccountId } from "@/lib/account-client";
 import { CHARACTERS_UPDATED_EVENT, loadCharacters } from "@/lib/character-storage";
 import { saveCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
@@ -31,7 +32,7 @@ export function VectorMemoryGenerationBootstrap() {
       });
       if (!response.ok) return;
       const payload = await response.json().catch(() => null) as { results?: GenerationResult[] } | null;
-      if (!Array.isArray(payload?.results)) return;
+      if (!Array.isArray(payload?.results) || account.id !== loadActiveAccountId()) return;
       for (const item of payload.results) {
         if (!item.success || !item.characterId
           || !Number.isSafeInteger(item.characterGeneration) || !Number.isSafeInteger(item.memoryGeneration)) continue;
