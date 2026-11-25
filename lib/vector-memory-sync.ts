@@ -473,6 +473,18 @@ async function persistVectorMemoryConflict(entry: VectorSyncEntry, currentRevisi
   });
 }
 
+async function clearVectorMemoryConflict(entry: VectorSyncEntry): Promise<void> {
+  const local = await loadMemoryEntries(entry.characterId);
+  const current = local.find(item => item.id === entry.id && item.sourceApp === entry.sourceApp);
+  if (!current || current.vectorMemoryConflictRevision === undefined) return;
+  await saveMemoryEntry({
+    ...current,
+    vectorMemoryConflictRevision: undefined,
+    vectorMemoryPendingOperationId: undefined,
+    vectorMemoryPendingFingerprint: undefined,
+  });
+}
+
 async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]): Promise<boolean> {
   const accountId = loadActiveAccountId();
   entries = entries.filter(entry => entry.vectorMemoryAccountId === accountId && hasValidGeneration(entry));
@@ -575,6 +587,7 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
           await persistVectorMemoryRevision(entry, Number(result.revision));
           await removePendingMemoryIndexes([entry]);
         } else if (result?.success === true && (result.status === "deleted" || result.status === "stale_generation")) {
+          await clearVectorMemoryConflict(entry);
           await removePendingMemoryIndexes([entry]);
         } else {
           allSucceeded = false;
