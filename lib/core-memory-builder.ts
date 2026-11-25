@@ -13,7 +13,7 @@ import {
 import { resolveAuxiliaryApiConfig } from "./settings-storage";
 import { simpleLLMCall } from "./api-helpers";
 import { syncMemoryEntriesToVectorCloud, deleteMemoryEntriesFromVectorCloud } from "./vector-memory-sync";
-import { stampNewMemoryEntry } from "./vector-memory-generation";
+import { stampNewMemoryEntry, loadCachedVectorMemoryGeneration } from "./vector-memory-generation";
 import { loadActiveAccountId } from "./account-client";
 
 const coreBuildingSet = new Set<string>();
@@ -120,11 +120,13 @@ export async function runCoreMemoryPipeline(
     const sourceSessionIds = Array.from(new Set(entries.flatMap(entry => entry.sourceSessionIds)));
 
     const accountId = loadActiveAccountId();
-    const sourcesBelongToAccount = Boolean(accountId) && allLongTermEntries.every(entry =>
+    const currentGeneration = loadCachedVectorMemoryGeneration(accountId, characterId);
+    const sourcesBelongToAccount = Boolean(accountId && currentGeneration) && allLongTermEntries.every(entry =>
         entry.vectorMemoryAccountId === accountId
-        && Number.isSafeInteger(entry.vectorMemoryCharacterGeneration)
-        && Number.isSafeInteger(entry.vectorMemoryMemoryGeneration)
+        && entry.vectorMemoryCharacterGeneration === currentGeneration?.characterGeneration
+        && entry.vectorMemoryMemoryGeneration === currentGeneration?.memoryGeneration
         && entry.metadata?.includesGroupChat !== true
+        && entry.metadata?.includesStaleChat !== true
     );
     const coreEntryData = {
         id: `mem_core_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
