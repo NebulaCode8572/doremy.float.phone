@@ -1,26 +1,20 @@
 -- DEPRECATED — DO NOT EXECUTE.
 --
--- This file documented the original revision-only RPC contract. It is superseded by
--- docs/vector-memory-generation-guards.sql, which adds server-controlled character
--- and memory generations and is the authoritative deployed contract.
+-- This file documented the original revision-only RPC contract. Its historical
+-- schema step is now represented by docs/vector-memory-revision-schema.sql;
+-- generation and tombstone protections are supplied by the later guard migrations.
 --
--- Re-applying the old SQL below would create an overloaded
--- reserve_vector_memory_revision(text,text,text,text,text) RPC that does not validate
--- either generation. Keep this file as a migration-history warning only.
+-- Re-applying the old SQL would recreate timestamp-based reserve/commit RPCs that
+-- bypass the atomic committed_revision CAS protocol. Keep this file as a
+-- migration-history warning only.
 --
--- Current application calls the 9-argument function:
--- reserve_vector_memory_revision(
---   p_user_id text,
---   p_character_id text,
---   p_source_app text,
---   p_source_id text,
---   p_source_kind text,
---   p_source_updated_at timestamptz,
---   p_session_id text,
---   p_character_generation bigint,
---   p_memory_generation bigint
--- )
+-- Current indexing uses public.commit_vector_memory_cas(
+--   p_user_id, p_character_id, p_source_app, p_source_id, p_source_kind,
+--   p_session_id, p_operation_id, p_expected_revision,
+--   p_character_generation, p_memory_generation, p_content, p_embedding, p_metadata
+-- ).
 --
--- Do not recreate the old 5-argument or 7-argument overloads. Any future revision/CAS
--- migration must preserve the generation checks, exact-source/session tombstones,
--- service_role-only EXECUTE grants, and SECURITY INVOKER posture.
+-- Do not recreate the old 5-, 7-, or 9-argument timestamp/reservation overloads.
+-- The CAS migration revokes service_role execution from the legacy 9-argument
+-- reserve and commit functions. Preserve RLS, service_role-only access, generation
+-- checks, exact-source/session tombstones, and SECURITY INVOKER posture.
