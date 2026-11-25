@@ -16,8 +16,24 @@ const ACTIVE_CHUNK_PREFIX = "ai_phone_vector_memory_chat_chunk_active_v1:";
 registerKvMigration(CHAT_CHUNK_PENDING_KEY);
 registerKvMigration(CHAT_SESSION_DELETE_PENDING_KEY);
 registerDynamicPrefix(ACTIVE_CHUNK_PREFIX);
+const CHAT_DEVICE_ID_KEY = "ai_phone_vector_memory_chat_device_id_v1";
+async function getChatVectorDeviceId(): Promise<string> {
+  const existing = kvGet(CHAT_DEVICE_ID_KEY);
+  if (existing && /^[A-Za-z0-9_-]{12,80}$/.test(existing)) return existing;
+  const created = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID().replace(/-/g, "")
+    : "d" + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  await kvSetAsync(CHAT_DEVICE_ID_KEY, created);
+  return created;
+}
+function createChatVectorOperationId(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : "op" + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
 
-type ActiveChunkState = { version: number; sourceId?: string; fingerprint?: string };
+
+type ActiveChunkState = { version: number; sourceId?: string; fingerprint?: string; revision?: number; operationId?: string };
 
 function activeChunkStateKey(accountId: string, characterId: string, sessionId: string, bucket: number, generation: number): string {
   return ACTIVE_CHUNK_PREFIX + [
@@ -35,6 +51,8 @@ function loadActiveChunkState(key: string): ActiveChunkState {
       version: Number.isSafeInteger(value.version) && (value.version ?? -1) >= 0 ? value.version! : 0,
       ...(typeof value.sourceId === "string" ? { sourceId: value.sourceId } : {}),
       ...(typeof value.fingerprint === "string" ? { fingerprint: value.fingerprint } : {}),
+      ...(Number.isSafeInteger(value.revision) && (value.revision ?? -1) >= 0 ? { revision: value.revision } : {}),
+      ...(typeof value.operationId === "string" ? { operationId: value.operationId } : {}),
     };
   } catch { return { version: 0 }; }
 }
@@ -369,15 +387,23 @@ export function refreshChatMessageBucketsToVectorCloud(
         if (!loadMemoryConfig().vectorMemoryEnabled) return;
         try {
           const state = loadActiveChunkState(stateKey);
+          const deviceId = await getChatVectorDeviceId();
           let sourceId: string;
+          let nextState: ActiveChunkState;
           if (state.sourceId && state.fingerprint === fingerprint) {
             sourceId = state.sourceId;
+            nextState = { ...state };
           } else {
             const nextVersion = state.version + 1;
-            sourceId = `session:${session.id}:g:${characterGeneration}:chunk:${bucket}:v:${nextVersion}`;
+            // Device-scoped identity prevents two devices with independent local
+            // counters from overwriting or reserving the same chat source.
+            sourceId = `session:${session.id}:g:${characterGeneration}:device:${deviceId}:chunk:${bucket}:v:${nextVersion}`;
             if (state.sourceId) await deleteChatChunk(accountId, session.contactId!, state.sourceId);
-            await saveActiveChunkState(stateKey, { version: nextVersion, sourceId, fingerprint });
+            nextState = { version: nextVersion, sourceId, fingerprint };
           }
+          const operationId = nextState.operationId ?? createChatVectorOperationId();
+          nextState = { ...nextState, operationId };
+          await saveActiveChunkState(stateKey, nextState);
 
           if (loadActiveAccountId() !== accountId) {
             await markChatChunkPending(queueEntry);
@@ -387,7 +413,12 @@ export function refreshChatMessageBucketsToVectorCloud(
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "same-origin",
-            body: JSON.stringify({ entries: [{ ...payloadBase, id: sourceId }] }),
+            body: JSON.stringify({ entries: [{
+              ...payloadBase,
+              id: sourceId,
+              operationId,
+              expectedRevision: nextState.revision ?? 0,
+            }] }),
           });
           if (!response.ok) {
             await markChatChunkPending(queueEntry);
@@ -396,10 +427,17 @@ export function refreshChatMessageBucketsToVectorCloud(
           }
           const result = await response.json().catch(() => null);
           const itemResult = Array.isArray(result?.results) ? result.results[0] : null;
-          if (!itemResult || itemResult.success !== true) {
+          if (!itemResult || itemResult.success !== true
+            || !["committed", "already_committed"].includes(itemResult.status)
+            || !Number.isSafeInteger(itemResult.revision)) {
             await markChatChunkPending(queueEntry);
-            console.warn("[VectorMemory] Chat chunk indexing endpoint returned HTTP 200 but did not confirm indexing success.");
+            console.warn("[VectorMemory] Chat chunk CAS was not committed; pending state is retained.");
           } else {
+            await saveActiveChunkState(stateKey, {
+              ...nextState,
+              revision: Number(itemResult.revision),
+              operationId: undefined,
+            });
             await clearChatChunkPending(queueEntry);
           }
         } catch (error) {
