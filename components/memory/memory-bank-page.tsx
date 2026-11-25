@@ -734,7 +734,7 @@ export function MemoryBankPage({
             // with this device's current local content.
             const updated: MemoryEntry = {
                 ...entry,
-                vectorMemoryRevision: conflictRevision,
+                vectorMemoryRevision: conflictRevision!,
             };
             await saveMemoryEntry(updated);
             const synced = await syncMemoryEntriesToVectorCloud([updated]);
