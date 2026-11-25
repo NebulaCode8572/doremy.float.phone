@@ -10,6 +10,8 @@ import {
 import { resolveUserIdentity } from "./settings-storage";
 import { loadCharacters, saveCharacters } from "./character-storage";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
+import { loadActiveAccountId } from "./account-client";
+import { loadCachedVectorMemoryGeneration } from "./vector-memory-generation";
 import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-hooks";
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
@@ -62,6 +64,8 @@ export type ChatSession = {
     lastMessagePreview?: string;
     unreadCount: number;
     updatedAt: string; // ISO date
+    /** Immutable server generation captured when this private chat session is created. */
+    vectorMemoryCharacterGeneration?: number;
     isPinned: boolean;
     backgroundImage?: string; // Add support for custom background
     /** 仅当前私聊里展示的用户头像；不修改用户身份、主页或其他会话 */
@@ -133,6 +137,8 @@ export type ChatMessage = {
     status: ChatMessageStatus;
     createdAt: string; // ISO date
     updatedAt?: string; // Last content edit time; createdAt remains the original message time.
+    /** Inherited from the session at message creation; retries must never refresh it. */
+    vectorMemoryCharacterGeneration?: number;
     order?: number; // Stable per-session display order
     responseBatchId?: string; // Assistant raw-response batch id
     rawResponseText?: string; // Assistant raw response before parsing/splitting
@@ -1371,9 +1377,11 @@ export function createOrGetSession(contactId: string): ChatSession {
     const existing = sessions.find(s => s.contactId === contactId);
     if (existing) return existing;
 
+    const generation = loadCachedVectorMemoryGeneration(loadActiveAccountId(), contactId);
     const newSession: ChatSession = {
         id: `sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         contactId,
+        ...(generation ? { vectorMemoryCharacterGeneration: generation.characterGeneration } : {}),
         unreadCount: 0,
         updatedAt: new Date().toISOString(),
         isPinned: false,
@@ -1483,6 +1491,12 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     const pluginResult = runChatPluginTransformSync("message.beforePersist", { message: newMsg });
     if (pluginResult.message && typeof pluginResult.message === "object" && pluginResult.message.id === newMsg.id) {
         newMsg = pluginResult.message;
+    }
+    const messageSession = _sessionsCache.find(session => session.id === newMsg.sessionId);
+    if (messageSession && !messageSession.isGroup
+        && newMsg.vectorMemoryCharacterGeneration === undefined
+        && Number.isSafeInteger(messageSession.vectorMemoryCharacterGeneration)) {
+        newMsg.vectorMemoryCharacterGeneration = messageSession.vectorMemoryCharacterGeneration;
     }
 
     // 仿真拉黑（私聊）：用户把角色拉黑后，角色发出去的消息会被用户拒收——
