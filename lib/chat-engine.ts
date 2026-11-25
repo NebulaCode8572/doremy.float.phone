@@ -4,6 +4,7 @@ import { createSseJsonParser } from "./sse-json";
 import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./offline-shortcut-capability";
 import { maybeBuildStatusInjection } from "./perception/describe";
 import { loadCharacters } from "./character-storage";
+import { loadActiveAccountId } from "./account-client";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
 import { emitChatPluginEvent, runChatPluginTransform } from "./chat-plugin-hooks";
 import { buildChatPluginPromptFragments } from "./chat-plugin-storage";
@@ -2053,7 +2054,8 @@ export async function buildChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
-    if (memConfig.vectorMemoryEnabled && !session.isGroup) {
+    if (memConfig.vectorMemoryEnabled && !session.isGroup
+        && session.vectorMemoryAccountId === loadActiveAccountId()) {
         const vectorRecallText = await retrieveVectorMemoryForPrompt(character.id, wbActivationContext).catch(() => "");
         if (vectorRecallText) llmMessages.push({ role: "system", content: vectorRecallText });
     }
