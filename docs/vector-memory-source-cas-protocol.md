@@ -12,7 +12,7 @@ Long-term/core memory IDs remain stable across devices. Client wall-clock timest
 
 Chat chunks use a per-install device identity to prevent two devices with independent local counters from writing the same source ID:
 
-`session:<sessionId>:g:<characterGeneration>:device:<deviceId>:chunk:<bucket>:v:<localVersion>`
+`session:<sessionId>:g:<characterGeneration>:device:<deviceId>:chunk:<bucket>:v:<localVersion>-<randomNonce>`
 
 Session deletion remains session-wide and removes every device's chunks. The retrieval API collapses byte-for-byte identical copies of a logical session bucket, while preserving divergent snapshots rather than silently discarding content.
 
