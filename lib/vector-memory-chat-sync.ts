@@ -239,7 +239,7 @@ export function refreshChatMessageBucketsToVectorCloud(
 
       const content = selected
         .map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`)
-        .join("\\n")
+        .join("\n")
         .slice(0, MAX_CHUNK_CONTENT);
       if (!content.trim()) continue;
 
