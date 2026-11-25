@@ -4,7 +4,7 @@ import { loadMemoryConfig, loadMemoryEntries, saveMemoryEntry } from "@/lib/memo
 import { loadActiveAccountId } from "@/lib/account-client";
 import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
-export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata" | "vectorMemoryAccountId" | "vectorMemoryCharacterGeneration" | "vectorMemoryMemoryGeneration" | "vectorMemoryRevision" | "vectorMemoryPendingOperationId" | "vectorMemoryPendingFingerprint">, "sourceApp"> & { sourceApp: string };
+export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata" | "vectorMemoryAccountId" | "vectorMemoryCharacterGeneration" | "vectorMemoryMemoryGeneration" | "vectorMemoryRevision" | "vectorMemoryConflictRevision" | "vectorMemoryPendingOperationId" | "vectorMemoryPendingFingerprint">, "sourceApp"> & { sourceApp: string };
 
 function hasValidGeneration(entry: VectorSyncEntry): boolean {
   return typeof entry.vectorMemoryAccountId === "string" && entry.vectorMemoryAccountId.length > 0
@@ -448,6 +448,18 @@ async function persistVectorMemoryRevision(entry: VectorSyncEntry, revision: num
   });
 }
 
+async function persistVectorMemoryConflict(entry: VectorSyncEntry, currentRevision: number): Promise<void> {
+  const local = await loadMemoryEntries(entry.characterId);
+  const current = local.find(item => item.id === entry.id && item.sourceApp === entry.sourceApp);
+  if (!current) return;
+  await saveMemoryEntry({
+    ...current,
+    vectorMemoryConflictRevision: currentRevision,
+    vectorMemoryPendingOperationId: undefined,
+    vectorMemoryPendingFingerprint: undefined,
+  });
+}
+
 async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]): Promise<boolean> {
   const accountId = loadActiveAccountId();
   entries = entries.filter(entry => entry.vectorMemoryAccountId === accountId && hasValidGeneration(entry));
@@ -525,8 +537,13 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
           await removePendingMemoryIndexes([entry]);
         } else {
           allSucceeded = false;
-          // Conflict and invalid operation are deliberately retained for explicit
-          // reconciliation; never retry stale content against a newer revision.
+          if (result?.status === "conflict" && Number.isSafeInteger(result.currentRevision)
+            && Number(result.currentRevision) >= 0) {
+            await persistVectorMemoryConflict(entry, Number(result.currentRevision));
+            // Stop automatic retries. The user must explicitly choose whether the
+            // local snapshot should replace the newer cloud revision.
+            await removePendingMemoryIndexes([entry]);
+          }
           console.warn("[VectorMemory] CAS did not commit source " + entry.id + ": " + String(result?.status ?? "unknown"));
         }
       }
