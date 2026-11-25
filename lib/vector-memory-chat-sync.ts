@@ -186,7 +186,8 @@ export function refreshChatMessageBucketsToVectorCloud(
       sourceApp: "chat",
       sourceKind: "chat_chunk",
       content,
-      metadata: { sessionId: session.id, chunkIndex: bucket, messageIds: selected.map(entry => entry.item.id), updatedAt: new Date().toISOString() },
+      updatedAt: session.updatedAt,
+      metadata: { sessionId: session.id, chunkIndex: bucket, messageIds: selected.map(entry => entry.item.id), updatedAt: session.updatedAt },
     };
     enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
       // Re-check deletion and settings when the queued operation actually runs.
