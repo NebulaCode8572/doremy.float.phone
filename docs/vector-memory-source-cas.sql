@@ -20,6 +20,18 @@ where v.committed_revision = 0
       and m.source_kind=v.source_kind
   );
 
+-- Defensive backfill for any legacy vector row that lacks a revision row.
+insert into public.app_user_vector_memory_versions(
+  user_id,character_id,source_app,source_id,source_kind,
+  revision,committed_revision,source_updated_at,updated_at
+)
+select m.user_id,m.character_id,m.source_app,m.source_id,m.source_kind,0,1,null,now()
+from public.app_user_vector_memories m
+on conflict (user_id,character_id,source_app,source_id,source_kind)
+do update set committed_revision = greatest(
+  public.app_user_vector_memory_versions.committed_revision, 1
+);
+
 create table if not exists public.app_user_vector_memory_operations (
   user_id text not null,
   operation_id text not null,
