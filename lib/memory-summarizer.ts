@@ -168,6 +168,7 @@ export async function runSummarizationPipeline(
             summarizedEvents: allEntries.length,
             timeSpan: `${earliest} ~ ${latest}`,
             sourceSessionIds,
+            includesGroupChat: allEntries.some(entry => entry.sourceDetail === "group"),
         },
     });
     await saveMemoryEntry(longTermEntry);
