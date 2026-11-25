@@ -222,7 +222,7 @@ async function retryPendingBulkVectorDeletesUnlocked(): Promise<number> {
       });
       if (response.ok) {
         await removePendingBulkVectorDelete(item);
-        await refreshCachedVectorMemoryGeneration(item.characterId);
+        if (loadActiveAccountId() === accountId) await refreshCachedVectorMemoryGeneration(item.characterId);
         completed++;
       }
     } catch { /* Keep the item queued for a later attempt. */ }
