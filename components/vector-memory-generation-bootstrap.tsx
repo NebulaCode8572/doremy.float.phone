@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect } from "react";
 import { useAccount } from "@/lib/account-context";
+import { hydrateKvDb } from "@/lib/kv-db";
 import { CHARACTERS_UPDATED_EVENT, loadCharacters } from "@/lib/character-storage";
 import { saveCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
@@ -16,6 +17,8 @@ export function VectorMemoryGenerationBootstrap() {
   const { account } = useAccount();
 
   const refresh = useCallback(async () => {
+    if (!account.id) return;
+    await hydrateKvDb();
     const characterIds = [...new Set(loadCharacters().map(character => character.id))];
     if (!characterIds.length) return;
     try {
