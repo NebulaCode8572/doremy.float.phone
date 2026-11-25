@@ -48,8 +48,13 @@ export async function addImportedMemoryPending(entries: ImportedMemoryPendingEnt
     for (const localEntry of localEntries) {
       if (!importedIds.has(localEntry.id)) continue;
       const generation = generations.get(characterId);
+      const {
+        vectorMemoryCharacterGeneration: _oldCharacterGeneration,
+        vectorMemoryMemoryGeneration: _oldMemoryGeneration,
+        ...localEntryWithoutOldGeneration
+      } = localEntry;
       await saveMemoryEntry({
-        ...localEntry,
+        ...localEntryWithoutOldGeneration,
         vectorMemoryAccountId: accountId,
         ...(generation ? {
           vectorMemoryCharacterGeneration: generation.characterGeneration,
