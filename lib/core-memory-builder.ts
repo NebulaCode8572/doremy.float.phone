@@ -14,6 +14,7 @@ import { resolveAuxiliaryApiConfig } from "./settings-storage";
 import { simpleLLMCall } from "./api-helpers";
 import { syncMemoryEntriesToVectorCloud, deleteMemoryEntriesFromVectorCloud } from "./vector-memory-sync";
 import { stampNewMemoryEntry } from "./vector-memory-generation";
+import { loadActiveAccountId } from "./account-client";
 
 const coreBuildingSet = new Set<string>();
 
@@ -118,7 +119,13 @@ export async function runCoreMemoryPipeline(
     }
     const sourceSessionIds = Array.from(new Set(entries.flatMap(entry => entry.sourceSessionIds)));
 
-    const coreEntry: MemoryEntry = stampNewMemoryEntry({
+    const accountId = loadActiveAccountId();
+    const sourcesBelongToAccount = Boolean(accountId) && allLongTermEntries.every(entry =>
+        entry.vectorMemoryAccountId === accountId
+        && Number.isSafeInteger(entry.vectorMemoryCharacterGeneration)
+        && Number.isSafeInteger(entry.vectorMemoryMemoryGeneration)
+    );
+    const coreEntryData = {
         id: `mem_core_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         characterId,
         sourceApp: dominantSource,
@@ -132,7 +139,10 @@ export async function runCoreMemoryPipeline(
             timeSpan: `${earliest} ~ ${latest}`,
             sourceSessionIds,
         },
-    });
+    };
+    const coreEntry: MemoryEntry = sourcesBelongToAccount
+        ? stampNewMemoryEntry(coreEntryData)
+        : coreEntryData;
     // On forced rebuild, replace previous core summaries after generation succeeds.
     if (options?.force) {
         const previousCoreEntries = await loadMemoryEntriesByType(characterId, "core");
