@@ -4,7 +4,7 @@ import { loadMemoryConfig, loadMemoryEntries, saveMemoryEntry } from "@/lib/memo
 import { loadActiveAccountId } from "@/lib/account-client";
 import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
-export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata" | "vectorMemoryAccountId" | "vectorMemoryCharacterGeneration" | "vectorMemoryMemoryGeneration">, "sourceApp"> & { sourceApp: string };
+export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata" | "vectorMemoryAccountId" | "vectorMemoryCharacterGeneration" | "vectorMemoryMemoryGeneration" | "vectorMemoryRevision" | "vectorMemoryPendingOperationId" | "vectorMemoryPendingFingerprint">, "sourceApp"> & { sourceApp: string };
 
 function hasValidGeneration(entry: VectorSyncEntry): boolean {
   return typeof entry.vectorMemoryAccountId === "string" && entry.vectorMemoryAccountId.length > 0
@@ -410,24 +410,77 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
 }
 
 
+function vectorMemoryPayloadFingerprint(entry: VectorSyncEntry): string {
+  const raw = JSON.stringify({
+    id: entry.id, characterId: entry.characterId, sourceApp: entry.sourceApp,
+    type: entry.type, content: entry.content, metadata: entry.metadata ?? {},
+    characterGeneration: entry.vectorMemoryCharacterGeneration,
+    memoryGeneration: entry.vectorMemoryMemoryGeneration,
+  });
+  let hash = 2166136261;
+  for (let i = 0; i < raw.length; i++) {
+    hash ^= raw.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36) + ":" + raw.length;
+}
+
+function createVectorMemoryOperationId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return "vm_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
+async function persistVectorMemoryRevision(entry: VectorSyncEntry, revision: number, fingerprint: string): Promise<void> {
+  const local = await loadMemoryEntries(entry.characterId);
+  const current = local.find(item => item.id === entry.id && item.sourceApp === entry.sourceApp);
+  if (!current) return;
+  const currentFingerprint = vectorMemoryPayloadFingerprint({
+    ...current,
+    sourceApp: current.sourceApp,
+  } as VectorSyncEntry);
+  if (currentFingerprint !== fingerprint) return;
+  await saveMemoryEntry({
+    ...current,
+    vectorMemoryRevision: revision,
+    vectorMemoryPendingOperationId: undefined,
+    vectorMemoryPendingFingerprint: undefined,
+  });
+}
+
 async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[], persistFailures = true): Promise<boolean> {
   const accountId = loadActiveAccountId();
   entries = entries.filter(entry => entry.vectorMemoryAccountId === accountId && hasValidGeneration(entry));
   if (!entries.length || typeof window === "undefined") return false;
-  // A re-index supersedes a queued deletion for the same stable source ID.
-  await cancelPendingMemoryDeletesForEntries(entries);
-  await cancelPendingBulkVectorDeletesForEntries(entries);
+
+  const prepared = entries.map(entry => {
+    const fingerprint = vectorMemoryPayloadFingerprint(entry);
+    const operationId = entry.vectorMemoryPendingFingerprint === fingerprint
+      && typeof entry.vectorMemoryPendingOperationId === "string"
+      ? entry.vectorMemoryPendingOperationId
+      : createVectorMemoryOperationId();
+    return {
+      ...entry,
+      vectorMemoryPendingOperationId: operationId,
+      vectorMemoryPendingFingerprint: fingerprint,
+      expectedRevision: Number.isSafeInteger(entry.vectorMemoryRevision) && (entry.vectorMemoryRevision ?? -1) >= 0
+        ? entry.vectorMemoryRevision! : 0,
+    };
+  });
+
+  // Persist the exact operation snapshot before the request. A retry reuses both
+  // operationId and expectedRevision; changed content receives a new operationId.
+  if (persistFailures) await enqueuePendingMemoryIndexes(prepared);
+  await cancelPendingMemoryDeletesForEntries(prepared);
+  await cancelPendingBulkVectorDeletesForEntries(prepared);
   await retryPendingMemoryVectorDeletesUnlocked();
   await retryPendingBulkVectorDeletesUnlocked();
+
   let allSucceeded = true;
-  // Incremental and idempotent: only newly saved entries are sent, and source IDs
-  // are stable for upsert. Keep indexing non-blocking for ordinary memory writes.
-  const batches: VectorSyncEntry[][] = [];
-  for (let i = 0; i < entries.length; i += 3) batches.push(entries.slice(i, i + 3));
+  const batches: typeof prepared[] = [];
+  for (let i = 0; i < prepared.length; i += 3) batches.push(prepared.slice(i, i + 3));
   for (const batch of batches) {
     if (loadActiveAccountId() !== accountId) {
       allSucceeded = false;
-      if (persistFailures) await enqueuePendingMemoryIndexes(batch);
       continue;
     }
     try {
@@ -441,8 +494,8 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
           sourceApp: entry.sourceApp,
           sourceKind: vectorSourceKind(entry),
           content: entry.content,
-          createdAt: entry.createdAt,
-          updatedAt: entry.updatedAt,
+          operationId: entry.vectorMemoryPendingOperationId,
+          expectedRevision: entry.expectedRevision,
           characterGeneration: entry.vectorMemoryCharacterGeneration,
           memoryGeneration: entry.vectorMemoryMemoryGeneration,
           metadata: entry.metadata ?? {},
@@ -450,23 +503,35 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
       });
       if (!response.ok) {
         allSucceeded = false;
-        if (persistFailures) await enqueuePendingMemoryIndexes(batch);
         console.warn("[VectorMemory] Index endpoint returned HTTP " + response.status);
-      } else {
-        const payload = await response.json().catch(() => null);
-        const results = payload && Array.isArray(payload.results) ? payload.results : null;
-        if (!results || results.length !== batch.length || results.some((item: unknown) => !item || typeof item !== "object" || (item as { success?: unknown }).success !== true) {
-          allSucceeded = false;
-          if (persistFailures) await enqueuePendingMemoryIndexes(batch);
-          console.warn("[VectorMemory] Index endpoint reported partial or malformed batch success");
+        continue;
+      }
+      const payload = await response.json().catch(() => null);
+      const results = payload && Array.isArray(payload.results) ? payload.results : null;
+      if (!results || results.length !== batch.length) {
+        allSucceeded = false;
+        console.warn("[VectorMemory] Index endpoint returned malformed CAS results");
+        continue;
+      }
+      for (let index = 0; index < batch.length; index++) {
+        const entry = batch[index];
+        const result = results[index] as { success?: unknown; status?: unknown; revision?: unknown } | null;
+        if (result?.success === true && (result.status === "committed" || result.status === "already_committed")
+          && Number.isSafeInteger(result.revision) && Number(result.revision) > 0) {
+          await persistVectorMemoryRevision(entry, Number(result.revision), entry.vectorMemoryPendingFingerprint!);
+          await removePendingMemoryIndexes([entry]);
+        } else if (result?.success === true && result.status === "deleted") {
+          await removePendingMemoryIndexes([entry]);
         } else {
-          await removePendingMemoryIndexes(batch);
+          allSucceeded = false;
+          // Conflict and invalid operation are deliberately retained for explicit
+          // reconciliation; never retry stale content against a newer revision.
+          console.warn("[VectorMemory] CAS did not commit source " + entry.id + ": " + String(result?.status ?? "unknown"));
         }
       }
     } catch (error) {
       allSucceeded = false;
-      if (persistFailures) await enqueuePendingMemoryIndexes(batch);
-      console.warn("[VectorMemory] Incremental indexing failed; chat/memory save remains unaffected.", error);
+      console.warn("[VectorMemory] Incremental CAS indexing failed; local save remains unaffected.", error);
     }
   }
   return allSucceeded;
