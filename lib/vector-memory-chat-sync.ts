@@ -77,7 +77,7 @@ async function saveActiveChunkState(key: string, value: ActiveChunkState): Promi
 }
 
 function fingerprintChunk(content: string, messageIds: string[]): string {
-  const snapshot = content + "\\u001f" + messageIds.join("\\u001f");
+  const snapshot = JSON.stringify([content, messageIds]);
   let hashA = 2166136261;
   let hashB = 0x9e3779b9;
   for (let index = 0; index < snapshot.length; index++) {
