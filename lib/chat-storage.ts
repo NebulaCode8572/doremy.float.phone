@@ -33,7 +33,13 @@ function refreshVectorChunksForMessages(messages: ChatMessage[]): void {
             for (const remaining of _messagesCache.filter(item => item.sessionId === sessionId)) {
                 buckets.add(Math.floor(Math.max(0, remaining.order ?? 0) / 4));
             }
-            refreshChatMessageBucketsToVectorCloud(session, _messagesCache, [...buckets]);
+            refreshChatMessageBucketsToVectorCloud(
+                session,
+                _messagesCache,
+                [...buckets],
+                undefined,
+                messages.filter(message => message.sessionId === sessionId),
+            );
         }
     }
 }
