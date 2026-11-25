@@ -1,8 +1,17 @@
 import type { MemoryEntry } from "@/lib/memory-types";
 import { hydrateKvDb, kvGet, kvSetAsync, registerKvMigration } from "@/lib/kv-db";
 import { loadMemoryConfig } from "@/lib/memory-storage";
+import { loadActiveAccountId } from "@/lib/account-client";
+import { loadCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
-export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata">, "sourceApp"> & { sourceApp: string };
+export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata" | "vectorMemoryCharacterGeneration" | "vectorMemoryMemoryGeneration">, "sourceApp"> & { sourceApp: string };
+
+function hasValidGeneration(entry: VectorSyncEntry): boolean {
+  return Number.isSafeInteger(entry.vectorMemoryCharacterGeneration)
+    && (entry.vectorMemoryCharacterGeneration ?? -1) >= 0
+    && Number.isSafeInteger(entry.vectorMemoryMemoryGeneration)
+    && (entry.vectorMemoryMemoryGeneration ?? -1) >= 0;
+}
 
 
 export type ImportedMemoryPendingEntry = VectorSyncEntry;
@@ -14,7 +23,7 @@ export function loadImportedMemoryPending(): ImportedMemoryPendingEntry[] {
     const raw = kvGet(IMPORT_PENDING_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry.id === "string" && typeof entry.characterId === "string" && typeof entry.sourceApp === "string" && (entry.type === "core" || entry.type === "long_term") && typeof entry.content === "string" && typeof entry.createdAt === "string" && typeof entry.updatedAt === "string") : [];
+    return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry.id === "string" && typeof entry.characterId === "string" && typeof entry.sourceApp === "string" && (entry.type === "core" || entry.type === "long_term") && typeof entry.content === "string" && typeof entry.createdAt === "string" && typeof entry.updatedAt === "string" && hasValidGeneration(entry)) : [];
   } catch {
     return [];
   }
@@ -23,9 +32,21 @@ export function loadImportedMemoryPending(): ImportedMemoryPendingEntry[] {
 export async function addImportedMemoryPending(entries: ImportedMemoryPendingEntry[]): Promise<number> {
   await hydrateKvDb();
   if (!entries.length || !loadMemoryConfig().vectorMemoryEnabled) return 0;
+  const accountId = loadActiveAccountId();
+  const explicitlyImported = entries.flatMap(entry => {
+    const current = loadCachedVectorMemoryGeneration(accountId, entry.characterId);
+    // Only the explicit import action may assign the current cached generation.
+    // If offline/no cache, leave the imported data local-only.
+    return current ? [{
+      ...entry,
+      vectorMemoryCharacterGeneration: current.characterGeneration,
+      vectorMemoryMemoryGeneration: current.memoryGeneration,
+    }] : [];
+  });
+  if (!explicitlyImported.length) return loadImportedMemoryPending().length;
   const existing = loadImportedMemoryPending();
   const merged = new Map(existing.map((entry) => [entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type, entry]));
-  for (const entry of entries) merged.set(entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type, entry);
+  for (const entry of explicitlyImported) merged.set(entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type, entry);
   const next = Array.from(merged.values());
   await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify(next));
   return next.length;
@@ -57,6 +78,8 @@ export async function removeSyncedImportedMemoryPending(entries: ImportedMemoryP
       uploaded.content !== entry.content ||
       uploaded.createdAt !== entry.createdAt ||
       uploaded.updatedAt !== entry.updatedAt ||
+      uploaded.vectorMemoryCharacterGeneration !== entry.vectorMemoryCharacterGeneration ||
+      uploaded.vectorMemoryMemoryGeneration !== entry.vectorMemoryMemoryGeneration ||
       JSON.stringify(uploaded.metadata ?? {}) !== JSON.stringify(entry.metadata ?? {});
   });
   await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify(remaining));
@@ -108,10 +131,11 @@ function loadPendingMemoryIndexes(): VectorSyncEntry[] {
   try {
     const raw = kvGet(INDEX_PENDING_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.characterId === "string" && typeof item.id === "string" && typeof item.sourceApp === "string" && (item.type === "core" || item.type === "long_term" || item.type === "summary") && typeof item.content === "string" && typeof item.createdAt === "string" && typeof item.updatedAt === "string") : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.characterId === "string" && typeof item.id === "string" && typeof item.sourceApp === "string" && (item.type === "core" || item.type === "long_term" || item.type === "summary") && typeof item.content === "string" && typeof item.createdAt === "string" && typeof item.updatedAt === "string" && hasValidGeneration(item)) : [];
   } catch { return []; }
 }
 async function enqueuePendingMemoryIndexes(entries: VectorSyncEntry[]): Promise<void> {
+  entries = entries.filter(hasValidGeneration);
   if (!entries.length) return;
   await hydrateKvDb();
   const merged = new Map(loadPendingMemoryIndexes().map(entry => [pendingEntryKey(entry), entry]));
@@ -282,6 +306,7 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
 
 
 async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[], persistFailures = true): Promise<boolean> {
+  entries = entries.filter(hasValidGeneration);
   if (!entries.length || typeof window === "undefined") return false;
   // A re-index supersedes a queued deletion for the same stable source ID.
   await cancelPendingMemoryDeletesForEntries(entries);
@@ -307,6 +332,8 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
           content: entry.content,
           createdAt: entry.createdAt,
           updatedAt: entry.updatedAt,
+          characterGeneration: entry.vectorMemoryCharacterGeneration,
+          memoryGeneration: entry.vectorMemoryMemoryGeneration,
           metadata: entry.metadata ?? {},
         })) }),
       });
