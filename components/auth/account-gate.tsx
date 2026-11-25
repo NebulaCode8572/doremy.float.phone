@@ -123,6 +123,7 @@ export function AccountGate({ children }: AccountGateProps) {
         return;
       }
       setAccount(result.account);
+      saveActiveAccountId(result.account.id);
       setStatus("ready");
       setPassword("");
       setActivationCode("");
