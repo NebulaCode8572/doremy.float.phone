@@ -180,14 +180,18 @@ export function refreshChatMessageBucketsToVectorCloud(
       });
       continue;
     }
+    const sourceUpdatedAt = selected.reduce((latest, entry) => {
+      const candidate = entry.item.updatedAt ?? entry.item.createdAt;
+      return candidate > latest ? candidate : latest;
+    }, "");
     const payload = {
       id: sourceId,
       characterId: session.contactId,
       sourceApp: "chat",
       sourceKind: "chat_chunk",
       content,
-      updatedAt: session.updatedAt,
-      metadata: { sessionId: session.id, chunkIndex: bucket, messageIds: selected.map(entry => entry.item.id), updatedAt: session.updatedAt },
+      updatedAt: sourceUpdatedAt,
+      metadata: { sessionId: session.id, chunkIndex: bucket, messageIds: selected.map(entry => entry.item.id), updatedAt: sourceUpdatedAt },
     };
     enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
       // Re-check deletion and settings when the queued operation actually runs.
