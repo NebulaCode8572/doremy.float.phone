@@ -97,6 +97,14 @@ async function removeImportedMemoryPendingWhere(predicate: (entry: ImportedMemor
   await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify(remaining));
 }
 
+async function removeImportedMemoryPendingEntries(entries: ImportedMemoryPendingEntry[]): Promise<void> {
+  if (!entries.length) return;
+  await hydrateKvDb();
+  const keys = new Set(entries.map(pendingEntryKey));
+  const remaining = loadImportedMemoryPending().filter(entry => !keys.has(pendingEntryKey(entry)));
+  await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify(remaining));
+}
+
 function pendingEntryKey(entry: ImportedMemoryPendingEntry): string {
   return (entry.vectorMemoryAccountId ?? "") + ":" + entry.characterId + ":" + entry.id + ":" + entry.sourceApp + ":" + entry.type;
 }
@@ -287,29 +295,52 @@ async function retryPendingMemoryVectorDeletesUnlocked(): Promise<number> {
 
 export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntry[]): Promise<void> {
   return withVectorCloudMutation(async () => {
-  if (!entries.length || typeof window === "undefined") return;
-  const accountId = loadActiveAccountId();
-  entries = entries.filter(entry => accountId && entry.vectorMemoryAccountId === accountId);
-  if (!entries.length) return;
-  await hydrateKvDb();
-  const deletedKeys = new Set(entries.map(pendingEntryKey));
-  await removePendingMemoryIndexes(entries);
-  await removeImportedMemoryPendingWhere(entry => deletedKeys.has(pendingEntryKey(entry)));
-  const failed: PendingMemoryDelete[] = [];
-  for (const entry of entries) {
-    if (loadActiveAccountId() !== accountId) {
-      failed.push({ accountId, characterId: entry.characterId, id: entry.id, sourceApp: entry.sourceApp, type: entry.type });
-      continue;
+    if (!entries.length || typeof window === "undefined") return;
+    // A local delete can be initiated after an account switch. Persist the delete
+    // under the source's owner account, but never send it using another account's cookie.
+    entries = entries.filter(entry => typeof entry.vectorMemoryAccountId === "string" && entry.vectorMemoryAccountId.length > 0);
+    if (!entries.length) return;
+    await hydrateKvDb();
+    const deletedKeys = new Set(entries.map(pendingEntryKey));
+    await removePendingMemoryIndexes(entries);
+    await removeImportedMemoryPendingEntries(entries);
+
+    const failed: PendingMemoryDelete[] = [];
+    for (const entry of entries) {
+      const ownerAccountId = entry.vectorMemoryAccountId!;
+      if (loadActiveAccountId() !== ownerAccountId) {
+        failed.push({
+          accountId: ownerAccountId,
+          characterId: entry.characterId,
+          id: entry.id,
+          sourceApp: entry.sourceApp,
+          type: entry.type,
+        });
+        continue;
+      }
+      try {
+        const response = await fetch("/api/vector-memory-entry", {
+          method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+          body: JSON.stringify({ characterId: entry.characterId, sourceApp: entry.sourceApp, sourceId: entry.id, sourceKind: vectorSourceKind(entry) }),
+        });
+        if (!response.ok) failed.push({
+          accountId: ownerAccountId,
+          characterId: entry.characterId,
+          id: entry.id,
+          sourceApp: entry.sourceApp,
+          type: entry.type,
+        });
+      } catch {
+        failed.push({
+          accountId: ownerAccountId,
+          characterId: entry.characterId,
+          id: entry.id,
+          sourceApp: entry.sourceApp,
+          type: entry.type,
+        });
+      }
     }
-    try {
-      const response = await fetch("/api/vector-memory-entry", {
-        method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-        body: JSON.stringify({ characterId: entry.characterId, sourceApp: entry.sourceApp, sourceId: entry.id, sourceKind: vectorSourceKind(entry) }),
-      });
-      if (!response.ok) failed.push({ accountId, characterId: entry.characterId, id: entry.id, sourceApp: entry.sourceApp, type: entry.type });
-    } catch { failed.push({ accountId, characterId: entry.characterId, id: entry.id, sourceApp: entry.sourceApp, type: entry.type }); }
-  }
-  if (failed.length) await enqueuePendingMemoryDeletes(failed);
+    if (failed.length) await enqueuePendingMemoryDeletes(failed);
   });
 }
 
