@@ -70,7 +70,9 @@ export type ChatSession = {
     lastMessagePreview?: string;
     unreadCount: number;
     updatedAt: string; // ISO date
-    /** Immutable server generation captured when this private chat session is created. */
+    /** Local account that owned this private chat session when it was created. */
+    vectorMemoryAccountId?: string;
+    /** Server generation captured when this private chat session is created. */
     vectorMemoryCharacterGeneration?: number;
     isPinned: boolean;
     backgroundImage?: string; // Add support for custom background
@@ -1385,10 +1387,12 @@ export function createOrGetSession(contactId: string): ChatSession {
     const existing = sessions.find(s => s.contactId === contactId);
     if (existing) return existing;
 
-    const generation = loadCachedVectorMemoryGeneration(loadActiveAccountId(), contactId);
+    const accountId = loadActiveAccountId();
+    const generation = loadCachedVectorMemoryGeneration(accountId, contactId);
     const newSession: ChatSession = {
         id: `sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         contactId,
+        ...(accountId ? { vectorMemoryAccountId: accountId } : {}),
         ...(generation ? { vectorMemoryCharacterGeneration: generation.characterGeneration } : {}),
         unreadCount: 0,
         updatedAt: new Date().toISOString(),
@@ -1503,10 +1507,14 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     const messageSession = _sessionsCache.find(session => session.id === newMsg.sessionId);
     if (messageSession && !messageSession.isGroup) {
         const accountId = loadActiveAccountId();
-        if (!newMsg.vectorMemoryAccountId && accountId) newMsg.vectorMemoryAccountId = accountId;
-        // Capture the generation at message-creation time. Reconnection may refresh
-        // the cache for future messages, but never rewrites this message's generation.
-        if (newMsg.vectorMemoryAccountId === accountId && newMsg.vectorMemoryCharacterGeneration === undefined) {
+        if (!newMsg.vectorMemoryAccountId && accountId && messageSession.vectorMemoryAccountId === accountId) {
+            newMsg.vectorMemoryAccountId = accountId;
+        }
+        // Only messages created inside a session owned by this account may be indexed.
+        // Reconnection may refresh the cache for future messages, never this message.
+        if (messageSession.vectorMemoryAccountId === accountId
+            && newMsg.vectorMemoryAccountId === accountId
+            && newMsg.vectorMemoryCharacterGeneration === undefined) {
             const generation = loadCachedVectorMemoryGeneration(accountId, messageSession.contactId);
             if (generation) newMsg.vectorMemoryCharacterGeneration = generation.characterGeneration;
         }
