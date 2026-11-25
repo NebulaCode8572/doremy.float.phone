@@ -94,6 +94,10 @@ begin
       || p_source_app || chr(31) || p_source_id, 0
   ));
 
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'vector-memory:operation:' || p_user_id || chr(31) || p_operation_id, 0
+  ));
+
   insert into public.app_user_vector_memory_generations(user_id,character_id)
   values (p_user_id,p_character_id) on conflict (user_id,character_id) do nothing;
   select g.character_generation,g.memory_generation
@@ -194,3 +198,14 @@ revoke all on function public.commit_vector_memory_cas(
 grant execute on function public.commit_vector_memory_cas(
   text,text,text,text,text,text,text,bigint,bigint,bigint,text,extensions.vector,jsonb
 ) to service_role;
+
+
+-- The CAS-enabled API is now the only permitted indexing writer. Keep the
+-- historical functions present for migration compatibility, but prevent old
+-- timestamp/reservation clients from bypassing committed_revision.
+revoke all on function public.reserve_vector_memory_revision(
+  text,text,text,text,text,timestamptz,text,bigint,bigint
+) from public, anon, authenticated, service_role;
+revoke all on function public.commit_vector_memory_revision(
+  text,text,text,text,text,bigint,text,extensions.vector,jsonb
+) from public, anon, authenticated, service_role;
