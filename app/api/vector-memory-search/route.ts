@@ -44,11 +44,10 @@ export async function POST(request: Request) {
           const sessionId = typeof row.metadata?.sessionId === "string" ? row.metadata.sessionId : "";
           const chunkIndex = Number(row.metadata?.chunkIndex);
           if (sessionId && Number.isSafeInteger(chunkIndex) && chunkIndex >= 0) {
-            const bucketKey = sessionId + ":" + chunkIndex;
-            // Multiple devices may each contribute a copy of the same logical
-            // session bucket. Keep the closest match so duplicates do not crowd
-            // the context window; distinct bucket contents remain independently
-            // searchable.
+            const bucketKey = sessionId + ":" + chunkIndex + ":" + content;
+            // Multiple devices may contribute the same logical bucket. Collapse only
+            // byte-for-byte identical content; divergent snapshots remain visible
+            // rather than silently discarding one device's distinct messages.
             if (seenChatBuckets.has(bucketKey)) continue;
             seenChatBuckets.add(bucketKey);
           }
