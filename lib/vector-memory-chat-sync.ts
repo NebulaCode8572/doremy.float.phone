@@ -16,6 +16,7 @@ const ACTIVE_CHUNK_PREFIX = "ai_phone_vector_memory_chat_chunk_active_v1:";
 registerKvMigration(CHAT_CHUNK_PENDING_KEY);
 registerKvMigration(CHAT_SESSION_DELETE_PENDING_KEY);
 registerDynamicPrefix(ACTIVE_CHUNK_PREFIX);
+registerKvMigration(CHAT_DEVICE_ID_KEY);
 const CHAT_DEVICE_ID_KEY = "ai_phone_vector_memory_chat_device_id_v1";
 async function getChatVectorDeviceId(): Promise<string> {
   const existing = kvGet(CHAT_DEVICE_ID_KEY);
