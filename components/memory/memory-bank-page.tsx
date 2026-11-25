@@ -588,7 +588,7 @@ export function MemoryBankPage({
             await saveMemoryEntry(entry);
             if (loadMemoryConfig().vectorMemoryEnabled) {
                 void syncMemoryEntriesToVectorCloud([entry]).then(async () => {
-                    const refreshed = await loadMemoryEntriesByType(selectedCharId, type);
+                    const refreshed = await loadMemoryEntriesByType(entry.characterId, type);
                     if (type === "core") setCoreEntries(refreshed);
                     else setLongTermEntries(refreshed);
                 }).catch(error => console.warn("[MemoryBank] Vector Memory sync follow-up failed:", error));
