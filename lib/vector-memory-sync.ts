@@ -485,11 +485,11 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
   const localByIdentity = new Map<string, MemoryEntry>();
   for (const characterId of new Set(entries.map(entry => entry.characterId))) {
     for (const local of await loadMemoryEntries(characterId)) {
-      localByIdentity.set(local.characterId + ":" + local.sourceApp + ":" + local.id, local);
+      localByIdentity.set(JSON.stringify([local.characterId, local.sourceApp, local.id]), local);
     }
   }
   entries = entries.map(entry => {
-    const local = localByIdentity.get(entry.characterId + ":" + entry.sourceApp + ":" + entry.id);
+    const local = localByIdentity.get(JSON.stringify([entry.characterId, entry.sourceApp, entry.id]));
     return local ? { ...entry, ...local } : entry;
   }).filter(entry => entry.vectorMemoryAccountId === accountId && hasValidGeneration(entry));
 
