@@ -541,9 +541,11 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
           if (result?.status === "conflict" && Number.isSafeInteger(result.currentRevision)
             && Number(result.currentRevision) >= 0) {
             await persistVectorMemoryConflict(entry, Number(result.currentRevision));
-            // Stop automatic retries. The user must explicitly choose whether the
-            // local snapshot should replace the newer cloud revision.
+            // Stop automatic retries in both ordinary and explicit-import queues.
+            // The user must explicitly choose whether the local snapshot should
+            // replace the newer cloud revision.
             await removePendingMemoryIndexes([entry]);
+            await removeImportedMemoryPendingEntries([entry]);
           }
           console.warn("[VectorMemory] CAS did not commit source " + entry.id + ": " + String(result?.status ?? "unknown"));
         }
