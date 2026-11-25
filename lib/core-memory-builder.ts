@@ -128,7 +128,7 @@ export async function runCoreMemoryPipeline(
         && entry.metadata?.includesGroupChat !== true
         && entry.metadata?.includesStaleChat !== true
     );
-    const coreEntryData = {
+    const coreEntryData: MemoryEntry = {
         id: `mem_core_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         characterId,
         sourceApp: dominantSource,
