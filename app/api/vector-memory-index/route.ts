@@ -23,14 +23,22 @@ export async function POST(request: Request) {
     const body = parsed.value;
     const entries = Array.isArray(body.entries) ? body.entries : [];
     if (!entries.length || entries.length > MAX_BATCH) return NextResponse.json({ error: "每批最多索引 3 条向量内容" }, { status: 400 });
-    const results: Array<{ id: string; success: boolean; error?: string }> = [];
+    const results: Array<{ id: string; success: boolean; error?: string; skipped?: "deleted" }> = [];
     for (const item of entries) {
       const id = typeof item?.id === "string" ? item.id.slice(0, 240) : "";
       const characterId = typeof item?.characterId === "string" ? item.characterId.slice(0, 160) : "";
       const sourceApp = typeof item?.sourceApp === "string" ? item.sourceApp.slice(0, 100) : "";
       const sourceKind = typeof item?.sourceKind === "string" ? item.sourceKind : "";
       const content = typeof item?.content === "string" ? item.content.trim() : "";
-      if (!id || !characterId || !sourceApp || !SOURCE_KINDS.has(sourceKind) || !content || content.length > MAX_CONTENT) {
+      const metadata = item?.metadata && typeof item.metadata === "object" && !Array.isArray(item.metadata)
+        ? item.metadata as Record<string, unknown> : {};
+      const sourceUpdatedAt = typeof item?.updatedAt === "string" ? item.updatedAt
+        : typeof metadata.updatedAt === "string" ? metadata.updatedAt : "";
+      const parsedSourceUpdatedAt = Date.parse(sourceUpdatedAt);
+      const sessionId = typeof metadata.sessionId === "string" ? metadata.sessionId : "";
+      if (!id || !characterId || !sourceApp || !SOURCE_KINDS.has(sourceKind) || !content || content.length > MAX_CONTENT
+        || !sourceUpdatedAt || !Number.isFinite(parsedSourceUpdatedAt)
+        || (sourceKind === "chat_chunk" && !/^[A-Za-z0-9_-]{1,180}$/.test(sessionId))) {
         results.push({ id, success: false, error: "记忆条目格式无效" });
         continue;
       }
@@ -41,16 +49,24 @@ export async function POST(request: Request) {
           sourceApp,
           sourceId: id,
           sourceKind: sourceKind as "summary" | "core_memory" | "long_term_memory" | "chat_chunk",
+          sourceUpdatedAt,
+          ...(sourceKind === "chat_chunk" ? { sessionId } : {}),
         };
         // Reserve an atomic per-source revision before the slower embedding call.
         // A later request (or deletion) advances the revision and makes this write stale.
         const revision = await reserveVectorMemoryRevision(identity);
+        if (revision === 0) {
+          // A durable server tombstone is newer than this source snapshot.
+          // Treat it as terminal so offline retry queues can clear the stale item.
+          results.push({ id, success: true, skipped: "deleted" });
+          continue;
+        }
         const embedding = await generateVectorMemoryEmbedding(account.id, content);
         const committed = await upsertVectorMemory({
           ...identity,
           content,
           embedding,
-          metadata: item.metadata && typeof item.metadata === "object" ? item.metadata : {},
+          metadata,
         }, revision);
         results.push(committed
           ? { id, success: true }
