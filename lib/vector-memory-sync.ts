@@ -2,7 +2,7 @@ import type { MemoryEntry } from "@/lib/memory-types";
 import { hydrateKvDb, kvGet, kvSetAsync, registerKvMigration } from "@/lib/kv-db";
 import { loadMemoryConfig } from "@/lib/memory-storage";
 import { loadActiveAccountId } from "@/lib/account-client";
-import { loadCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
+import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
 export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata" | "vectorMemoryCharacterGeneration" | "vectorMemoryMemoryGeneration">, "sourceApp"> & { sourceApp: string };
 
@@ -205,6 +205,7 @@ async function retryPendingBulkVectorDeletesUnlocked(): Promise<number> {
       });
       if (response.ok) {
         await removePendingBulkVectorDelete(item);
+        await refreshCachedVectorMemoryGeneration(item.characterId);
         completed++;
       }
     } catch { /* Keep the item queued for a later attempt. */ }
@@ -268,8 +269,10 @@ export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: s
       method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
       body: JSON.stringify({ characterId, memoryOnly: true }),
     });
-    if (response.ok) await removePendingBulkVectorDelete(pendingDelete);
-    else {
+    if (response.ok) {
+      await removePendingBulkVectorDelete(pendingDelete);
+      await refreshCachedVectorMemoryGeneration(characterId);
+    } else {
       await enqueuePendingBulkVectorDelete(pendingDelete);
       console.warn("[VectorMemory] Memory cleanup endpoint returned HTTP " + response.status);
     }
