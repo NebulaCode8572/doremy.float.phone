@@ -51,7 +51,7 @@ function fingerprintChunk(content: string): string {
   }
   return (hash >>> 0).toString(36) + ":" + content.length;
 }
-type PendingChatChunk = { accountId: string; characterId: string; sessionId: string; bucket: number; characterGeneration: number };
+type PendingChatChunk = { accountId: string; characterId: string; sessionId: string; bucket: number; characterGeneration: number; operation: "upsert" | "delete" };
 let pendingStateQueue: Promise<void> = Promise.resolve();
 
 function readPendingChatChunks(): PendingChatChunk[] {
@@ -62,7 +62,7 @@ function readPendingChatChunks(): PendingChatChunk[] {
       && typeof item.characterId === "string" && typeof item.sessionId === "string"
       && Number.isInteger(item.bucket) && item.bucket >= 0
       && Number.isSafeInteger(item.characterGeneration) && item.characterGeneration >= 0
-    ) : [];
+    ).map(item => ({ ...item, operation: item.operation === "delete" ? "delete" as const : "upsert" as const })) : [];
   } catch { return []; }
 }
 
@@ -161,9 +161,23 @@ export async function retryPendingChatVectorChunks(
   const accountId = loadActiveAccountId();
   if (!accountId || !loadMemoryConfig().vectorMemoryEnabled) return 0;
   const pending = readPendingChatChunks().filter(entry => entry.accountId === accountId);
+  const indexingEnabled = loadMemoryConfig().vectorMemoryEnabled;
   let queued = 0;
   for (const entry of pending) {
     const session = sessions.find(item => item.id === entry.sessionId && item.contactId === entry.characterId && !item.isGroup);
+    if (entry.operation === "delete" && (!indexingEnabled || !session)) {
+      try {
+        const stateKey = activeChunkStateKey(entry.accountId, entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration);
+        const state = loadActiveChunkState(stateKey);
+        if (state.sourceId) await deleteChatChunk(entry.accountId, entry.characterId, state.sourceId);
+        await saveActiveChunkState(stateKey, { version: state.version });
+        await clearChatChunkPending(entry);
+      } catch {
+        await markChatChunkPending(entry);
+      }
+      continue;
+    }
+    if (!indexingEnabled) continue;
     if (!session) {
       await clearChatChunkPending(entry);
       continue;
@@ -239,7 +253,7 @@ export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, bu
     const generation = session.vectorMemoryCharacterGeneration;
     const queueEntry: PendingChatChunk | null = generation === undefined
       ? null
-      : { accountId, characterId: session.contactId, sessionId: session.id, bucket, characterGeneration: generation };
+      : { accountId, characterId: session.contactId, sessionId: session.id, bucket, characterGeneration: generation, operation: "delete" };
     enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, generation, accountId), async () => {
       try {
         if (generation === undefined) {
@@ -295,7 +309,10 @@ export function refreshChatMessageBucketsToVectorCloud(
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
         .map(item => ({ item, text: cleanMessageText(item) }))
         .filter(entry => entry.text);
-      const queueEntry = { accountId, characterId: session.contactId, sessionId: session.id, bucket, characterGeneration };
+      const queueEntry: PendingChatChunk = {
+        accountId, characterId: session.contactId, sessionId: session.id, bucket, characterGeneration,
+        operation: selected.length === 0 ? "delete" : "upsert",
+      };
       const stateKey = activeChunkStateKey(accountId, session.contactId, session.id, bucket, characterGeneration);
 
       // Deletions must reach the cloud even when new Vector Memory indexing is disabled.
