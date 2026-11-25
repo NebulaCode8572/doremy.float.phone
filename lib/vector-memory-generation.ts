@@ -51,16 +51,21 @@ export function saveCachedVectorMemoryGeneration(
 export function attachCurrentMemoryGeneration<T extends { characterId: string }>(
   entry: T,
   accountId: string,
-): T & { vectorMemoryCharacterGeneration?: number; vectorMemoryMemoryGeneration?: number } {
+): T & { vectorMemoryAccountId?: string; vectorMemoryCharacterGeneration?: number; vectorMemoryMemoryGeneration?: number } {
+  if (!accountId) return entry;
   const generation = loadCachedVectorMemoryGeneration(accountId, entry.characterId);
-  return generation ? {
+  return {
     ...entry,
-    vectorMemoryCharacterGeneration: generation.characterGeneration,
-    vectorMemoryMemoryGeneration: generation.memoryGeneration,
-  } : entry;
+    vectorMemoryAccountId: accountId,
+    ...(generation ? {
+      vectorMemoryCharacterGeneration: generation.characterGeneration,
+      vectorMemoryMemoryGeneration: generation.memoryGeneration,
+    } : {}),
+  };
 }
 
 export function stampNewMemoryEntry<T extends { characterId: string }>(entry: T): T & {
+  vectorMemoryAccountId?: string;
   vectorMemoryCharacterGeneration?: number;
   vectorMemoryMemoryGeneration?: number;
 } {
