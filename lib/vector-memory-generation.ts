@@ -1,4 +1,5 @@
 import { kvGet, kvSet, registerDynamicPrefix } from "@/lib/kv-db";
+import { loadActiveAccountId } from "@/lib/account-client";
 
 export type CachedVectorMemoryGeneration = {
   characterGeneration: number;
@@ -50,7 +51,18 @@ export function saveCachedVectorMemoryGeneration(
 export function attachCurrentMemoryGeneration<T extends { characterId: string }>(
   entry: T,
   accountId: string,
-): T & Partial<CachedVectorMemoryGeneration> {
+): T & { vectorMemoryCharacterGeneration?: number; vectorMemoryMemoryGeneration?: number } {
   const generation = loadCachedVectorMemoryGeneration(accountId, entry.characterId);
-  return generation ? { ...entry, ...generation } : entry;
+  return generation ? {
+    ...entry,
+    vectorMemoryCharacterGeneration: generation.characterGeneration,
+    vectorMemoryMemoryGeneration: generation.memoryGeneration,
+  } : entry;
+}
+
+export function stampNewMemoryEntry<T extends { characterId: string }>(entry: T): T & {
+  vectorMemoryCharacterGeneration?: number;
+  vectorMemoryMemoryGeneration?: number;
+} {
+  return attachCurrentMemoryGeneration(entry, loadActiveAccountId());
 }
