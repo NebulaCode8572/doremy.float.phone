@@ -168,6 +168,40 @@ begin
 end;
 $$;
 
+
+-- Keep session deletion race-safe for generation-scoped chat chunk IDs.
+create or replace function public.delete_vector_memory_session_chunks(
+  p_user_id text,p_character_id text,p_session_id text
+) returns void
+language plpgsql security invoker set search_path = ''
+as $
+declare v_prefix text := 'session:' || p_session_id || ':';
+begin
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'vector-memory:character:' || p_user_id || chr(31) || p_character_id, 0
+  ));
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'vector-memory:session:' || p_user_id || chr(31) || p_character_id || chr(31) || p_session_id, 0
+  ));
+  insert into public.app_user_vector_memory_tombstones(
+    user_id,character_id,scope_type,scope_id,source_app,source_id,source_kind,deleted_at
+  ) values (p_user_id,p_character_id,'session',p_session_id,'chat','','chat_chunk',now())
+  on conflict (user_id,character_id,scope_type,scope_id,source_app,source_id,source_kind)
+  do update set deleted_at = greatest(public.app_user_vector_memory_tombstones.deleted_at, excluded.deleted_at);
+
+  update public.app_user_vector_memory_versions
+  set revision=revision+1,
+      source_updated_at=greatest(coalesce(source_updated_at,'-infinity'::timestamptz),now()),
+      updated_at=now()
+  where user_id=p_user_id and character_id=p_character_id and source_app='chat'
+    and source_kind='chat_chunk' and left(source_id,length(v_prefix))=v_prefix;
+
+  delete from public.app_user_vector_memories
+  where user_id=p_user_id and character_id=p_character_id and source_app='chat'
+    and source_kind='chat_chunk' and metadata->>'sessionId'=p_session_id;
+end;
+$;
+
 revoke all on function public.get_vector_memory_generation(text,text) from public, anon, authenticated;
 grant execute on function public.get_vector_memory_generation(text,text) to service_role;
 revoke all on function public.reserve_vector_memory_revision(text,text,text,text,text,timestamptz,text,bigint,bigint) from public, anon, authenticated;
