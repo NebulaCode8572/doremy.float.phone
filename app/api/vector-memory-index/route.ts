@@ -62,9 +62,11 @@ export async function POST(request: Request) {
         // A later request (or deletion) advances the revision and makes this write stale.
         const revision = await reserveVectorMemoryRevision(identity);
         if (revision === 0) {
-          // A durable server tombstone is newer than this source snapshot.
-          // Treat it as terminal so offline retry queues can clear the stale item.
-          results.push({ id, success: true, skipped: "deleted" });
+          // The legacy RPC returns only a number, so zero cannot distinguish a
+          // tombstone/generation rejection from a stale client timestamp conflict.
+          // Fail closed: preserve the retry item until the typed CAS RPC can report
+          // a terminal deletion separately from a retryable conflict.
+          results.push({ id, success: false, error: "服务端拒绝了来源版本预留；原因尚不可区分，已保留待重试记录" });
           continue;
         }
         const embedding = await generateVectorMemoryEmbedding(account.id, content);
