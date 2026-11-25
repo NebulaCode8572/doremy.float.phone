@@ -36,8 +36,12 @@ export async function POST(request: Request) {
         : typeof metadata.updatedAt === "string" ? metadata.updatedAt : "";
       const parsedSourceUpdatedAt = Date.parse(sourceUpdatedAt);
       const sessionId = typeof metadata.sessionId === "string" ? metadata.sessionId : "";
+      const characterGeneration = item?.characterGeneration;
+      const memoryGeneration = item?.memoryGeneration;
       if (!id || !characterId || !sourceApp || !SOURCE_KINDS.has(sourceKind) || !content || content.length > MAX_CONTENT
         || !sourceUpdatedAt || !Number.isFinite(parsedSourceUpdatedAt)
+        || !Number.isSafeInteger(characterGeneration) || characterGeneration < 0
+        || !Number.isSafeInteger(memoryGeneration) || memoryGeneration < 0
         || (sourceKind === "chat_chunk" && !/^[A-Za-z0-9_-]{1,180}$/.test(sessionId))) {
         results.push({ id, success: false, error: "记忆条目格式无效" });
         continue;
@@ -50,6 +54,8 @@ export async function POST(request: Request) {
           sourceId: id,
           sourceKind: sourceKind as "summary" | "core_memory" | "long_term_memory" | "chat_chunk",
           sourceUpdatedAt,
+          characterGeneration,
+          memoryGeneration,
           ...(sourceKind === "chat_chunk" ? { sessionId } : {}),
         };
         // Reserve an atomic per-source revision before the slower embedding call.
