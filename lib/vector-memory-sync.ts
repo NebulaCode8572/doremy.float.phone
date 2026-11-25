@@ -430,20 +430,21 @@ function createVectorMemoryOperationId(): string {
   return "vm_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 }
 
-async function persistVectorMemoryRevision(entry: VectorSyncEntry, revision: number, fingerprint: string): Promise<void> {
+async function persistVectorMemoryRevision(entry: VectorSyncEntry, revision: number): Promise<void> {
   const local = await loadMemoryEntries(entry.characterId);
   const current = local.find(item => item.id === entry.id && item.sourceApp === entry.sourceApp);
   if (!current) return;
-  const currentFingerprint = vectorMemoryPayloadFingerprint({
-    ...current,
-    sourceApp: current.sourceApp,
-  } as VectorSyncEntry);
-  if (currentFingerprint !== fingerprint) return;
+  const sameOperation = current.vectorMemoryPendingOperationId === entry.vectorMemoryPendingOperationId;
   await saveMemoryEntry({
     ...current,
+    // Even if the user edited the local source while the request was in flight,
+    // this revision is the server-acknowledged base that the newer edit must CAS
+    // against. Preserve the newer content and any newer pending operation.
     vectorMemoryRevision: revision,
-    vectorMemoryPendingOperationId: undefined,
-    vectorMemoryPendingFingerprint: undefined,
+    ...(sameOperation ? {
+      vectorMemoryPendingOperationId: undefined,
+      vectorMemoryPendingFingerprint: undefined,
+    } : {}),
   });
 }
 
@@ -518,7 +519,7 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
         const result = results[index] as { success?: unknown; status?: unknown; revision?: unknown } | null;
         if (result?.success === true && (result.status === "committed" || result.status === "already_committed")
           && Number.isSafeInteger(result.revision) && Number(result.revision) > 0) {
-          await persistVectorMemoryRevision(entry, Number(result.revision), entry.vectorMemoryPendingFingerprint!);
+          await persistVectorMemoryRevision(entry, Number(result.revision));
           await removePendingMemoryIndexes([entry]);
         } else if (result?.success === true && result.status === "deleted") {
           await removePendingMemoryIndexes([entry]);
