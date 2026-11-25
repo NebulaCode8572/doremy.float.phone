@@ -214,6 +214,7 @@ async function retryPendingBulkVectorDeletesUnlocked(): Promise<number> {
   const pending = loadPendingBulkVectorDeletes().filter(item => item.accountId === accountId);
   let completed = 0;
   for (const item of pending) {
+    if (loadActiveAccountId() !== accountId) break;
     try {
       const response = await fetch("/api/vector-memory-entry", {
         method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
@@ -237,6 +238,7 @@ async function retryPendingMemoryVectorDeletesUnlocked(): Promise<number> {
   if (!pending.length) return 0;
   const completed: PendingMemoryDelete[] = [];
   for (const entry of pending) {
+    if (loadActiveAccountId() !== accountId) break;
     try {
       const response = await fetch("/api/vector-memory-entry", {
         method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
@@ -265,6 +267,10 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
   await removeImportedMemoryPendingWhere(entry => deletedKeys.has(pendingEntryKey(entry)));
   const failed: PendingMemoryDelete[] = [];
   for (const entry of entries) {
+    if (loadActiveAccountId() !== accountId) {
+      failed.push({ accountId, characterId: entry.characterId, id: entry.id, sourceApp: entry.sourceApp, type: entry.type });
+      continue;
+    }
     try {
       const response = await fetch("/api/vector-memory-entry", {
         method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
@@ -287,6 +293,10 @@ export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: s
   await removePendingMemoryIndexesForCharacter(characterId, true);
   await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId && (entry.type === "core" || entry.type === "long_term"));
   try {
+    if (loadActiveAccountId() !== accountId) {
+      await enqueuePendingBulkVectorDelete(pendingDelete);
+      return;
+    }
     const response = await fetch("/api/vector-memory-entry", {
       method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
       body: JSON.stringify({ characterId, memoryOnly: true }),
@@ -315,6 +325,10 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
   await removePendingMemoryIndexesForCharacter(characterId);
   await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId);
   try {
+    if (loadActiveAccountId() !== accountId) {
+      await enqueuePendingBulkVectorDelete(pendingDelete);
+      return;
+    }
     const response = await fetch("/api/vector-memory-entry", {
       method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
       body: JSON.stringify({ characterId }),
@@ -349,6 +363,11 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
   const batches: VectorSyncEntry[][] = [];
   for (let i = 0; i < entries.length; i += 3) batches.push(entries.slice(i, i + 3));
   for (const batch of batches) {
+    if (loadActiveAccountId() !== accountId) {
+      allSucceeded = false;
+      if (persistFailures) await enqueuePendingMemoryIndexes(batch);
+      continue;
+    }
     try {
       const response = await fetch("/api/vector-memory-index", {
         method: "POST",
