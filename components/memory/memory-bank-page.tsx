@@ -701,6 +701,19 @@ export function MemoryBankPage({
                                         : entry.content
                                 }
                             </div>
+                            {Number.isSafeInteger(entry.vectorMemoryConflictRevision) && (
+                                <div className="mt-2 flex flex-col gap-2" onClick={event => event.stopPropagation()}>
+                                    <p className="text-[11px] text-amber-600">
+                                        云端存在更新版本。为避免旧离线内容覆盖新内容，已暂停自动同步。
+                                    </p>
+                                    <button
+                                        className="text-[11px] rounded-lg border px-3 py-2 text-left"
+                                        onClick={() => void handleUseLocalMemoryVersion(entry)}
+                                    >
+                                        确认用本机版本覆盖云端版本
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     ))
                 )}
@@ -708,6 +721,39 @@ export function MemoryBankPage({
         );
     };
 
+
+    const handleUseLocalMemoryVersion = async (entry: MemoryEntry) => {
+        const conflictRevision = entry.vectorMemoryConflictRevision;
+        if (!Number.isSafeInteger(conflictRevision) || (conflictRevision ?? -1) < 0) return;
+        if (!loadMemoryConfig().vectorMemoryEnabled) {
+            showNotice("请先开启 Vector Memory，再确认同步本地版本");
+            return;
+        }
+        try {
+            // This is an explicit user decision to replace the newer cloud source
+            // with this device's current local content.
+            const updated: MemoryEntry = {
+                ...entry,
+                vectorMemoryRevision: conflictRevision,
+            };
+            await saveMemoryEntry(updated);
+            const synced = await syncMemoryEntriesToVectorCloud([updated]);
+            if (entry.type === "core") {
+                setCoreEntries(prev => prev.map(item => item.id === entry.id ? {
+                    ...updated,
+                    ...(synced ? { vectorMemoryConflictRevision: undefined } : {}),
+                } : item));
+            } else {
+                setLongTermEntries(prev => prev.map(item => item.id === entry.id ? {
+                    ...updated,
+                    ...(synced ? { vectorMemoryConflictRevision: undefined } : {}),
+                } : item));
+            }
+            showNotice(synced ? "本地版本已同步到云端" : "已提交本地版本；云端同步仍在等待重试");
+        } catch (error) {
+            showNotice("处理云端版本冲突失败: " + String(error));
+        }
+    };
 
     // ── Detail View ──
     if (view === "detail" && selectedChar) {
