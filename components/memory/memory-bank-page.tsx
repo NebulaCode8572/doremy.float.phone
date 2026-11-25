@@ -738,16 +738,14 @@ export function MemoryBankPage({
             };
             await saveMemoryEntry(updated);
             const synced = await syncMemoryEntriesToVectorCloud([updated]);
+            const refreshed = synced && selectedCharId
+                ? await loadMemoryEntriesByType(selectedCharId, entry.type)
+                : [];
+            const latest = refreshed.find(item => item.id === entry.id) ?? updated;
             if (entry.type === "core") {
-                setCoreEntries(prev => prev.map(item => item.id === entry.id ? {
-                    ...updated,
-                    ...(synced ? { vectorMemoryConflictRevision: undefined } : {}),
-                } : item));
+                setCoreEntries(prev => prev.map(item => item.id === entry.id ? latest : item));
             } else {
-                setLongTermEntries(prev => prev.map(item => item.id === entry.id ? {
-                    ...updated,
-                    ...(synced ? { vectorMemoryConflictRevision: undefined } : {}),
-                } : item));
+                setLongTermEntries(prev => prev.map(item => item.id === entry.id ? latest : item));
             }
             showNotice(synced ? "本地版本已同步到云端" : "已提交本地版本；云端同步仍在等待重试");
         } catch (error) {
