@@ -174,7 +174,7 @@ create or replace function public.delete_vector_memory_session_chunks(
   p_user_id text,p_character_id text,p_session_id text
 ) returns void
 language plpgsql security invoker set search_path = ''
-as $
+as $$
 declare v_prefix text := 'session:' || p_session_id || ':';
 begin
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
@@ -200,7 +200,7 @@ begin
   where user_id=p_user_id and character_id=p_character_id and source_app='chat'
     and source_kind='chat_chunk' and metadata->>'sessionId'=p_session_id;
 end;
-$;
+$$;
 
 revoke all on function public.get_vector_memory_generation(text,text) from public, anon, authenticated;
 grant execute on function public.get_vector_memory_generation(text,text) to service_role;
