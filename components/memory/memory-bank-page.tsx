@@ -586,8 +586,13 @@ export function MemoryBankPage({
                 });
 
             await saveMemoryEntry(entry);
-            if (loadMemoryConfig().vectorMemoryEnabled) void syncMemoryEntriesToVectorCloud([entry]);
-            else void deleteMemoryEntriesFromVectorCloud([entry]);
+            if (loadMemoryConfig().vectorMemoryEnabled) {
+                void syncMemoryEntriesToVectorCloud([entry]).then(async () => {
+                    const refreshed = await loadMemoryEntriesByType(selectedCharId, type);
+                    if (type === "core") setCoreEntries(refreshed);
+                    else setLongTermEntries(refreshed);
+                }).catch(error => console.warn("[MemoryBank] Vector Memory sync follow-up failed:", error));
+            } else void deleteMemoryEntriesFromVectorCloud([entry]);
             if (type === "core") {
                 setCoreEntries(prev => source ? prev.map(item => item.id === entry.id ? entry : item) : [...prev, entry]);
             } else {
