@@ -26,13 +26,6 @@ function validateRecord(record: VectorMemoryRecord): void {
 
 export type VectorMemoryGeneration = { characterGeneration: number; memoryGeneration: number };
 
-type RevisionIdentity = Pick<VectorMemoryRecord, "userId" | "characterId" | "sourceApp" | "sourceId" | "sourceKind"> & {
-  sourceUpdatedAt: string;
-  sessionId?: string;
-  characterGeneration: number;
-  memoryGeneration: number;
-};
-
 export async function getVectorMemoryGeneration(userId: string, characterId: string): Promise<VectorMemoryGeneration> {
   const result = await supabaseRestFetch<unknown>("rpc/get_vector_memory_generation", {
     method: "POST",
@@ -106,48 +99,6 @@ export async function commitVectorMemoryCas(
     return { status };
   }
   throw new Error("Vector Memory CAS response invalid");
-}
-
-export async function reserveVectorMemoryRevision(identity: RevisionIdentity): Promise<number> {
-  const result = await supabaseRestFetch<unknown>("rpc/reserve_vector_memory_revision", {
-    method: "POST",
-    body: JSON.stringify({
-      p_user_id: identity.userId,
-      p_character_id: identity.characterId,
-      p_source_app: identity.sourceApp,
-      p_source_id: identity.sourceId,
-      p_source_kind: identity.sourceKind,
-      p_source_updated_at: identity.sourceUpdatedAt,
-      p_session_id: identity.sessionId ?? null,
-      p_character_generation: identity.characterGeneration,
-      p_memory_generation: identity.memoryGeneration,
-    }),
-  });
-  if (!result.ok) throw new Error(result.error);
-  const revision = typeof result.data === "number" ? result.data : Number(result.data);
-  if (!Number.isSafeInteger(revision) || revision < 0) throw new Error("Vector Memory revision response invalid");
-  return revision;
-}
-
-export async function upsertVectorMemory(record: VectorMemoryRecord, revision: number): Promise<boolean> {
-  validateRecord(record);
-  if (!Number.isSafeInteger(revision) || revision < 1) throw new Error("Vector Memory revision 无效");
-  const result = await supabaseRestFetch<unknown>("rpc/commit_vector_memory_revision", {
-    method: "POST",
-    body: JSON.stringify({
-      p_user_id: record.userId,
-      p_character_id: record.characterId,
-      p_source_app: record.sourceApp,
-      p_source_id: record.sourceId,
-      p_source_kind: record.sourceKind,
-      p_revision: revision,
-      p_content: record.content.trim(),
-      p_embedding: `[${record.embedding.join(",")}]`,
-      p_metadata: record.metadata ?? {},
-    }),
-  });
-  if (!result.ok) throw new Error(result.error);
-  return result.data === true;
 }
 
 async function callDeleteRpc(name: string, body: Record<string, unknown>): Promise<void> {
