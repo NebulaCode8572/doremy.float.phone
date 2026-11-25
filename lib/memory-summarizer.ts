@@ -21,6 +21,7 @@ import { generateEmbedding, resolveEmbeddingModel } from "./memory-embedding";
 import { simpleLLMCall } from "./api-helpers";
 import { maybeRunCoreMemoryPipeline } from "./core-memory-builder";
 import { syncMemoryEntriesToVectorCloud } from "./vector-memory-sync";
+import { stampNewMemoryEntry } from "./vector-memory-generation";
 
 /** Per-character lock to prevent concurrent summarization. */
 const summarizingSet = new Set<string>();
@@ -149,7 +150,7 @@ export async function runSummarizationPipeline(
 
     // Save as long-term memory
     const now = new Date().toISOString();
-    const longTermEntry: MemoryEntry = {
+    const longTermEntry: MemoryEntry = stampNewMemoryEntry({
         id: `mem_lt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         characterId,
         sourceApp: dominantSource as MemoryEntry["sourceApp"],
@@ -164,7 +165,7 @@ export async function runSummarizationPipeline(
             timeSpan: `${earliest} ~ ${latest}`,
             sourceSessionIds,
         },
-    };
+    });
     await saveMemoryEntry(longTermEntry);
     if (config.vectorMemoryEnabled) void syncMemoryEntriesToVectorCloud([longTermEntry]);
 
