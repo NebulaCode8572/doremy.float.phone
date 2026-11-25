@@ -226,8 +226,8 @@ export function refreshChatMessageBucketsToVectorCloud(
         .filter(entry => entry.text);
       const queueEntry = { characterId: session.contactId, sessionId: session.id, bucket, characterGeneration };
       const stateKey = activeChunkStateKey(session.contactId, session.id, bucket, characterGeneration);
-      if (!loadMemoryConfig().vectorMemoryEnabled) continue;
 
+      // Deletions must reach the cloud even when new Vector Memory indexing is disabled.
       if (selected.length === 0) {
         enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, characterGeneration), async () => {
           try {
@@ -242,6 +242,8 @@ export function refreshChatMessageBucketsToVectorCloud(
         });
         continue;
       }
+
+      if (!loadMemoryConfig().vectorMemoryEnabled) continue;
 
       const content = selected
         .map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`)
