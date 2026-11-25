@@ -50,6 +50,64 @@ export async function getVectorMemoryGeneration(userId: string, characterId: str
   return { characterGeneration, memoryGeneration };
 }
 
+export type VectorMemoryCasResult =
+  | { status: "committed" | "already_committed"; revision: number }
+  | { status: "conflict"; currentRevision: number }
+  | { status: "deleted" | "stale_generation" | "operation_id_reused" | "invalid" };
+
+export async function commitVectorMemoryCas(
+  record: VectorMemoryRecord & {
+    sessionId?: string;
+    operationId: string;
+    expectedRevision: number;
+    characterGeneration: number;
+    memoryGeneration: number;
+  },
+): Promise<VectorMemoryCasResult> {
+  validateRecord(record);
+  if (!record.operationId || record.operationId.length < 16 || record.operationId.length > 120) {
+    throw new Error("Vector Memory operation ID 无效");
+  }
+  if (!Number.isSafeInteger(record.expectedRevision) || record.expectedRevision < 0) {
+    throw new Error("Vector Memory expected revision 无效");
+  }
+  const result = await supabaseRestFetch<unknown>("rpc/commit_vector_memory_cas", {
+    method: "POST",
+    body: JSON.stringify({
+      p_user_id: record.userId,
+      p_character_id: record.characterId,
+      p_source_app: record.sourceApp,
+      p_source_id: record.sourceId,
+      p_source_kind: record.sourceKind,
+      p_session_id: record.sessionId ?? null,
+      p_operation_id: record.operationId,
+      p_expected_revision: record.expectedRevision,
+      p_character_generation: record.characterGeneration,
+      p_memory_generation: record.memoryGeneration,
+      p_content: record.content.trim(),
+      p_embedding: `[${record.embedding.join(",")}]`,
+      p_metadata: record.metadata ?? {},
+    }),
+  });
+  if (!result.ok) throw new Error(result.error);
+  const value = (Array.isArray(result.data) ? result.data[0] : result.data) as Record<string, unknown> | null;
+  const status = value?.status;
+  if (status === "committed" || status === "already_committed") {
+    const revision = Number(value?.revision);
+    if (!Number.isSafeInteger(revision) || revision < 1) throw new Error("Vector Memory CAS revision response invalid");
+    return { status, revision };
+  }
+  if (status === "conflict") {
+    const currentRevision = Number(value?.current_revision);
+    if (!Number.isSafeInteger(currentRevision) || currentRevision < 0) throw new Error("Vector Memory CAS conflict response invalid");
+    return { status, currentRevision };
+  }
+  if (status === "deleted" || status === "stale_generation" || status === "operation_id_reused" || status === "invalid") {
+    return { status };
+  }
+  throw new Error("Vector Memory CAS response invalid");
+}
+
 export async function reserveVectorMemoryRevision(identity: RevisionIdentity): Promise<number> {
   const result = await supabaseRestFetch<unknown>("rpc/reserve_vector_memory_revision", {
     method: "POST",
