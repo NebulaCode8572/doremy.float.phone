@@ -1,4 +1,4 @@
-import { kvGet, kvSet, registerKvMigration, registerDynamicPrefix } from "@/lib/kv-db";
+import { kvGet, kvSet, registerDynamicPrefix } from "@/lib/kv-db";
 
 export type CachedVectorMemoryGeneration = {
   characterGeneration: number;
