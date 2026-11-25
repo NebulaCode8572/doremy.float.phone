@@ -646,7 +646,7 @@ export async function syncImportedMemoryPending(): Promise<{ synced: number; suc
     const pending = loadImportedMemoryPending().filter(entry => entry.vectorMemoryAccountId === accountId);
     if (!pending.length) return { synced: 0, success: true };
     if (!loadMemoryConfig().vectorMemoryEnabled) return { synced: 0, success: false };
-    const success = await syncMemoryEntriesToVectorCloudUnlocked(pending, false);
+    const success = await syncMemoryEntriesToVectorCloudUnlocked(pending);
     if (success) await removeSyncedImportedMemoryPending(pending);
     return { synced: success ? pending.length : 0, success };
   });
