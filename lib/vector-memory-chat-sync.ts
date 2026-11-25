@@ -11,7 +11,7 @@ const deletedChatSessions = new Set<string>();
 
 const CHAT_CHUNK_PENDING_KEY = "ai_phone_vector_memory_chat_chunk_pending_v1";
 registerKvMigration(CHAT_CHUNK_PENDING_KEY);
-type PendingChatChunk = { characterId: string; sessionId: string; bucket: number };
+type PendingChatChunk = { characterId: string; sessionId: string; bucket: number; characterGeneration: number };
 let pendingStateQueue: Promise<void> = Promise.resolve();
 
 function readPendingChatChunks(): PendingChatChunk[] {
@@ -20,6 +20,7 @@ function readPendingChatChunks(): PendingChatChunk[] {
     return Array.isArray(parsed) ? parsed.filter((item): item is PendingChatChunk =>
       item && typeof item.characterId === "string" && typeof item.sessionId === "string"
       && Number.isInteger(item.bucket) && item.bucket >= 0
+      && Number.isSafeInteger(item.characterGeneration) && item.characterGeneration >= 0
     ) : [];
   } catch { return []; }
 }
@@ -36,16 +37,16 @@ function updatePendingChatChunks(change: (items: PendingChatChunk[]) => PendingC
 
 function markChatChunkPending(entry: PendingChatChunk): Promise<void> {
   return updatePendingChatChunks(items => {
-    const key = chunkQueueKey(entry.characterId, entry.sessionId, entry.bucket);
-    const next = items.filter(item => chunkQueueKey(item.characterId, item.sessionId, item.bucket) !== key);
+    const key = chunkQueueKey(entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration);
+    const next = items.filter(item => chunkQueueKey(item.characterId, item.sessionId, item.bucket, item.characterGeneration) !== key);
     next.push(entry);
     return next;
   });
 }
 
 function clearChatChunkPending(entry: PendingChatChunk): Promise<void> {
-  const key = chunkQueueKey(entry.characterId, entry.sessionId, entry.bucket);
-  return updatePendingChatChunks(items => items.filter(item => chunkQueueKey(item.characterId, item.sessionId, item.bucket) !== key));
+  const key = chunkQueueKey(entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration);
+  return updatePendingChatChunks(items => items.filter(item => chunkQueueKey(item.characterId, item.sessionId, item.bucket, item.characterGeneration) !== key));
 }
 
 function clearChatSessionPending(characterId: string, sessionId: string): Promise<void> {
@@ -66,7 +67,7 @@ export async function retryPendingChatVectorChunks(
       await clearChatChunkPending(entry);
       continue;
     }
-    refreshChatMessageBucketsToVectorCloud(session, loadMessages(session.id), [entry.bucket]);
+    refreshChatMessageBucketsToVectorCloud(session, loadMessages(session.id), [entry.bucket], entry.characterGeneration);
     queued++;
   }
   return queued;
@@ -87,8 +88,8 @@ function enqueueChatChunkOperation(key: string, operation: () => Promise<void>):
   });
 }
 
-function chunkQueueKey(characterId: string, sessionId: string, bucket: number): string {
-  return `${characterId}:${sessionId}:${bucket}`;
+function chunkQueueKey(characterId: string, sessionId: string, bucket: number, characterGeneration?: number): string {
+  return `${characterId}:${sessionId}:${characterGeneration ?? "legacy"}:${bucket}`;
 }
 
 function cleanMessageText(message: ChatMessage): string {
@@ -103,12 +104,15 @@ function bucketForOrder(order: number | undefined): number {
   return Math.floor(Math.max(0, typeof order === "number" && Number.isFinite(order) ? order : 0) / CHUNK_SIZE);
 }
 
-async function deleteChatChunk(characterId: string, sessionId: string, bucket: number): Promise<void> {
+async function deleteChatChunk(characterId: string, sessionId: string, bucket: number, characterGeneration?: number): Promise<void> {
+  const sourceId = characterGeneration === undefined
+    ? `session:${sessionId}:chunk:${bucket}`
+    : `session:${sessionId}:g:${characterGeneration}:chunk:${bucket}`;
   const response = await fetch("/api/vector-memory-chat-chunks", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ characterId, sourceId: `session:${sessionId}:chunk:${bucket}` }),
+    body: JSON.stringify({ characterId, sourceId }),
   });
   if (!response.ok) throw new Error(`[VectorMemory] Chat chunk deletion returned HTTP ${response.status}`);
 }
@@ -150,82 +154,82 @@ export function refreshChatMessageBucketsToVectorCloud(
   session: ChatSession,
   allMessages: ChatMessage[],
   buckets: number[],
+  generationFilter?: number,
 ): void {
   if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
   if (deletedChatSessions.has(chatSessionKey(session.contactId, session.id))) return;
   const uniqueBuckets = [...new Set(buckets.filter(bucket => Number.isInteger(bucket) && bucket >= 0))];
   for (const bucket of uniqueBuckets) {
-    const selected = allMessages
-      .filter(item => item.sessionId === session.id && bucketForOrder(item.order) === bucket)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-      .map(item => ({ item, text: cleanMessageText(item) }))
-      .filter(entry => entry.text);
-    const sourceId = `session:${session.id}:chunk:${bucket}`;
-    if (!loadMemoryConfig().vectorMemoryEnabled) {
-      // Disabling Vector Memory pauses indexing; it must not erase previously stored vectors.
-      continue;
-    }
-    if (selected.length < 2) {
-      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
-        await deleteChatChunk(session.contactId!, session.id, bucket);
-        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
-      });
-      continue;
-    }
-    const content = selected.map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`).join("\n").slice(0, MAX_CHUNK_CONTENT);
-    if (!content.trim()) {
-      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
-        await deleteChatChunk(session.contactId!, session.id, bucket);
-        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
-      });
-      continue;
-    }
-    const sourceUpdatedAt = selected.reduce((latest, entry) => {
-      const candidate = entry.item.updatedAt ?? entry.item.createdAt;
-      return candidate > latest ? candidate : latest;
-    }, "");
-    const payload = {
-      id: sourceId,
-      characterId: session.contactId,
-      sourceApp: "chat",
-      sourceKind: "chat_chunk",
-      content,
-      updatedAt: sourceUpdatedAt,
-      metadata: { sessionId: session.id, chunkIndex: bucket, messageIds: selected.map(entry => entry.item.id), updatedAt: sourceUpdatedAt },
-    };
-    enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket), async () => {
-      // Re-check deletion and settings when the queued operation actually runs.
-      if (deletedChatSessions.has(chatSessionKey(session.contactId!, session.id))) return;
-      if (!loadMemoryConfig().vectorMemoryEnabled) {
-        // Settings may have changed while queued. Skip upload but preserve cloud data.
-        return;
-      }
-      let response: Response;
-      try {
-        response = await fetch("/api/vector-memory-index", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "same-origin",
-          body: JSON.stringify({ entries: [payload] }),
+    const bucketMessages = allMessages
+      .filter(item => item.sessionId === session.id && bucketForOrder(item.order) === bucket);
+    const generations = [...new Set(bucketMessages
+      .map(item => item.vectorMemoryCharacterGeneration)
+      .filter((value): value is number => Number.isSafeInteger(value) && (value ?? -1) >= 0)
+      .filter(value => generationFilter === undefined || value === generationFilter))];
+
+    for (const characterGeneration of generations) {
+      const selected = bucketMessages
+        .filter(item => item.vectorMemoryCharacterGeneration === characterGeneration)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map(item => ({ item, text: cleanMessageText(item) }))
+        .filter(entry => entry.text);
+      const sourceId = `session:${session.id}:g:${characterGeneration}:chunk:${bucket}`;
+      const queueEntry = { characterId: session.contactId, sessionId: session.id, bucket, characterGeneration };
+      if (!loadMemoryConfig().vectorMemoryEnabled) continue;
+      if (selected.length < 2) {
+        enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, characterGeneration), async () => {
+          await deleteChatChunk(session.contactId!, session.id, bucket, characterGeneration);
+          await clearChatChunkPending(queueEntry);
         });
-      } catch (error) {
-        await markChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
-        throw error;
+        continue;
       }
-      if (!response.ok) {
-        await markChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
-        console.warn(`[VectorMemory] Chat chunk indexing returned HTTP ${response.status}`);
-        return;
-      }
-      const result = await response.json().catch(() => null);
-      const itemResult = Array.isArray(result?.results) ? result.results[0] : null;
-      if (!itemResult || itemResult.success !== true) {
-        await markChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
-        console.warn("[VectorMemory] Chat chunk indexing endpoint returned HTTP 200 but did not confirm indexing success.");
-      } else {
-        await clearChatChunkPending({ characterId: session.contactId!, sessionId: session.id, bucket });
-      }
-    });
+      const content = selected.map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`).join("\\n").slice(0, MAX_CHUNK_CONTENT);
+      if (!content.trim()) continue;
+      const sourceUpdatedAt = selected.reduce((latest, entry) => {
+        const candidate = entry.item.updatedAt ?? entry.item.createdAt;
+        return candidate > latest ? candidate : latest;
+      }, "");
+      const payload = {
+        id: sourceId,
+        characterId: session.contactId,
+        sourceApp: "chat",
+        sourceKind: "chat_chunk",
+        content,
+        updatedAt: sourceUpdatedAt,
+        characterGeneration,
+        memoryGeneration: 0,
+        metadata: { sessionId: session.id, chunkIndex: bucket, messageIds: selected.map(entry => entry.item.id), updatedAt: sourceUpdatedAt },
+      };
+      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, characterGeneration), async () => {
+        if (deletedChatSessions.has(chatSessionKey(session.contactId!, session.id))) return;
+        if (!loadMemoryConfig().vectorMemoryEnabled) return;
+        let response: Response;
+        try {
+          response = await fetch("/api/vector-memory-index", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ entries: [payload] }),
+          });
+        } catch (error) {
+          await markChatChunkPending(queueEntry);
+          throw error;
+        }
+        if (!response.ok) {
+          await markChatChunkPending(queueEntry);
+          console.warn(`[VectorMemory] Chat chunk indexing returned HTTP ${response.status}`);
+          return;
+        }
+        const result = await response.json().catch(() => null);
+        const itemResult = Array.isArray(result?.results) ? result.results[0] : null;
+        if (!itemResult || itemResult.success !== true) {
+          await markChatChunkPending(queueEntry);
+          console.warn("[VectorMemory] Chat chunk indexing endpoint returned HTTP 200 but did not confirm indexing success.");
+        } else {
+          await clearChatChunkPending(queueEntry);
+        }
+      });
+    }
   }
 }
 
