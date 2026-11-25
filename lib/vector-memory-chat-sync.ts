@@ -164,7 +164,7 @@ export async function retryPendingChatVectorChunks(
   const indexingEnabled = loadMemoryConfig().vectorMemoryEnabled;
   let queued = 0;
   for (const entry of pending) {
-    const session = sessions.find(item => item.id === entry.sessionId && item.contactId === entry.characterId && !item.isGroup);
+    const session = sessions.find(item => item.id === entry.sessionId && item.contactId === entry.characterId && item.vectorMemoryAccountId === accountId && !item.isGroup);
     if (entry.operation === "delete" && (!indexingEnabled || !session)) {
       try {
         const stateKey = activeChunkStateKey(entry.accountId, entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration);
@@ -232,7 +232,7 @@ async function deleteChatChunk(accountId: string, characterId: string, sourceId:
 
 export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
   const accountId = loadActiveAccountId();
-  if (typeof window === "undefined" || !accountId || session.isGroup || !session.contactId) return;
+  if (typeof window === "undefined" || !accountId || session.vectorMemoryAccountId !== accountId || session.isGroup || !session.contactId) return;
   // Block stale refreshes immediately, then wait for already queued chunk operations.
   deletedChatSessions.add(chatSessionKey(accountId, session.contactId, session.id));
   const prefix = accountId + ":" + session.contactId + ":" + session.id + ":";
@@ -248,7 +248,7 @@ export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
 
 export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, buckets: number[]): void {
   const accountId = loadActiveAccountId();
-  if (typeof window === "undefined" || !accountId || session.isGroup || !session.contactId) return;
+  if (typeof window === "undefined" || !accountId || session.vectorMemoryAccountId !== accountId || session.isGroup || !session.contactId) return;
   for (const bucket of [...new Set(buckets.filter(value => Number.isInteger(value) && value >= 0))]) {
     const generation = session.vectorMemoryCharacterGeneration;
     const queueEntry: PendingChatChunk | null = generation === undefined
