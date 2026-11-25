@@ -13,11 +13,11 @@ const deletedChatSessions = new Set<string>();
 const CHAT_CHUNK_PENDING_KEY = "ai_phone_vector_memory_chat_chunk_pending_v1";
 const CHAT_SESSION_DELETE_PENDING_KEY = "ai_phone_vector_memory_chat_session_delete_pending_v1";
 const ACTIVE_CHUNK_PREFIX = "ai_phone_vector_memory_chat_chunk_active_v1:";
+const CHAT_DEVICE_ID_KEY = "ai_phone_vector_memory_chat_device_id_v1";
 registerKvMigration(CHAT_CHUNK_PENDING_KEY);
 registerKvMigration(CHAT_SESSION_DELETE_PENDING_KEY);
 registerDynamicPrefix(ACTIVE_CHUNK_PREFIX);
 registerKvMigration(CHAT_DEVICE_ID_KEY);
-const CHAT_DEVICE_ID_KEY = "ai_phone_vector_memory_chat_device_id_v1";
 async function getChatVectorDeviceId(): Promise<string> {
   const existing = kvGet(CHAT_DEVICE_ID_KEY);
   if (existing && /^[A-Za-z0-9_-]{12,80}$/.test(existing)) return existing;
