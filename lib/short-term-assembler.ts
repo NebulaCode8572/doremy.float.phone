@@ -188,6 +188,7 @@ export function loadNativeTimeline(
     for (const gs of groupSessions) {
         const messages = loadChatMessages(gs.id);
         for (const msg of messages) {
+            if (options?.accountId !== undefined && msg.vectorMemoryAccountId !== options.accountId) continue;
             if (msg.isRetracted) continue;
             if (isPromptHiddenChatMessage(msg)) continue;
             if (options?.afterTimestamp && msg.createdAt <= options.afterTimestamp) continue;
@@ -278,6 +279,7 @@ export function loadNativeTimeline(
     if (session) {
         const messages = loadChatMessages(session.id);
         for (const msg of messages) {
+            if (options?.accountId !== undefined && msg.vectorMemoryAccountId !== options.accountId) continue;
             if (msg.isRetracted) continue;
             if (isPromptHiddenChatMessage(msg)) continue;
             if (options?.afterTimestamp && msg.createdAt <= options.afterTimestamp) continue;
