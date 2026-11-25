@@ -127,6 +127,7 @@ export async function runCoreMemoryPipeline(
         && entry.vectorMemoryMemoryGeneration === currentGeneration?.memoryGeneration
         && entry.metadata?.includesGroupChat !== true
         && entry.metadata?.includesStaleChat !== true
+        && entry.metadata?.includesUnverifiedTimeline !== true
     );
     const coreEntryData: MemoryEntry = {
         id: `mem_core_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
