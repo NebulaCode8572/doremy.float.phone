@@ -1,124 +1,85 @@
 # Vector Memory source CAS and multi-device chat protocol
 
-Status: design specification only. This document does not change the deployed database or runtime behavior.
+Status: implemented in the feature branch; the SQL migration still requires explicit application to the Supabase project before deploying/testing the CAS-enabled client.
 
-## Why the current protocol is unsafe
+## Source identity
 
-The current index route calls `reserve_vector_memory_revision` before embedding. The RPC increments a source revision and compares the client-provided `source_updated_at` with the stored timestamp. This creates two distinct problems:
-
-1. A client clock set far into the future can permanently reject later legitimate updates.
-2. The revision is consumed before embedding and commit. The API currently maps a zero reservation to `success: true, skipped: "deleted"`, although zero can also mean a stale generation, tombstone, or timestamp conflict.
-
-A revision counter alone is not optimistic concurrency control. The client must state which committed revision its edit was based on.
-
-## Required source identity
-
-A logical source has this identity:
+A logical source is identified by:
 
 `(user_id, character_id, source_app, source_id, source_kind)`
 
-The identity is stable across devices. Device IDs must not be added to long-term memory source IDs or chat bucket source IDs merely to avoid collisions: doing so creates duplicate logical sources and makes session deletion harder.
+Long-term/core memory IDs remain stable across devices. Client wall-clock timestamps are descriptive metadata only and are not used to determine causal order.
 
-For chat, use one stable logical ID per session/generation/bucket:
+Chat chunks use a per-install device identity to prevent two devices with independent local counters from writing the same source ID:
 
-`session:<sessionId>:g:<characterGeneration>:chunk:<bucket>`
+`session:<sessionId>:g:<characterGeneration>:device:<deviceId>:chunk:<bucket>:v:<localVersion>`
 
-The existing `:v:<localCounter>` suffix is not a concurrency primitive and should be retired after a migration/cleanup plan is in place. Existing suffixed IDs remain deletable by the existing session-wide deletion RPC.
+Session deletion remains session-wide and removes every device's chunks. The retrieval API collapses byte-for-byte identical copies of a logical session bucket, while preserving divergent snapshots rather than silently discarding content.
 
-## CAS and idempotency contract
+## Atomic commit contract
 
-Each upload carries:
+The new `commit_vector_memory_cas` RPC combines version comparison and vector upsert in one database transaction. There is no separate reservation step, so a failed embedding cannot consume a revision.
 
-- `operationId`: client-generated UUID, persisted with the exact content snapshot and reused on every retry of that snapshot.
-- `expectedRevision`: last server-acknowledged committed revision for this source; `0` means the client believes the source does not yet exist.
-- `characterGeneration` and `memoryGeneration`: unchanged server-issued deletion fences.
-- content, embedding, metadata, and stable source identity.
+Each request carries:
 
-The server must never use `createdAt`, `updatedAt`, or device wall-clock time to establish causal order. Those timestamps may remain descriptive metadata only.
+- `operationId`: client-generated UUID persisted with the exact payload snapshot and reused on retry.
+- `expectedRevision`: last server-acknowledged committed revision; zero means the client believes no committed source exists.
+- `characterGeneration` and `memoryGeneration`: server-issued deletion fences.
+- stable source identity, content, embedding and metadata.
 
-### Reservation
+The RPC locks in the established order: character, optional session, source. It then checks current generations, exact source/session tombstones, and the operation ledger. It compares `expectedRevision` with `committed_revision`. A match atomically upserts the vector, advances the committed revision exactly once, and records the operation result.
 
-A new service-role-only RPC reserves an operation without advancing the committed source revision.
+The operation ledger stores source identity, operation ID, expected/result revision, and a fingerprint of content plus metadata. It does not store memory content or embeddings. The fingerprint intentionally excludes the embedding representation so tiny floating-point differences across retries do not break idempotency.
 
-1. Acquire locks in the existing order: character, optional session, then source.
-2. Validate the current server generations.
-3. Check exact source and session tombstones.
-4. Look up `operationId`. If already committed, return its original committed revision (idempotent success). If already reserved, return the same reservation.
-5. Compare `expectedRevision` to the current committed revision. A mismatch returns `conflict`; it must not be treated as deletion.
-6. Insert a durable operation row with identity, operation ID, expected revision, generation snapshot, payload fingerprint, and `reserved` state. Do not increment the source revision yet.
+## Typed outcomes
 
-A failed embedding leaves a retryable reserved operation and does not block a later operation from using the same expected revision.
+- `committed`: commit completed, with the new revision.
+- `already_committed`: this exact operation was committed earlier; return its original revision.
+- `conflict`: another source revision won; return the current revision. Never auto-retry the stale payload against it.
+- `deleted`: a source/session tombstone wins; terminal.
+- `stale_generation`: deletion generation changed; terminal.
+- `operation_id_reused`: same operation ID was used for a different source or payload; do not retry automatically.
+- `invalid`: request contract violation.
 
-### Commit
-
-A second RPC atomically:
-
-1. Locks the source and operation row.
-2. Re-checks generations and tombstones (deletion may have happened while embedding was running).
-3. Returns the stored result if this operation was already committed.
-4. Requires the current committed revision to still equal `expectedRevision`.
-5. Upserts the vector row and increments the committed revision exactly once.
-6. Marks the operation committed and stores the resulting revision.
-
-If another device committed first, return `conflict`. Do not overwrite the winner. If a deletion/generation fence won, return `deleted`/ `stale_generation` as a terminal result. If infrastructure fails, return a retryable error.
-
-### Result states
-
-The HTTP API must distinguish at least:
-
-- `committed`: success, with the committed revision.
-- `already_committed`: idempotent success, with the original revision.
-- `conflict`: non-terminal concurrency conflict; never clear the retry item as success.
-- `deleted`: terminal tombstone rejection; clear stale pending work.
-- `stale_generation`: terminal generation rejection; clear stale pending work.
-- `retryable_error`: preserve the same operation ID and retry later.
-
-Do not overload a numeric zero or a boolean to represent all these states.
+The API no longer maps an ambiguous numeric zero to deletion success.
 
 ## Client persistence and conflict behavior
 
-Long-term/core `MemoryEntry` records need a server-acknowledged `vectorMemoryRevision` and a pending operation snapshot containing `operationId`, `expectedRevision`, and a content/metadata fingerprint.
+For long-term/core memory, local records persist:
 
-- Persist the operation snapshot before sending the request.
-- A retry of an unchanged snapshot reuses the same operation ID and expected revision.
-- A changed snapshot gets a new operation ID, but retains the last acknowledged expected revision.
-- On `committed` / `already_committed`, persist the returned revision and clear the matching pending operation only if the local content fingerprint still matches the uploaded snapshot.
-- On `conflict`, preserve local content and expose a conflict state. Do not automatically retry stale content against the newly observed revision; doing so would turn CAS into last-writer-wins and allow old offline edits to overwrite newer work.
-- On `deleted` / `stale_generation`, clear that pending upload without assigning a new generation.
-- On network/embedding failure, retain the exact operation snapshot for retry.
+- `vectorMemoryRevision`: last acknowledged server revision.
+- `vectorMemoryPendingOperationId` and `vectorMemoryPendingFingerprint`: exact retry snapshot identity.
+- `vectorMemoryConflictRevision`: current cloud revision observed after a CAS conflict.
 
-For the initial rollout, records without a known server revision may use `expectedRevision = 0` only when the server confirms no current source exists. Existing remote sources require a one-time metadata-only revision lookup or an explicit conflict/reconciliation path. Never infer revision from client timestamps.
+The exact operation snapshot is persisted to the local pending queue before network submission. Retries reuse the same operation ID and expected revision. A changed local snapshot gets a new operation ID while retaining the last acknowledged revision.
 
-## Multi-device chat chunks
+On successful commit, the acknowledged revision is saved without overwriting any newer local content edited while the request was in flight. On conflict, automatic retries stop and the conflict revision is shown in the Memory Bank. The user must explicitly choose “确认用本机版本覆盖云端版本” before the local snapshot is submitted against that newer revision. This avoids silently turning CAS into last-writer-wins.
 
-Use a stable logical bucket source ID shared by all devices. Each device builds the current bucket from its local synchronized timeline and submits it with the last acknowledged source revision.
+Deleted or stale-generation results clear obsolete pending uploads. Network failures preserve the operation snapshot.
 
-- The first successful commit wins for a given expected revision.
-- A losing device must reload/reconcile the session timeline, rebuild the bucket, and submit a new operation based on the latest committed revision only if the rebuilt bucket represents the latest synchronized state.
-- Never blindly retry the losing device's stale payload with a newer expected revision.
-- Deleting a session continues to create the durable session tombstone and delete every bucket for that session. A concurrent in-flight upload must re-check the tombstone at commit and fail terminally.
-- Retire the local per-device version counter only after the new stable IDs and cleanup behavior are deployed together. Until then, keep the existing IDs to avoid an incomplete migration.
+Existing cloud rows are initialized at committed revision 1 by the migration. Old local records without a revision therefore fail closed with a conflict rather than overwriting existing cloud content. The user can explicitly resolve the conflict in Memory Bank.
 
-## Database security and migration requirements
+## Database security and migration
 
-The future migration must:
+Apply `docs/vector-memory-revision-schema.sql` (fresh installations only), then the tombstone and generation guards, then `docs/vector-memory-source-cas.sql`.
 
-- Add an operation ledger keyed by `(user_id, operation_id)`, with a unique constraint and source identity fields.
-- Keep operation rows metadata-only; do not copy memory content or embeddings into the ledger.
-- Enable RLS and revoke all table access from `public`, `anon`, and `authenticated`; grant only the minimum required access to `service_role`.
-- Expose only narrowly scoped `SECURITY INVOKER` RPCs with `search_path = ''` and execute grants only to `service_role`.
-- Preserve character/session/source lock ordering, generation checks, tombstone checks, and the existing retrieval RLS boundary.
-- Avoid dropping the current RPC until the new client/API protocol is deployed and the migration order is explicit.
-- Include rollback instructions that do not delete operation history or weaken tombstones.
+The CAS migration:
 
-## Rollout order
+- Adds `committed_revision` to the existing source version table.
+- Initializes existing rows with a matching vector row to committed revision 1; rows without a vector row remain revision 0.
+- Creates a metadata-only operation ledger with RLS enabled and no client grants.
+- Exposes a narrowly scoped `SECURITY INVOKER` RPC with `search_path = ''`, executable only by `service_role`.
+- Preserves character/session/source locks, generation fences and tombstones.
 
-1. Add the operation ledger and new CAS RPCs without changing existing RPC behavior.
-2. Add a revision lookup RPC and verify grants/RLS metadata.
-3. Update the server index route to use the new RPCs and return typed states.
-4. Update client persistence, pending queues, and conflict handling.
-5. Switch chat buckets to stable logical IDs and add reconciliation behavior.
-6. Only then retire the old timestamp-based reservation path.
-7. Run authorized tests and device verification after explicit user approval.
+Do not apply the migration until the feature-branch API/client rollout is ready. Do not deploy the CAS-enabled API before the migration has been applied.
 
-No migration should be applied to the live Supabase project until the user explicitly authorizes the database change.
+## Known multi-device behavior
+
+Device-scoped chat IDs prevent concurrent devices from colliding. If devices hold divergent copies of the same session bucket, both snapshots can exist; identical copies are deduplicated at retrieval, divergent copies remain independently searchable. Session deletion removes all copies. This is intentionally fail-safe but is not a full server-side merge of divergent offline timelines.
+
+## Rollout
+
+1. Review the SQL migration and apply it to Supabase only with explicit authorization.
+2. Deploy the matching API and client code together.
+3. Verify new-source commits, idempotent retry, stale-generation rejection, explicit conflict resolution, two-device chat indexing, and session-wide deletion.
+4. Only after these checks, consider removing legacy timestamp-based RPC helpers.
