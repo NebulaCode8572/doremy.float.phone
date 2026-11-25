@@ -179,6 +179,9 @@ export async function runSummarizationPipeline(
             sourceSessionIds,
             includesGroupChat: allEntries.some(entry => entry.sourceDetail === "group"),
             includesStaleChat,
+            // Non-chat timeline sources do not yet carry server-issued deletion provenance.
+            // Keep the traditional local summary, but fail closed for cloud Vector Memory.
+            includesUnverifiedTimeline: allEntries.some(entry => entry.sourceApp !== "chat"),
         },
     };
     const longTermEntry: MemoryEntry = stampNewMemoryEntry(longTermEntryData);
