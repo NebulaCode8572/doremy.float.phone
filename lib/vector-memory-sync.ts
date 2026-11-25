@@ -301,7 +301,6 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
     entries = entries.filter(entry => typeof entry.vectorMemoryAccountId === "string" && entry.vectorMemoryAccountId.length > 0);
     if (!entries.length) return;
     await hydrateKvDb();
-    const deletedKeys = new Set(entries.map(pendingEntryKey));
     await removePendingMemoryIndexes(entries);
     await removeImportedMemoryPendingEntries(entries);
 
