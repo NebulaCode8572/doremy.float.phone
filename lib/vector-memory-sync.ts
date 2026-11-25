@@ -54,6 +54,10 @@ export async function addImportedMemoryPending(entries: ImportedMemoryPendingEnt
       const {
         vectorMemoryCharacterGeneration: _oldCharacterGeneration,
         vectorMemoryMemoryGeneration: _oldMemoryGeneration,
+        vectorMemoryRevision: _oldRevision,
+        vectorMemoryConflictRevision: _oldConflictRevision,
+        vectorMemoryPendingOperationId: _oldOperationId,
+        vectorMemoryPendingFingerprint: _oldFingerprint,
         ...localEntryWithoutOldGeneration
       } = localEntry;
       await saveMemoryEntry({
@@ -70,12 +74,20 @@ export async function addImportedMemoryPending(entries: ImportedMemoryPendingEnt
   const explicitlyImported = entries.flatMap(entry => {
     const current = generations.get(entry.characterId);
     // If offline/no cache, the import remains local-only and is not queued.
-    return current ? [{
-      ...entry,
+    if (!current) return [];
+    const {
+      vectorMemoryRevision: _importedRevision,
+      vectorMemoryConflictRevision: _importedConflictRevision,
+      vectorMemoryPendingOperationId: _importedOperationId,
+      vectorMemoryPendingFingerprint: _importedFingerprint,
+      ...entryWithoutOldServerState
+    } = entry;
+    return [{
+      ...entryWithoutOldServerState,
       vectorMemoryAccountId: accountId,
       vectorMemoryCharacterGeneration: current.characterGeneration,
       vectorMemoryMemoryGeneration: current.memoryGeneration,
-    }] : [];
+    }];
   });
   if (!explicitlyImported.length) return loadImportedMemoryPending().length;
   const existing = loadImportedMemoryPending();
