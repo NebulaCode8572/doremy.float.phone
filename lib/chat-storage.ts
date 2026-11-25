@@ -132,6 +132,7 @@ export type ChatMessage = {
     content: string;
     status: ChatMessageStatus;
     createdAt: string; // ISO date
+    updatedAt?: string; // Last content edit time; createdAt remains the original message time.
     order?: number; // Stable per-session display order
     responseBatchId?: string; // Assistant raw-response batch id
     rawResponseText?: string; // Assistant raw response before parsing/splitting
@@ -2250,7 +2251,7 @@ export function updateChatMessage(
     const idx = _messagesCache.findIndex(m => m.id === messageId);
     if (idx === -1) return null;
 
-    _messagesCache[idx] = { ..._messagesCache[idx], ...patch };
+    _messagesCache[idx] = { ..._messagesCache[idx], ...patch, updatedAt: new Date().toISOString() };
     const updated = _messagesCache[idx];
     dbPutMessage(updated);
     refreshVectorChunksForMessages([updated]);
@@ -2259,7 +2260,7 @@ export function updateChatMessage(
     const sessIdx = sessions.findIndex(s => s.id === updated.sessionId);
     if (sessIdx !== -1 && sessions[sessIdx].lastMessageId === updated.id) {
         sessions[sessIdx].lastMessagePreview = getChatMessagePreview(updated);
-        sessions[sessIdx].updatedAt = updated.createdAt;
+        sessions[sessIdx].updatedAt = updated.updatedAt ?? updated.createdAt;
         saveChatSessions(sessions);
     }
 
