@@ -29,16 +29,39 @@ export async function POST(request: Request) {
         match_user_id: account.id,
         match_character_id: characterId,
         match_threshold: 0.30,
-        match_count: 8,
+        match_count: 20,
       }),
     });
     if (!result.ok) return NextResponse.json({ error: "Vector Memory 语义检索失败" }, { status: 502 });
-    const matches = Array.isArray(result.data) ? result.data.map(row => ({
-      content: String(row.content ?? "").slice(0, 12000),
-      sourceKind: row.source_kind,
-      similarity: Number(row.similarity),
-      createdAt: String(row.metadata?.createdAt ?? ""),
-    })).filter(row => row.content && Number.isFinite(row.similarity)) : [];
+    const matches: Array<{ content: string; sourceKind: string; similarity: number; createdAt: string }> = [];
+    const seenChatBuckets = new Set<string>();
+    if (Array.isArray(result.data)) {
+      for (const row of result.data) {
+        const content = String(row.content ?? "").slice(0, 12000);
+        const similarity = Number(row.similarity);
+        if (!content || !Number.isFinite(similarity)) continue;
+        if (row.source_kind === "chat_chunk") {
+          const sessionId = typeof row.metadata?.sessionId === "string" ? row.metadata.sessionId : "";
+          const chunkIndex = Number(row.metadata?.chunkIndex);
+          if (sessionId && Number.isSafeInteger(chunkIndex) && chunkIndex >= 0) {
+            const bucketKey = sessionId + ":" + chunkIndex;
+            // Multiple devices may each contribute a copy of the same logical
+            // session bucket. Keep the closest match so duplicates do not crowd
+            // the context window; distinct bucket contents remain independently
+            // searchable.
+            if (seenChatBuckets.has(bucketKey)) continue;
+            seenChatBuckets.add(bucketKey);
+          }
+        }
+        matches.push({
+          content,
+          sourceKind: String(row.source_kind ?? ""),
+          similarity,
+          createdAt: String(row.metadata?.createdAt ?? ""),
+        });
+        if (matches.length >= 8) break;
+      }
+    }
     return NextResponse.json({ matches }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ error: "Vector Memory 检索失败" }, { status: 500 });
