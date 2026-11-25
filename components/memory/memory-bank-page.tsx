@@ -750,7 +750,7 @@ export function MemoryBankPage({
             } else {
                 setLongTermEntries(prev => prev.map(item => item.id === entry.id ? latest : item));
             }
-            showNotice(synced ? "本地版本已同步到云端" : "已提交本地版本；云端同步仍在等待重试");
+            showNotice(synced ? "本地版本已同步到云端" : Number.isSafeInteger(latest.vectorMemoryConflictRevision) ? "云端又产生了新版本，请重新确认后再覆盖" : "云端同步失败，已保留待重试记录");
         } catch (error) {
             showNotice("处理云端版本冲突失败: " + String(error));
         }
