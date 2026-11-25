@@ -24,7 +24,10 @@ function validateRecord(record: VectorMemoryRecord): void {
   if (!["summary", "chat_chunk", "core_memory", "long_term_memory"].includes(record.sourceKind)) throw new Error("Vector Memory 来源类型无效");
 }
 
-type RevisionIdentity = Pick<VectorMemoryRecord, "userId" | "characterId" | "sourceApp" | "sourceId" | "sourceKind">;
+type RevisionIdentity = Pick<VectorMemoryRecord, "userId" | "characterId" | "sourceApp" | "sourceId" | "sourceKind"> & {
+  sourceUpdatedAt: string;
+  sessionId?: string;
+};
 
 export async function reserveVectorMemoryRevision(identity: RevisionIdentity): Promise<number> {
   const result = await supabaseRestFetch<unknown>("rpc/reserve_vector_memory_revision", {
@@ -35,11 +38,13 @@ export async function reserveVectorMemoryRevision(identity: RevisionIdentity): P
       p_source_app: identity.sourceApp,
       p_source_id: identity.sourceId,
       p_source_kind: identity.sourceKind,
+      p_source_updated_at: identity.sourceUpdatedAt,
+      p_session_id: identity.sessionId ?? null,
     }),
   });
   if (!result.ok) throw new Error(result.error);
   const revision = typeof result.data === "number" ? result.data : Number(result.data);
-  if (!Number.isSafeInteger(revision) || revision < 1) throw new Error("Vector Memory revision response invalid");
+  if (!Number.isSafeInteger(revision) || revision < 0) throw new Error("Vector Memory revision response invalid");
   return revision;
 }
 
