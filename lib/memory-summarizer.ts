@@ -21,7 +21,7 @@ import { generateEmbedding, resolveEmbeddingModel } from "./memory-embedding";
 import { simpleLLMCall } from "./api-helpers";
 import { maybeRunCoreMemoryPipeline } from "./core-memory-builder";
 import { syncMemoryEntriesToVectorCloud } from "./vector-memory-sync";
-import { stampNewMemoryEntry } from "./vector-memory-generation";
+import { stampNewMemoryEntry, loadCachedVectorMemoryGeneration } from "./vector-memory-generation";
 import { loadActiveAccountId } from "./account-client";
 
 /** Per-character lock to prevent concurrent summarization. */
@@ -154,7 +154,16 @@ export async function runSummarizationPipeline(
 
     // Save as long-term memory
     const now = new Date().toISOString();
-    const longTermEntry: MemoryEntry = stampNewMemoryEntry({
+    const accountId = loadActiveAccountId();
+    const currentGeneration = loadCachedVectorMemoryGeneration(accountId, characterId);
+    const includesStaleChat = allEntries.some(entry =>
+        entry.sourceApp === "chat" && (
+            entry.vectorMemoryAccountId !== accountId
+            || !currentGeneration
+            || entry.vectorMemoryCharacterGeneration !== currentGeneration.characterGeneration
+        )
+    );
+    const longTermEntryData = {
         id: `mem_lt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         characterId,
         sourceApp: dominantSource as MemoryEntry["sourceApp"],
@@ -169,8 +178,10 @@ export async function runSummarizationPipeline(
             timeSpan: `${earliest} ~ ${latest}`,
             sourceSessionIds,
             includesGroupChat: allEntries.some(entry => entry.sourceDetail === "group"),
+            includesStaleChat,
         },
-    });
+    };
+    const longTermEntry: MemoryEntry = stampNewMemoryEntry(longTermEntryData);
     await saveMemoryEntry(longTermEntry);
     if (config.vectorMemoryEnabled) void syncMemoryEntriesToVectorCloud([longTermEntry]);
 
