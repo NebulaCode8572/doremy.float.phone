@@ -77,7 +77,7 @@ function updatePendingChatChunks(change: (items: PendingChatChunk[]) => PendingC
 function markChatChunkPending(entry: PendingChatChunk): Promise<void> {
   return updatePendingChatChunks(items => {
     const key = chunkQueueKey(entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration, entry.accountId);
-    const next = items.filter(item => chunkQueueKey(item.characterId, item.sessionId, item.bucket, item.characterGeneration) !== key);
+    const next = items.filter(item => chunkQueueKey(item.characterId, item.sessionId, item.bucket, item.characterGeneration, item.accountId) !== key);
     next.push(entry);
     return next;
   });
@@ -85,7 +85,7 @@ function markChatChunkPending(entry: PendingChatChunk): Promise<void> {
 
 function clearChatChunkPending(entry: PendingChatChunk): Promise<void> {
   const key = chunkQueueKey(entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration);
-  return updatePendingChatChunks(items => items.filter(item => chunkQueueKey(item.characterId, item.sessionId, item.bucket, item.characterGeneration) !== key));
+  return updatePendingChatChunks(items => items.filter(item => chunkQueueKey(item.characterId, item.sessionId, item.bucket, item.characterGeneration, item.accountId) !== key));
 }
 
 function clearChatSessionPending(accountId: string, characterId: string, sessionId: string): Promise<void> {
@@ -182,15 +182,27 @@ export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
 }
 
 export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, buckets: number[]): void {
-  if (typeof window === "undefined" || session.isGroup || !session.contactId) return;
+  const accountId = loadActiveAccountId();
+  if (typeof window === "undefined" || !accountId || session.isGroup || !session.contactId) return;
   for (const bucket of [...new Set(buckets.filter(value => Number.isInteger(value) && value >= 0))]) {
     const generation = session.vectorMemoryCharacterGeneration;
-    enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, generation), async () => {
-      await deleteChatChunk(session.contactId!, generation === undefined
-        ? `session:${session.id}:chunk:${bucket}`
-        : `session:${session.id}:g:${generation}:chunk:${bucket}`);
-      if (generation !== undefined) {
-        await clearChatChunkPending({ accountId: loadActiveAccountId(), characterId: session.contactId!, sessionId: session.id, bucket, characterGeneration: generation });
+    const queueEntry: PendingChatChunk | null = generation === undefined
+      ? null
+      : { accountId, characterId: session.contactId, sessionId: session.id, bucket, characterGeneration: generation };
+    enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, generation, accountId), async () => {
+      try {
+        if (generation === undefined) {
+          await deleteChatChunk(accountId, session.contactId!, `session:${session.id}:chunk:${bucket}`);
+          return;
+        }
+        const stateKey = activeChunkStateKey(accountId, session.contactId!, session.id, bucket, generation);
+        const state = loadActiveChunkState(stateKey);
+        if (state.sourceId) await deleteChatChunk(accountId, session.contactId!, state.sourceId);
+        await saveActiveChunkState(stateKey, { version: state.version });
+        if (queueEntry) await clearChatChunkPending(queueEntry);
+      } catch (error) {
+        if (queueEntry) await markChatChunkPending(queueEntry);
+        throw error;
       }
     });
   }
@@ -280,7 +292,7 @@ export function refreshChatMessageBucketsToVectorCloud(
         },
       };
 
-      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, characterGeneration), async () => {
+      enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, characterGeneration, accountId), async () => {
         if (deletedChatSessions.has(chatSessionKey(accountId, session.contactId!, session.id))) return;
         if (loadActiveAccountId() !== accountId) {
           await markChatChunkPending(queueEntry);
