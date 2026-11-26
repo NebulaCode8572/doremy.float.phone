@@ -1348,7 +1348,21 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
             await dbPutSessionsAndWait([session]);
             if (sessionIndex >= 0) _sessionsCache[sessionIndex] = session;
 
-            const sessionMessages = _messagesCache.filter(message => message.sessionId === session.id);
+            let sessionMessages = _messagesCache.filter(message => message.sessionId === session.id);
+            if (sessionMessages.some(message => !Number.isSafeInteger(message.order) || (message.order ?? -1) < 0)) {
+                sessionMessages = [...sessionMessages]
+                    .sort(compareChatMessages)
+                    .map((message, index) => message.order === index ? message : { ...message, order: index });
+                const orderedById = new Map(sessionMessages.map(message => [message.id, message]));
+                const changedOrderMessages = sessionMessages.filter((message, index) => {
+                    const original = _messagesCache.find(item => item.id === message.id);
+                    return original?.order !== index;
+                });
+                if (changedOrderMessages.length) {
+                    await dbPutMessagesAndWait(changedOrderMessages);
+                    _messagesCache = _messagesCache.map(message => orderedById.get(message.id) ?? message);
+                }
+            }
             const eligibleMessages: ChatMessage[] = [];
             const changedMessages: ChatMessage[] = [];
             for (const message of sessionMessages) {
