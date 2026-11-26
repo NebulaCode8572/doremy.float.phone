@@ -19,6 +19,8 @@ export type MemoryEntry = {
     vectorMemoryMemoryGeneration?: number;
     /** Last server-acknowledged CAS revision for this source. */
     vectorMemoryRevision?: number;
+    /** Fingerprint of the exact content snapshot last acknowledged by Vector Memory. */
+    vectorMemoryIndexedFingerprint?: string;
     /** Server revision observed after a CAS conflict; requires explicit local overwrite confirmation. */
     vectorMemoryConflictRevision?: number;
     /** Stable idempotency key for the exact pending cloud payload snapshot. */
