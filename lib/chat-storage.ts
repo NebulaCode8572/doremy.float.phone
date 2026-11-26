@@ -1342,6 +1342,13 @@ export async function backfillHistoricalChatVectors(allowedCharacterIds?: string
             if (sessionIndex < 0) continue;
             let effectiveSession = _sessionsCache[sessionIndex];
             if (effectiveSession.vectorMemoryAccountId && effectiveSession.vectorMemoryAccountId !== accountId) continue;
+            if (effectiveSession.vectorMemoryAccountId === accountId
+                && Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)
+                && effectiveSession.vectorMemoryCharacterGeneration !== generation.characterGeneration) {
+                // A server character-generation bump invalidates old session chunks.
+                // Do not relabel historical content into the new generation.
+                continue;
+            }
 
             if (effectiveSession.vectorMemoryAccountId !== accountId
                 || !Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)) {
@@ -1418,7 +1425,7 @@ export async function backfillHistoricalChatVectors(allowedCharacterIds?: string
             const eligibleMessages = _messagesCache.filter(message =>
                 message.sessionId === effectiveSession.id
                 && message.vectorMemoryAccountId === accountId
-                && Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
+                && message.vectorMemoryCharacterGeneration === effectiveSession.vectorMemoryCharacterGeneration
             );
             const buckets = [...new Set(eligibleMessages
                 .map(message => Math.floor(Math.max(0, message.order ?? 0) / 4)))]
