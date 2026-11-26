@@ -5,7 +5,7 @@ import { useAccount } from "@/lib/account-context";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { loadActiveAccountId } from "@/lib/account-client";
 import { CHARACTERS_UPDATED_EVENT, loadCharacters } from "@/lib/character-storage";
-import { saveCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
+import { saveCachedVectorMemoryGeneration, VECTOR_MEMORY_SETTINGS_UPDATED_EVENT } from "@/lib/vector-memory-generation";
 import { hydrateChatStorage, isChatStorageHydrated, loadChatMessages, loadChatSessions, backfillHistoricalChatVectors } from "@/lib/chat-storage";
 import { retryPendingChatVectorChunks } from "@/lib/vector-memory-chat-sync";
 import {
@@ -107,9 +107,11 @@ export function VectorMemoryGenerationBootstrap() {
     void refresh();
     window.addEventListener("online", refresh);
     window.addEventListener(CHARACTERS_UPDATED_EVENT, refresh);
+    window.addEventListener(VECTOR_MEMORY_SETTINGS_UPDATED_EVENT, refresh);
     return () => {
       window.removeEventListener("online", refresh);
       window.removeEventListener(CHARACTERS_UPDATED_EVENT, refresh);
+      window.removeEventListener(VECTOR_MEMORY_SETTINGS_UPDATED_EVENT, refresh);
     };
   }, [refresh]);
 
