@@ -2054,8 +2054,11 @@ export async function buildChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
+    const latestVectorMemorySession = !session.isGroup
+        ? loadChatSessions().find(item => item.id === session.id)
+        : undefined;
     if (!session.isGroup
-        && session.vectorMemoryAccountId === loadActiveAccountId()) {
+        && latestVectorMemorySession?.vectorMemoryAccountId === loadActiveAccountId()) {
         const vectorRecallText = await retrieveVectorMemoryForPrompt(character.id, wbActivationContext).catch(() => "");
         if (vectorRecallText) llmMessages.push({ role: "system", content: vectorRecallText });
     }
