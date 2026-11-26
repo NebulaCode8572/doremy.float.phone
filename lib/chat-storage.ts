@@ -11,12 +11,12 @@ import { resolveUserIdentity } from "./settings-storage";
 import { loadCharacters, saveCharacters } from "./character-storage";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { loadActiveAccountId } from "./account-client";
-import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "./vector-memory-generation";
+import { loadCachedVectorMemoryGeneration } from "./vector-memory-generation";
 import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-hooks";
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import { findUserAvatarChangeIntent, inferAvatarDecisionFromReply } from "./chat-avatar-intent";
-import { syncChatMessageChunkToVectorCloud, refreshChatMessageBucketsToVectorCloud, deleteChatSessionVectorsFromCloud } from "./vector-memory-chat-sync";
+import { syncChatMessageChunkToVectorCloud, refreshChatMessageBucketsToVectorCloud, deleteChatSessionVectorsFromCloud, waitForChatVectorChunkQueue } from "./vector-memory-chat-sync";
 
 function refreshVectorChunksForMessages(messages: ChatMessage[]): void {
     if (typeof window === "undefined" || messages.length === 0) return;
@@ -1297,9 +1297,6 @@ export function hydrateChatStorage(): Promise<void> {
         if (normalizedContacts.changed) dbReplaceContacts(normalizedContacts.items);
         if (normalizedSessions.changed || redirectedMessages > 0 || refreshedSessions.changed) dbReplaceSessions(refreshedSessions.items);
         _hydrated = true;
-        // Backfill private-chat history after local storage is ready. This is
-        // account-scoped, generation-stamped, and runs in small bucket batches.
-        void backfillHistoricalChatVectors();
     }).catch(err => {
         console.warn("[ChatStorage] hydration failed, will retry on next call:", err);
         _hydratePromise = null;
@@ -1313,7 +1310,7 @@ export function isChatStorageHydrated(): boolean {
 
 let _vectorHistoryBackfillPromise: Promise<void> | null = null;
 
-async function backfillHistoricalChatVectors(): Promise<void> {
+export async function backfillHistoricalChatVectors(): Promise<void> {
     if (typeof window === "undefined" || _vectorHistoryBackfillPromise) return;
     const accountId = loadActiveAccountId();
     if (!accountId) return;
@@ -1325,11 +1322,6 @@ async function backfillHistoricalChatVectors(): Promise<void> {
             && (!session.vectorMemoryAccountId || session.vectorMemoryAccountId === accountId)
         );
         const characterIds = [...new Set(eligibleSessions.map(session => session.contactId!))];
-        for (const characterId of characterIds) {
-            if (loadActiveAccountId() !== accountId) return;
-            await refreshCachedVectorMemoryGeneration(characterId);
-        }
-
         let updatedMessageCount = 0;
         for (const originalSession of eligibleSessions) {
             if (loadActiveAccountId() !== accountId) return;
@@ -1385,9 +1377,7 @@ async function backfillHistoricalChatVectors(): Promise<void> {
                     _messagesCache,
                     buckets.slice(offset, offset + 16),
                 );
-                if (offset + 16 < buckets.length) {
-                    await new Promise<void>(resolve => window.setTimeout(resolve, 200));
-                }
+                await waitForChatVectorChunkQueue();
             }
         }
         if (updatedMessageCount > 0) {
