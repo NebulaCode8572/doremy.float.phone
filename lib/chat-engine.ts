@@ -2072,7 +2072,11 @@ export async function buildChatPromptMessages(
     ].filter(Boolean).join("\n").slice(-5000);
     if (!session.isGroup && vectorMemorySessionAccountId === loadActiveAccountId() && vectorRecallQuery.trim()) {
         const vectorRecallText = await retrieveVectorMemoryForPrompt(character.id, vectorRecallQuery).catch(() => "");
-        if (vectorRecallText) llmMessages.push({ role: "system", content: vectorRecallText });
+        if (vectorRecallText) {
+            const firstConversationMessage = llmMessages.findIndex(message => message.role === "user");
+            const insertionIndex = firstConversationMessage >= 0 ? firstConversationMessage : llmMessages.length;
+            llmMessages.splice(insertionIndex, 0, { role: "system", content: vectorRecallText });
+        }
     }
     const avatarChangeIntent = !session.isGroup
         ? findUserAvatarChangeIntent(historyForPrompt, session.id, character.id)
