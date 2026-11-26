@@ -238,6 +238,66 @@ export async function dbPutSessionsAndWait(sessions: ChatSession[]): Promise<voi
     await chatDb.sessions.bulkPut(sessions);
 }
 
+/** Patch only vector ownership metadata; never replace a concurrently edited session. */
+export async function dbStampSessionVectorMemoryAndWait(
+    id: string,
+    accountId: string,
+    fallbackCharacterGeneration: number,
+): Promise<number | null> {
+    return chatDb.transaction("rw", chatDb.sessions, async () => {
+        const current = await chatDb.sessions.get(id);
+        if (!current || (current.vectorMemoryAccountId && current.vectorMemoryAccountId !== accountId)) return null;
+        const characterGeneration = Number.isSafeInteger(current.vectorMemoryCharacterGeneration)
+            ? current.vectorMemoryCharacterGeneration!
+            : fallbackCharacterGeneration;
+        await chatDb.sessions.update(id, {
+            vectorMemoryAccountId: accountId,
+            vectorMemoryCharacterGeneration: characterGeneration,
+        });
+        return characterGeneration;
+    });
+}
+
+/** Patch message ordering without overwriting content/status changes made during backfill. */
+export async function dbUpdateMessageOrdersAndWait(
+    updates: Array<{ id: string; order: number }>,
+): Promise<void> {
+    for ( (let start = 0; start < updates.length; start += 500) {
+        const batch = updates.slice(start, start + 500);
+        await chatDb.transaction("rw", chatDb.messages, async () => {
+            for (const item of batch) {
+                await chatDb.messages.update(item.id, { order: item.order });
+            }
+        });
+    }
+}
+
+/** Stamp only vector ownership/generation fields, preserving the latest message payload. */
+export async function dbStampMessagesVectorMemoryAndWait(
+    updates: Array<{ id: string; characterGeneration: number }>,
+    accountId: string,
+): Promise<Array<{ id: string; characterGeneration: number }>> {
+    const stamped: Array<{ id: string; characterGeneration: number }> = [];
+    for (let start = 0; start < updates.length; start += 500) {
+        const batch = updates.slice(start, start + 500);
+        await chatDb.transaction("rw", chatDb.messages, async () => {
+            for (const item of batch) {
+                const current = await chatDb.messages.get(item.id);
+                if (!current || (current.vectorMemoryAccountId && current.vectorMemoryAccountId !== accountId)) continue;
+                const characterGeneration = Number.isSafeInteger(current.vectorMemoryCharacterGeneration)
+                    ? current.vectorMemoryCharacterGeneration!
+                    : item.characterGeneration;
+                await chatDb.messages.update(item.id, {
+                    vectorMemoryAccountId: accountId,
+                    vectorMemoryCharacterGeneration: characterGeneration,
+                });
+                stamped.push({ id: item.id, characterGeneration });
+            }
+        });
+    }
+    return stamped;
+}
+
 export function dbReplaceSessions(sessions: ChatSession[]): void {
     chatDb.transaction("rw", chatDb.sessions, async () => {
         await chatDb.sessions.clear();
