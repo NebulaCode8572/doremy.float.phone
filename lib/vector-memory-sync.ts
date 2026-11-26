@@ -183,6 +183,13 @@ async function enqueuePendingMemoryDeletes(entries: PendingMemoryDelete[]): Prom
   for (const item of entries) merged.set(pendingDeleteKey(item), item);
   await kvSetAsync(DELETE_PENDING_KEY, JSON.stringify(Array.from(merged.values()).slice(-1000)));
 }
+async function removePendingMemoryDeletes(entries: PendingMemoryDelete[]): Promise<void> {
+  if (!entries.length) return;
+  await hydrateKvDb();
+  const keys = new Set(entries.map(pendingDeleteKey));
+  const remaining = loadPendingMemoryDeletes().filter(item => !keys.has(pendingDeleteKey(item)));
+  await kvSetAsync(DELETE_PENDING_KEY, JSON.stringify(remaining));
+}
 async function cancelPendingMemoryDeletesForEntries(entries: VectorSyncEntry[]): Promise<void> {
   if (!entries.length) return;
   await hydrateKvDb();
@@ -328,42 +335,38 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
     await removePendingMemoryIndexes(entries);
     await removeImportedMemoryPendingEntries(entries);
 
-    const failed: PendingMemoryDelete[] = [];
+    const pendingDeletes: PendingMemoryDelete[] = entries.map(entry => ({
+      accountId: entry.vectorMemoryAccountId!,
+      characterId: entry.characterId,
+      id: entry.id,
+      sourceApp: entry.sourceApp,
+      type: entry.type === "core" ? "core" : "long_term",
+    }));
+    // Persist deletion intent before the first network request so a tab/process
+    // exit cannot leave an untracked cloud source behind.
+    await enqueuePendingMemoryDeletes(pendingDeletes);
+    const completed: PendingMemoryDelete[] = [];
     for (const entry of entries) {
+      const pendingEntry = pendingDeletes.find(item => pendingDeleteKey(item) === pendingDeleteKey({
+        accountId: entry.vectorMemoryAccountId!,
+        characterId: entry.characterId,
+        id: entry.id,
+        sourceApp: entry.sourceApp,
+        type: entry.type === "core" ? "core" : "long_term",
+      }))!;
       const ownerAccountId = entry.vectorMemoryAccountId!;
-      if (loadActiveAccountId() !== ownerAccountId) {
-        failed.push({
-          accountId: ownerAccountId,
-          characterId: entry.characterId,
-          id: entry.id,
-          sourceApp: entry.sourceApp,
-          type: entry.type,
-        });
-        continue;
-      }
+      if (loadActiveAccountId() !== ownerAccountId) continue;
       try {
         const response = await fetch("/api/vector-memory-entry", {
           method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
           body: JSON.stringify({ characterId: entry.characterId, sourceApp: entry.sourceApp, sourceId: entry.id, sourceKind: vectorSourceKind(entry) }),
         });
-        if (!response.ok) failed.push({
-          accountId: ownerAccountId,
-          characterId: entry.characterId,
-          id: entry.id,
-          sourceApp: entry.sourceApp,
-          type: entry.type,
-        });
+        if (response.ok) completed.push(pendingEntry);
       } catch {
-        failed.push({
-          accountId: ownerAccountId,
-          characterId: entry.characterId,
-          id: entry.id,
-          sourceApp: entry.sourceApp,
-          type: entry.type,
-        });
+        // Keep the pre-persisted deletion marker for a later retry.
       }
     }
-    if (failed.length) await enqueuePendingMemoryDeletes(failed);
+    if (completed.length) await removePendingMemoryDeletes(completed);
   });
 }
 
@@ -374,6 +377,7 @@ export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: s
   const accountId = loadActiveAccountId();
   if (!accountId) return;
   const pendingDelete = { accountId, characterId, memoryOnly: true };
+  await enqueuePendingBulkVectorDelete(pendingDelete);
   await removePendingMemoryIndexesForCharacter(characterId, true);
   await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId && (entry.type === "core" || entry.type === "long_term"));
   try {
@@ -406,6 +410,7 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
   const accountId = loadActiveAccountId();
   if (!accountId) return;
   const pendingDelete = { accountId, characterId, memoryOnly: false };
+  await enqueuePendingBulkVectorDelete(pendingDelete);
   await removePendingMemoryIndexesForCharacter(characterId);
   await removeImportedMemoryPendingWhere(entry => entry.characterId === characterId);
   try {
