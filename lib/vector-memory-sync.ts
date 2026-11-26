@@ -291,6 +291,7 @@ async function retryPendingBulkVectorDeletesUnlocked(): Promise<number> {
     try {
       const response = await fetch("/api/vector-memory-entry", {
         method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        signal: AbortSignal.timeout(20_000),
         body: JSON.stringify(item.memoryOnly ? { characterId: item.characterId, memoryOnly: true } : { characterId: item.characterId }),
       });
       if (response.ok) {
@@ -315,6 +316,7 @@ async function retryPendingMemoryVectorDeletesUnlocked(): Promise<number> {
     try {
       const response = await fetch("/api/vector-memory-entry", {
         method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        signal: AbortSignal.timeout(20_000),
         body: JSON.stringify({ characterId: entry.characterId, sourceApp: entry.sourceApp, sourceId: entry.id, sourceKind: entry.type === "core" ? "core_memory" : "long_term_memory" }),
       });
       if (response.ok) completed.push(entry);
@@ -362,6 +364,8 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
       try {
         const response = await fetch("/api/vector-memory-entry", {
           method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+          signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(20_000),
           body: JSON.stringify({ characterId: entry.characterId, sourceApp: entry.sourceApp, sourceId: entry.id, sourceKind: vectorSourceKind(entry) }),
         });
         if (response.ok) completed.push(pendingEntry);
@@ -595,6 +599,7 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
+        signal: AbortSignal.timeout(45_000),
         body: JSON.stringify({ entries: batch.map(entry => ({
           id: entry.id,
           characterId: entry.characterId,
