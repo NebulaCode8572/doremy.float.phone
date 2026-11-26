@@ -27,9 +27,9 @@ export function VectorMemoryGenerationBootstrap() {
 
   const refresh = useCallback(async () => {
     if (!account.id || account.id !== loadActiveAccountId()) return;
-    await hydrateKvDb();
-    const characterIds = [...new Set(loadCharacters().map(character => character.id))];
     try {
+      await hydrateKvDb();
+      const characterIds = [...new Set(loadCharacters().map(character => character.id))];
       const refreshedCharacterIds = new Set<string>();
       for (let offset = 0; offset < characterIds.length; offset += 200) {
         if (account.id !== loadActiveAccountId()) return;
