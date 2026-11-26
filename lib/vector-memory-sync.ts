@@ -294,7 +294,7 @@ async function retryPendingMemoryVectorDeletesUnlocked(): Promise<number> {
     try {
       const response = await fetch("/api/vector-memory-entry", {
         method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-        body: JSON.stringify({ characterId: entry.characterId, sourceApp: entry.sourceApp, sourceId: entry.id, sourceKind: vectorSourceKind(entry) }),
+        body: JSON.stringify({ characterId: entry.characterId, sourceApp: entry.sourceApp, sourceId: entry.id, sourceKind: entry.type === "core" ? "core_memory" : "long_term_memory" }),
       });
       if (response.ok) completed.push(entry);
     } catch { /* Retain failed deletion for a later retry. */ }
@@ -581,7 +581,7 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
       }
       for (let index = 0; index < batch.length; index++) {
         const entry = batch[index];
-        const result = results[index] as { success?: unknown; status?: unknown; revision?: unknown } | null;
+        const result = results[index] as { success?: unknown; status?: unknown; revision?: unknown; currentRevision?: unknown } | null;
         if (result?.success === true && (result.status === "committed" || result.status === "already_committed")
           && Number.isSafeInteger(result.revision) && Number(result.revision) > 0) {
           await persistVectorMemoryRevision(entry, Number(result.revision));
