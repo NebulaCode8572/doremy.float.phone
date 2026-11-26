@@ -670,6 +670,8 @@ export async function backfillLocalMemoryVectors(allowedCharacterIds?: string[])
   if (!accountId) return 0;
   const allowed = allowedCharacterIds ? new Set(allowedCharacterIds) : null;
   const characterIds = (await getAllCharacterIdsWithMemories()).filter(characterId => !allowed || allowed.has(characterId));
+  const queuedIndexKeys = new Set(loadPendingMemoryIndexes().map(pendingEntryKey));
+  const queuedImportKeys = new Set(loadImportedMemoryPending().map(pendingEntryKey));
   let queued = 0;
   for (const characterId of characterIds) {
     if (loadActiveAccountId() !== accountId) break;
@@ -678,6 +680,8 @@ export async function backfillLocalMemoryVectors(allowedCharacterIds?: string[])
     const localEntries = await loadMemoryEntries(characterId);
     const candidates: VectorSyncEntry[] = [];
     for (const entry of localEntries) {
+      if (queuedIndexKeys.has(pendingEntryKey(entry as VectorSyncEntry))
+        || queuedImportKeys.has(pendingEntryKey(entry as VectorSyncEntry))) continue;
       if ((entry.type !== "core" && entry.type !== "long_term")
         || (!entry.vectorMemoryAccountId && entry.sourceApp !== "chat")
         || (entry.vectorMemoryAccountId && entry.vectorMemoryAccountId !== accountId)
@@ -753,8 +757,11 @@ export async function syncImportedMemoryPending(allowedCharacterIds?: string[]):
     await hydrateKvDb();
     const accountId = loadActiveAccountId();
     const allowed = allowedCharacterIds ? new Set(allowedCharacterIds) : null;
+    const indexedKeys = new Set(loadPendingMemoryIndexes().map(pendingEntryKey));
     const pending = loadImportedMemoryPending().filter(entry =>
-      entry.vectorMemoryAccountId === accountId && (!allowed || allowed.has(entry.characterId))
+      entry.vectorMemoryAccountId === accountId
+      && (!allowed || allowed.has(entry.characterId))
+      && !indexedKeys.has(pendingEntryKey(entry))
     );
     if (!pending.length) return { synced: 0, success: true };
     const ready = pending.filter(entry =>
