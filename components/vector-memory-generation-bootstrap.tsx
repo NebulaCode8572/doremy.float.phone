@@ -8,6 +8,11 @@ import { CHARACTERS_UPDATED_EVENT, loadCharacters } from "@/lib/character-storag
 import { saveCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 import { hydrateChatStorage, isChatStorageHydrated, loadChatMessages, loadChatSessions, backfillHistoricalChatVectors } from "@/lib/chat-storage";
 import { retryPendingChatVectorChunks } from "@/lib/vector-memory-chat-sync";
+import {
+  retryPendingMemoryIndexes,
+  retryPendingMemoryVectorDeletes,
+  syncImportedMemoryPending,
+} from "@/lib/vector-memory-sync";
 
 type GenerationResult = {
   characterId: string;
@@ -51,6 +56,22 @@ export function VectorMemoryGenerationBootstrap() {
       }
       if (account.id !== loadActiveAccountId()
         || characterIds.some(characterId => !refreshedCharacterIds.has(characterId))) return;
+      // Recover durable memory-index and deletion queues after fresh server
+      // generations are cached. Each queue is isolated so one failure does not
+      // prevent chat-chunk recovery or historical backfill.
+      await retryPendingMemoryVectorDeletes().catch(error => {
+        console.warn("[VectorMemory] Pending memory deletions remain queued.", error);
+      });
+      if (account.id !== loadActiveAccountId()) return;
+      await retryPendingMemoryIndexes().catch(error => {
+        console.warn("[VectorMemory] Pending memory indexes remain queued.", error);
+      });
+      if (account.id !== loadActiveAccountId()) return;
+      await syncImportedMemoryPending().catch(error => {
+        console.warn("[VectorMemory] Imported memory indexes remain queued.", error);
+      });
+      if (account.id !== loadActiveAccountId()) return;
+
       await hydrateChatStorage();
       if (!isChatStorageHydrated() || account.id !== loadActiveAccountId()) return;
       await retryPendingChatVectorChunks(loadChatSessions(), loadChatMessages);
