@@ -9,6 +9,7 @@ export async function retrieveVectorMemoryForPrompt(characterId: string, query: 
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
+      signal: AbortSignal.timeout(8_000),
       body: JSON.stringify({ characterId, query: query.slice(0, 5000) }),
     });
     if (!response.ok) {
