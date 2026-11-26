@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { encodeSupabaseFilter, supabaseRestFetch } from "@/lib/server/supabase-rest";
+import { encodeSupabaseFilter, vectorMemorySupabaseRestFetch } from "@/lib/server/supabase-rest";
 import { resolvePublicEndpoint } from "@/lib/server/vision-credentials";
 
 const TABLE = "app_user_vector_memory_settings";
@@ -26,7 +26,7 @@ function decryptKey(row: Row): string {
   return Buffer.concat([decipher.update(Buffer.from(row.api_key_ciphertext, "base64")), decipher.final()]).toString("utf8");
 }
 export async function loadVectorMemorySettings(userId: string): Promise<{ publicSettings: VectorMemoryPublicSettings; apiKey: string }> {
-  const res = await supabaseRestFetch<Row[]>(`${TABLE}?user_id=eq.${encodeSupabaseFilter(userId)}&select=base_url,model,api_key_ciphertext,api_key_iv,api_key_tag,updated_at&limit=1`);
+  const res = await vectorMemorySupabaseRestFetch<Row[]>(`${TABLE}?user_id=eq.${encodeSupabaseFilter(userId)}&select=base_url,model,api_key_ciphertext,api_key_iv,api_key_tag,updated_at&limit=1`);
   if (!res.ok) throw new Error(res.error);
   const row = res.data[0];
   if (!row) return { publicSettings: { configured: false, baseUrl: "", model: "BAAI/bge-m3", dimensions: 1024 }, apiKey: "" };
@@ -43,7 +43,7 @@ export async function saveVectorMemorySettings(userId: string, input: { baseUrl:
   if (!apiKey) throw new Error("请填写 API Key");
   if (apiKey.length > 8192) throw new Error("API Key 长度超过限制");
   const payload = { user_id: userId, base_url: baseUrl, model, ...encryptKey(apiKey), updated_at: new Date().toISOString() };
-  const result = await supabaseRestFetch<Row[]>(TABLE, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(payload) });
+  const result = await vectorMemorySupabaseRestFetch<Row[]>(TABLE, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(payload) });
   if (!result.ok) throw new Error(result.error);
   return { configured: true, baseUrl, model, dimensions: 1024, updatedAt: payload.updated_at };
 }
