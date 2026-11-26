@@ -2054,7 +2054,7 @@ export async function buildChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
-    if (memConfig.vectorMemoryEnabled && !session.isGroup
+    if (!session.isGroup
         && session.vectorMemoryAccountId === loadActiveAccountId()) {
         const vectorRecallText = await retrieveVectorMemoryForPrompt(character.id, wbActivationContext).catch(() => "");
         if (vectorRecallText) llmMessages.push({ role: "system", content: vectorRecallText });
