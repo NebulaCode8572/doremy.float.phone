@@ -79,7 +79,7 @@ export function getVectorMemorySupabaseServerConfig(): SupabaseConfig | null {
     || process.env.VECTOR_MEMORY_SUPABASE_SECRET_KEY;
   if (dedicatedUrl || dedicatedKey) {
     if (!dedicatedUrl || !dedicatedKey) return null;
-    return { url: dedicatedUrl.replace(/\\/$/, ""), key: dedicatedKey };
+    return { url: dedicatedUrl.replace(/\/$/, ""), key: dedicatedKey };
   }
   return getSupabaseServerConfig();
 }
