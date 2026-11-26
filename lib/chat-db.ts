@@ -262,7 +262,7 @@ export async function dbStampSessionVectorMemoryAndWait(
 export async function dbUpdateMessageOrdersAndWait(
     updates: Array<{ id: string; order: number }>,
 ): Promise<void> {
-    for ( (let start = 0; start < updates.length; start += 500) {
+    for (let start = 0; start < updates.length; start += 500) {
         const batch = updates.slice(start, start + 500);
         await chatDb.transaction("rw", chatDb.messages, async () => {
             for (const item of batch) {
