@@ -6,6 +6,7 @@ import { hydrateKvDb } from "@/lib/kv-db";
 import { loadActiveAccountId } from "@/lib/account-client";
 import { CHARACTERS_UPDATED_EVENT, loadCharacters } from "@/lib/character-storage";
 import { saveCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
+import { hydrateChatStorage, backfillHistoricalChatVectors } from "@/lib/chat-storage";
 
 type GenerationResult = {
   characterId: string;
@@ -45,6 +46,10 @@ export function VectorMemoryGenerationBootstrap() {
           });
         }
       }
+      if (account.id !== loadActiveAccountId()) return;
+      await hydrateChatStorage();
+      if (account.id !== loadActiveAccountId()) return;
+      await backfillHistoricalChatVectors();
     } catch {
       // Generation unavailable means cloud indexing pauses; local chat/memory writes continue.
     }
