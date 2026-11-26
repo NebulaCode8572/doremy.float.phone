@@ -6,15 +6,23 @@ import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration }
 
 export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata" | "vectorMemoryAccountId" | "vectorMemoryCharacterGeneration" | "vectorMemoryMemoryGeneration" | "vectorMemoryRevision" | "vectorMemoryConflictRevision" | "vectorMemoryPendingOperationId" | "vectorMemoryPendingFingerprint">, "sourceApp"> & { sourceApp: string; expectedRevision?: number };
 
-function hasValidGeneration(entry: VectorSyncEntry): boolean {
+function isEligibleVectorMemoryEntry(entry: VectorSyncEntry): boolean {
   return typeof entry.vectorMemoryAccountId === "string" && entry.vectorMemoryAccountId.length > 0
-    && Number.isSafeInteger(entry.vectorMemoryCharacterGeneration)
-    && (entry.vectorMemoryCharacterGeneration ?? -1) >= 0
-    && Number.isSafeInteger(entry.vectorMemoryMemoryGeneration)
-    && (entry.vectorMemoryMemoryGeneration ?? -1) >= 0
+    && typeof entry.id === "string" && entry.id.length > 0
+    && typeof entry.characterId === "string" && entry.characterId.length > 0
+    && typeof entry.sourceApp === "string" && entry.sourceApp.length > 0
+    && typeof entry.content === "string" && entry.content.trim().length > 0
     && entry.metadata?.includesGroupChat !== true
     && entry.metadata?.includesStaleChat !== true
     && entry.metadata?.includesUnverifiedTimeline !== true;
+}
+
+function hasValidGeneration(entry: VectorSyncEntry): boolean {
+  return isEligibleVectorMemoryEntry(entry)
+    && Number.isSafeInteger(entry.vectorMemoryCharacterGeneration)
+    && (entry.vectorMemoryCharacterGeneration ?? -1) >= 0
+    && Number.isSafeInteger(entry.vectorMemoryMemoryGeneration)
+    && (entry.vectorMemoryMemoryGeneration ?? -1) >= 0;
 }
 
 
@@ -27,7 +35,7 @@ export function loadImportedMemoryPending(): ImportedMemoryPendingEntry[] {
     const raw = kvGet(IMPORT_PENDING_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry.id === "string" && typeof entry.characterId === "string" && typeof entry.sourceApp === "string" && (entry.type === "core" || entry.type === "long_term") && typeof entry.content === "string" && typeof entry.createdAt === "string" && typeof entry.updatedAt === "string" && hasValidGeneration(entry)) : [];
+    return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry.id === "string" && typeof entry.characterId === "string" && typeof entry.sourceApp === "string" && (entry.type === "core" || entry.type === "long_term") && typeof entry.content === "string" && typeof entry.createdAt === "string" && typeof entry.updatedAt === "string" && isEligibleVectorMemoryEntry(entry)) : [];
   } catch {
     return [];
   }
@@ -71,10 +79,8 @@ export async function addImportedMemoryPending(entries: ImportedMemoryPendingEnt
     }
   }
 
-  const explicitlyImported = entries.flatMap(entry => {
+  const explicitlyImported = entries.map(entry => {
     const current = generations.get(entry.characterId);
-    // If offline/no cache, the import remains local-only and is not queued.
-    if (!current) return [];
     const {
       vectorMemoryRevision: _importedRevision,
       vectorMemoryConflictRevision: _importedConflictRevision,
@@ -82,13 +88,15 @@ export async function addImportedMemoryPending(entries: ImportedMemoryPendingEnt
       vectorMemoryPendingFingerprint: _importedFingerprint,
       ...entryWithoutOldServerState
     } = entry;
-    return [{
+    return {
       ...entryWithoutOldServerState,
       vectorMemoryAccountId: accountId,
-      vectorMemoryCharacterGeneration: current.characterGeneration,
-      vectorMemoryMemoryGeneration: current.memoryGeneration,
-    }];
-  });
+      ...(current ? {
+        vectorMemoryCharacterGeneration: current.characterGeneration,
+        vectorMemoryMemoryGeneration: current.memoryGeneration,
+      } : {}),
+    };
+  }).filter(isEligibleVectorMemoryEntry);
   if (!explicitlyImported.length) return loadImportedMemoryPending().length;
   const existing = loadImportedMemoryPending();
   const merged = new Map(existing.map((entry) => [pendingEntryKey(entry), entry]));
@@ -200,7 +208,7 @@ function loadPendingMemoryIndexes(): VectorSyncEntry[] {
   } catch { return []; }
 }
 async function enqueuePendingMemoryIndexes(entries: VectorSyncEntry[]): Promise<void> {
-  entries = entries.filter(hasValidGeneration);
+  entries = entries.filter(isEligibleVectorMemoryEntry);
   if (!entries.length) return;
   await hydrateKvDb();
   const merged = new Map(loadPendingMemoryIndexes().map(entry => [pendingEntryKey(entry), entry]));
@@ -449,6 +457,11 @@ async function persistVectorMemoryRevision(entry: VectorSyncEntry, revision: num
   const sameOperation = current.vectorMemoryPendingOperationId === entry.vectorMemoryPendingOperationId;
   await saveMemoryEntry({
     ...current,
+    // Persist the server generation with the acknowledged revision so subsequent
+    // local edits can immediately create valid CAS snapshots.
+    vectorMemoryAccountId: entry.vectorMemoryAccountId,
+    vectorMemoryCharacterGeneration: entry.vectorMemoryCharacterGeneration,
+    vectorMemoryMemoryGeneration: entry.vectorMemoryMemoryGeneration,
     // Even if the user edited the local source while the request was in flight,
     // this revision is the server-acknowledged base that the newer edit must CAS
     // against. Preserve the newer content and any newer pending operation.
@@ -487,7 +500,7 @@ async function clearVectorMemoryConflict(entry: VectorSyncEntry): Promise<void> 
 
 async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]): Promise<boolean> {
   const accountId = loadActiveAccountId();
-  entries = entries.filter(entry => entry.vectorMemoryAccountId === accountId && hasValidGeneration(entry));
+  entries = entries.filter(entry => entry.vectorMemoryAccountId === accountId && isEligibleVectorMemoryEntry(entry));
   if (!entries.length || typeof window === "undefined") return false;
 
   // Cloud mutations are serialized, but callers may have captured an entry before
@@ -511,7 +524,23 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
       vectorMemoryPendingFingerprint: entry.vectorMemoryPendingFingerprint,
       expectedRevision: entry.expectedRevision,
     } : entry;
-  }).filter(entry => entry.vectorMemoryAccountId === accountId && hasValidGeneration(entry));
+  }).filter(entry => entry.vectorMemoryAccountId === accountId && isEligibleVectorMemoryEntry(entry))
+    .map(entry => {
+      if (hasValidGeneration(entry)) return entry;
+      const generation = loadCachedVectorMemoryGeneration(accountId, entry.characterId);
+      return generation ? {
+        ...entry,
+        vectorMemoryCharacterGeneration: generation.characterGeneration,
+        vectorMemoryMemoryGeneration: generation.memoryGeneration,
+      } : entry;
+    });
+
+  // Keep account-owned entries durable while generation bootstrap is unavailable.
+  // Once a fresh generation is cached, retryPendingMemoryIndexes can promote them.
+  const waitingForGeneration = entries.filter(entry => !hasValidGeneration(entry));
+  if (waitingForGeneration.length) await enqueuePendingMemoryIndexes(waitingForGeneration);
+  entries = entries.filter(hasValidGeneration);
+  if (!entries.length) return false;
 
   const prepared = entries.map(entry => {
     const fingerprint = vectorMemoryPayloadFingerprint(entry);
