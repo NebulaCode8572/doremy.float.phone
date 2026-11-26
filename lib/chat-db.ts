@@ -194,6 +194,12 @@ export function dbPutMessages(msgs: ChatMessage[]): void {
     chatDb.messages.bulkPut(msgs).catch(err => console.warn("[ChatDB] bulkPut messages failed:", err));
 }
 
+/** Awaited bulk persistence for migrations that must finish before cloud indexing. */
+export async function dbPutMessagesAndWait(msgs: ChatMessage[]): Promise<void> {
+    if (msgs.length === 0) return;
+    await chatDb.messages.bulkPut(msgs);
+}
+
 // 可等待、错误上抛、分块提交的批量写入。导入聊天记录这类大批量落库必须
 // 感知真实结果（配额满/写入失败要能反馈给用户），且分块避免巨型单事务
 // 卡死主线程；每块之间自然让出事件循环，页面保持可响应。
@@ -224,6 +230,12 @@ export function dbPutSession(session: ChatSession): void {
 
 export function dbPutSessions(sessions: ChatSession[]): void {
     chatDb.sessions.bulkPut(sessions).catch(err => console.warn("[ChatDB] bulkPut sessions failed:", err));
+}
+
+/** Awaited bulk persistence for migrations that must finish before cloud indexing. */
+export async function dbPutSessionsAndWait(sessions: ChatSession[]): Promise<void> {
+    if (sessions.length === 0) return;
+    await chatDb.sessions.bulkPut(sessions);
 }
 
 export function dbReplaceSessions(sessions: ChatSession[]): void {
