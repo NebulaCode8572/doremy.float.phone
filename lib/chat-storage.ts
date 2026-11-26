@@ -4,7 +4,7 @@ import {
     chatDb,
     initChatDb,
     dbPutMessage, dbPutMessageAndWait, dbDeleteMessage, dbDeleteMessagesBySession, dbDeleteMessagesByIds,
-    dbPutMessages, dbPutSessions, dbPutContacts, dbDeleteSession,
+    dbPutMessages, dbPutSessions, dbPutMessagesAndWait, dbPutSessionsAndWait, dbPutContacts, dbDeleteSession,
     dbReplaceContacts, dbReplaceSessions, dbBulkPutMessages,
 } from "./chat-db";
 import { resolveUserIdentity } from "./settings-storage";
@@ -1345,8 +1345,8 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
                         : generation.characterGeneration,
             };
             const sessionIndex = _sessionsCache.findIndex(item => item.id === session.id);
+            await dbPutSessionsAndWait([session]);
             if (sessionIndex >= 0) _sessionsCache[sessionIndex] = session;
-            dbPutSessions([session]);
 
             const sessionMessages = _messagesCache.filter(message => message.sessionId === session.id);
             const eligibleMessages: ChatMessage[] = [];
@@ -1364,13 +1364,15 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
                 eligibleMessages.push(stamped);
                 if (stamped.vectorMemoryAccountId !== message.vectorMemoryAccountId
                     || stamped.vectorMemoryCharacterGeneration !== message.vectorMemoryCharacterGeneration) {
-                    const index = _messagesCache.findIndex(item => item.id === message.id);
-                    if (index >= 0) _messagesCache[index] = stamped;
                     changedMessages.push(stamped);
                 }
             }
             if (changedMessages.length) {
-                dbPutMessages(changedMessages);
+                await dbPutMessagesAndWait(changedMessages);
+                for (const stamped of changedMessages) {
+                    const index = _messagesCache.findIndex(item => item.id === stamped.id);
+                    if (index >= 0) _messagesCache[index] = stamped;
+                }
                 updatedMessageCount += changedMessages.length;
             }
 
