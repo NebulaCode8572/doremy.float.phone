@@ -73,17 +73,19 @@ export function VectorMemoryGenerationBootstrap() {
       if (account.id !== loadActiveAccountId()) return;
       const refreshedIds = [...refreshedCharacterIds];
       if (refreshedIds.length) {
-        await backfillLocalMemoryVectors(refreshedIds).catch(error => {
-          console.warn("[VectorMemory] Historical core/long-term memory backfill remains queued.", error);
-          return 0;
-        });
-        if (account.id !== loadActiveAccountId()) return;
+        // Resume exact persisted operations first. Historical backfill must not
+        // create a new operation ID for a source whose previous CAS may have committed.
         await retryPendingMemoryIndexes(refreshedIds).catch(error => {
           console.warn("[VectorMemory] Pending memory indexes remain queued.", error);
         });
         if (account.id !== loadActiveAccountId()) return;
         await syncImportedMemoryPending(refreshedIds).catch(error => {
           console.warn("[VectorMemory] Imported memory indexes remain queued.", error);
+        });
+        if (account.id !== loadActiveAccountId()) return;
+        await backfillLocalMemoryVectors(refreshedIds).catch(error => {
+          console.warn("[VectorMemory] Historical core/long-term memory backfill remains queued.", error);
+          return 0;
         });
         if (account.id !== loadActiveAccountId()) return;
       }
