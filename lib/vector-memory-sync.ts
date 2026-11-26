@@ -365,7 +365,6 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
         const response = await fetch("/api/vector-memory-entry", {
           method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
           signal: AbortSignal.timeout(20_000),
-        signal: AbortSignal.timeout(20_000),
           body: JSON.stringify({ characterId: entry.characterId, sourceApp: entry.sourceApp, sourceId: entry.id, sourceKind: vectorSourceKind(entry) }),
         });
         if (response.ok) completed.push(pendingEntry);
