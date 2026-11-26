@@ -1345,8 +1345,27 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
                         : generation.characterGeneration,
             };
             const sessionIndex = _sessionsCache.findIndex(item => item.id === session.id);
+            if (sessionIndex < 0 || loadActiveAccountId() !== accountId) continue;
             await dbPutSessionsAndWait([session]);
-            if (sessionIndex >= 0) _sessionsCache[sessionIndex] = session;
+
+            // A user may delete the session while IndexedDB persistence is pending.
+            // Never let this backfill resurrect it or index its messages afterward.
+            const currentSessionIndex = _sessionsCache.findIndex(item => item.id === session.id);
+            if (currentSessionIndex < 0 || loadActiveAccountId() !== accountId) {
+                await chatDb.sessions.delete(session.id);
+                continue;
+            }
+            let effectiveSession = _sessionsCache[currentSessionIndex];
+            if (effectiveSession.vectorMemoryAccountId !== accountId
+                || effectiveSession.vectorMemoryCharacterGeneration !== session.vectorMemoryCharacterGeneration) {
+                effectiveSession = {
+                    ...effectiveSession,
+                    vectorMemoryAccountId: accountId,
+                    vectorMemoryCharacterGeneration: session.vectorMemoryCharacterGeneration,
+                };
+                _sessionsCache[currentSessionIndex] = effectiveSession;
+                await dbPutSessionsAndWait([effectiveSession]);
+            }
 
             let sessionMessages = _messagesCache.filter(message => message.sessionId === session.id);
             if (sessionMessages.some(message => !Number.isSafeInteger(message.order) || (message.order ?? -1) < 0)) {
@@ -1395,7 +1414,7 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
             for (let offset = 0; offset < buckets.length; offset += 16) {
                 if (loadActiveAccountId() !== accountId) return;
                 refreshChatMessageBucketsToVectorCloud(
-                    session,
+                    effectiveSession,
                     _messagesCache,
                     buckets.slice(offset, offset + 16),
                 );
