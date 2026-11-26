@@ -186,7 +186,7 @@ export async function runSummarizationPipeline(
     };
     const longTermEntry: MemoryEntry = stampNewMemoryEntry(longTermEntryData);
     await saveMemoryEntry(longTermEntry);
-    if (config.vectorMemoryEnabled) void syncMemoryEntriesToVectorCloud([longTermEntry]);
+    void syncMemoryEntriesToVectorCloud([longTermEntry]);
 
     // Update last summarized timestamp + reset counter
     setLastSummarizedTimestamp(characterId, latest);
