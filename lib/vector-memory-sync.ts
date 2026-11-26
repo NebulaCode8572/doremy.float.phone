@@ -1,6 +1,6 @@
 import type { MemoryEntry } from "@/lib/memory-types";
 import { hydrateKvDb, kvGet, kvSetAsync, registerKvMigration } from "@/lib/kv-db";
-import { loadMemoryEntries, saveMemoryEntry } from "@/lib/memory-storage";
+import { getAllCharacterIdsWithMemories, loadMemoryEntries, saveMemoryEntry } from "@/lib/memory-storage";
 import { loadActiveAccountId } from "@/lib/account-client";
 import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
@@ -644,6 +644,55 @@ export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[])
     return syncMemoryEntriesToVectorCloudUnlocked(entries);
   });
 }
+/**
+ * Recover cloud indexing for older local core/long-term memories that predate
+ * durable pending-index records. Only the current account's eligible, verified
+ * memories are stamped and uploaded; unsafe/unverified timeline summaries remain local.
+ */
+export async function backfillLocalMemoryVectors(allowedCharacterIds?: string[]): Promise<number> {
+  if (typeof window === "undefined") return 0;
+  await hydrateKvDb();
+  const accountId = loadActiveAccountId();
+  if (!accountId) return 0;
+  const allowed = allowedCharacterIds ? new Set(allowedCharacterIds) : null;
+  const characterIds = (await getAllCharacterIdsWithMemories()).filter(characterId => !allowed || allowed.has(characterId));
+  let queued = 0;
+  for (const characterId of characterIds) {
+    if (loadActiveAccountId() !== accountId) break;
+    const generation = loadCachedVectorMemoryGeneration(accountId, characterId);
+    if (!generation) continue;
+    const localEntries = await loadMemoryEntries(characterId);
+    const candidates: VectorSyncEntry[] = [];
+    for (const entry of localEntries) {
+      if ((entry.type !== "core" && entry.type !== "long_term")
+        || (entry.vectorMemoryAccountId && entry.vectorMemoryAccountId !== accountId)
+        || entry.metadata?.includesGroupChat === true
+        || entry.metadata?.includesStaleChat === true
+        || entry.metadata?.includesUnverifiedTimeline === true) continue;
+      const stamped: MemoryEntry = {
+        ...entry,
+        vectorMemoryAccountId: accountId,
+        vectorMemoryCharacterGeneration: generation.characterGeneration,
+        vectorMemoryMemoryGeneration: generation.memoryGeneration,
+      };
+      if (entry.vectorMemoryAccountId !== accountId
+        || entry.vectorMemoryCharacterGeneration !== generation.characterGeneration
+        || entry.vectorMemoryMemoryGeneration !== generation.memoryGeneration) {
+        await saveMemoryEntry(stamped);
+      }
+      if (isEligibleVectorMemoryEntry(stamped)) candidates.push(stamped as VectorSyncEntry);
+    }
+    if (candidates.length && loadActiveAccountId() === accountId) {
+      await syncMemoryEntriesToVectorCloud(candidates).catch(error => {
+        console.warn("[VectorMemory] Historical memory backfill remains queued.", error);
+        return false;
+      });
+      queued += candidates.length;
+    }
+  }
+  return queued;
+}
+
 export async function retryPendingMemoryIndexes(allowedCharacterIds?: string[]): Promise<number> {
   return withVectorCloudMutation(async () => {
     await hydrateKvDb();
