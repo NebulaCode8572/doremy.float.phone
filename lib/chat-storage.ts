@@ -1388,7 +1388,11 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
             }
 
             const stampCandidates = sessionMessages
-                .filter(message => !message.vectorMemoryAccountId || message.vectorMemoryAccountId === accountId)
+                .filter(message =>
+                    (!message.vectorMemoryAccountId || message.vectorMemoryAccountId === accountId)
+                    && (message.vectorMemoryAccountId !== accountId
+                        || !Number.isSafeInteger(message.vectorMemoryCharacterGeneration))
+                )
                 .map(message => ({
                     id: message.id,
                     characterGeneration: Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
