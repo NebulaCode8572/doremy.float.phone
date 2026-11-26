@@ -156,7 +156,7 @@ export async function runCoreMemoryPipeline(
         }
     }
     await saveMemoryEntry(coreEntry);
-    if (config.vectorMemoryEnabled) void syncMemoryEntriesToVectorCloud([coreEntry]);
+    void syncMemoryEntriesToVectorCloud([coreEntry]);
 
     setLastCoreSummarizedTimestamp(characterId, latest);
     if (!options?.force) {
