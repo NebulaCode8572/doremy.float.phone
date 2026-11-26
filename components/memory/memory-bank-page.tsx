@@ -586,13 +586,11 @@ export function MemoryBankPage({
                 });
 
             await saveMemoryEntry(entry);
-            if (loadMemoryConfig().vectorMemoryEnabled) {
-                void syncMemoryEntriesToVectorCloud([entry]).then(async () => {
-                    const refreshed = await loadMemoryEntriesByType(entry.characterId, type);
-                    if (type === "core") setCoreEntries(refreshed);
-                    else setLongTermEntries(refreshed);
-                }).catch(error => console.warn("[MemoryBank] Vector Memory sync follow-up failed:", error));
-            } else void deleteMemoryEntriesFromVectorCloud([entry]);
+            void syncMemoryEntriesToVectorCloud([entry]).then(async () => {
+                const refreshed = await loadMemoryEntriesByType(entry.characterId, type);
+                if (type === "core") setCoreEntries(refreshed);
+                else setLongTermEntries(refreshed);
+            }).catch(error => console.warn("[MemoryBank] Vector Memory sync follow-up failed:", error));
             if (type === "core") {
                 setCoreEntries(prev => source ? prev.map(item => item.id === entry.id ? entry : item) : [...prev, entry]);
             } else {
@@ -730,10 +728,6 @@ export function MemoryBankPage({
     const handleUseLocalMemoryVersion = async (entry: MemoryEntry) => {
         const conflictRevision = entry.vectorMemoryConflictRevision;
         if (!Number.isSafeInteger(conflictRevision) || (conflictRevision ?? -1) < 0) return;
-        if (!loadMemoryConfig().vectorMemoryEnabled) {
-            showNotice("请先开启 Vector Memory，再确认同步本地版本");
-            return;
-        }
         try {
             // This is an explicit user decision to replace the newer cloud source
             // with this device's current local content.
@@ -1159,11 +1153,6 @@ export function MemoryBankPage({
                         </div>
                         <div className="menu-right">
                             <VectorMemorySettings />
-                            <Toggle checked={config.vectorMemoryEnabled ?? false} onChange={(v) => {
-                                const next = { ...config, vectorMemoryEnabled: v };
-                                setConfig(next);
-                                saveMemoryConfig(next);
-                            }} />
                         </div>
                     </div>
                 </div>
