@@ -1319,10 +1319,11 @@ export async function backfillHistoricalChatVectors(allowedCharacterIds?: string
     if (!accountId) return;
 
     if (_vectorHistoryBackfillPromise) {
-        if (_vectorHistoryBackfillAccountId === accountId) return _vectorHistoryBackfillPromise;
+        // Do not drop a later character-scoped request just because another
+        // character's backfill is already running for the same account.
         await _vectorHistoryBackfillPromise;
         if (loadActiveAccountId() !== accountId) return;
-        return backfillHistoricalChatVectors();
+        return backfillHistoricalChatVectors(allowedCharacterIds);
     }
 
     _vectorHistoryBackfillAccountId = accountId;
