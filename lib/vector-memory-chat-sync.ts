@@ -86,7 +86,7 @@ function fingerprintChunk(content: string, messageIds: string[]): string {
   }
   return (hashA >>> 0).toString(36) + ":" + (hashB >>> 0).toString(36) + ":" + snapshot.length;
 }
-type PendingChatChunk = { accountId: string; characterId: string; sessionId: string; bucket: number; characterGeneration: number; operation: "upsert" | "delete" };
+type PendingChatChunk = { accountId: string; characterId: string; sessionId: string; bucket: number; characterGeneration?: number; operation: "upsert" | "delete" };
 let pendingStateQueue: Promise<void> = Promise.resolve();
 
 function readPendingChatChunks(): PendingChatChunk[] {
@@ -96,7 +96,8 @@ function readPendingChatChunks(): PendingChatChunk[] {
       item && typeof item.accountId === "string" && item.accountId.length > 0
       && typeof item.characterId === "string" && typeof item.sessionId === "string"
       && Number.isInteger(item.bucket) && item.bucket >= 0
-      && Number.isSafeInteger(item.characterGeneration) && item.characterGeneration >= 0
+      && (item.characterGeneration === undefined
+        || (Number.isSafeInteger(item.characterGeneration) && item.characterGeneration >= 0))
     ).map(item => ({ ...item, operation: item.operation === "delete" ? "delete" as const : "upsert" as const })) : [];
   } catch { return []; }
 }
@@ -199,6 +200,21 @@ export async function retryPendingChatVectorChunks(
   let queued = 0;
   for (const entry of pending) {
     const session = sessions.find(item => item.id === entry.sessionId && item.contactId === entry.characterId && item.vectorMemoryAccountId === accountId && !item.isGroup);
+    if (entry.characterGeneration === undefined) {
+      if (entry.operation !== "delete") continue;
+      enqueueChatChunkOperation(chunkQueueKey(entry.characterId, entry.sessionId, entry.bucket, undefined, accountId), async () => {
+        try {
+          await markChatChunkPending(entry);
+          await deleteChatChunk(accountId, entry.characterId, `session:${entry.sessionId}:chunk:${entry.bucket}`);
+          await clearChatChunkPending(entry);
+        } catch (error) {
+          await markChatChunkPending(entry);
+          throw error;
+        }
+      });
+      queued++;
+      continue;
+    }
     if (entry.operation === "delete" && !session) {
       try {
         const stateKey = activeChunkStateKey(entry.accountId, entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration);
@@ -320,23 +336,26 @@ export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, bu
   if (typeof window === "undefined" || !accountId || session.vectorMemoryAccountId !== accountId || session.isGroup || !session.contactId) return;
   for (const bucket of [...new Set(buckets.filter(value => Number.isInteger(value) && value >= 0))]) {
     const generation = session.vectorMemoryCharacterGeneration;
-    const queueEntry: PendingChatChunk | null = generation === undefined
-      ? null
-      : { accountId, characterId: session.contactId, sessionId: session.id, bucket, characterGeneration: generation, operation: "delete" };
+    const queueEntry: PendingChatChunk = {
+      accountId, characterId: session.contactId, sessionId: session.id, bucket,
+      ...(generation !== undefined ? { characterGeneration: generation } : {}),
+      operation: "delete",
+    };
     enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, generation, accountId), async () => {
       try {
+        await markChatChunkPending(queueEntry);
         if (generation === undefined) {
           await deleteChatChunk(accountId, session.contactId!, `session:${session.id}:chunk:${bucket}`);
+          await clearChatChunkPending(queueEntry);
           return;
         }
-        if (queueEntry) await markChatChunkPending(queueEntry);
         const stateKey = activeChunkStateKey(accountId, session.contactId!, session.id, bucket, generation);
         const state = loadActiveChunkState(stateKey);
         if (state.sourceId) await deleteChatChunk(accountId, session.contactId!, state.sourceId);
         await saveActiveChunkState(stateKey, { version: state.version });
-        if (queueEntry) await clearChatChunkPending(queueEntry);
+        await clearChatChunkPending(queueEntry);
       } catch (error) {
-        if (queueEntry) await markChatChunkPending(queueEntry);
+        await markChatChunkPending(queueEntry);
         throw error;
       }
     });
@@ -368,8 +387,18 @@ export function refreshChatMessageBucketsToVectorCloud(
       .filter(value => generationFilter === undefined || value === generationFilter))];
 
     if (generationFilter === undefined && affectedInBucket.some(item => !Number.isSafeInteger(item.vectorMemoryCharacterGeneration))) {
+      const legacyDelete: PendingChatChunk = {
+        accountId, characterId: session.contactId, sessionId: session.id, bucket, operation: "delete",
+      };
       enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, undefined, accountId), async () => {
-        await deleteChatChunk(accountId, session.contactId!, `session:${session.id}:chunk:${bucket}`);
+        try {
+          await markChatChunkPending(legacyDelete);
+          await deleteChatChunk(accountId, session.contactId!, `session:${session.id}:chunk:${bucket}`);
+          await clearChatChunkPending(legacyDelete);
+        } catch (error) {
+          await markChatChunkPending(legacyDelete);
+          throw error;
+        }
       });
     }
 
