@@ -58,3 +58,25 @@ This is a manual verification plan. No tests or device actions have been run.
 ## Pass criteria
 
 All checks above pass, the Supabase RPC metadata confirms RLS/service-role-only access and SECURITY INVOKER posture, and no build/type errors occur. Only then is the feature ready for broader real-device use.
+
+
+## Isolated Supabase test backend configuration
+
+The app's account/session system continues to use the primary application Supabase
+project. Vector Memory storage/settings/RPC calls can be routed to a separate test
+project with server-only environment variables:
+
+- `VECTOR_MEMORY_SUPABASE_URL`: isolated test project's project URL.
+- `VECTOR_MEMORY_SUPABASE_SERVICE_ROLE_KEY`: isolated test project's service-role/secret key. Server only; never use a `NEXT_PUBLIC_` prefix.
+- `VECTOR_MEMORY_CREDENTIAL_ENCRYPTION_KEY`: independent 32-byte key, encoded as 64 hexadecimal characters (or base64).
+
+If either dedicated Vector Memory Supabase variable is set, both must be set.
+When neither is set, Vector Memory falls back to the primary Supabase server
+configuration for backward compatibility. Account authentication never uses the
+dedicated Vector Memory project URL.
+
+For local testing, add these values only to the local server's ignored
+`.env.local` file. Generate the encryption key locally with
+`openssl rand -hex 32`; do not paste the key or service-role secret into chat,
+GitHub, browser/client variables, or committed files. The dedicated project must
+contain the Vector Memory migrations; it does not need the app's account tables.
