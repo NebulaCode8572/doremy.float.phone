@@ -24,6 +24,7 @@ export function VectorMemoryGenerationBootstrap() {
     const characterIds = [...new Set(loadCharacters().map(character => character.id))];
     if (!characterIds.length) return;
     try {
+      const refreshedCharacterIds = new Set<string>();
       for (let offset = 0; offset < characterIds.length; offset += 200) {
         if (account.id !== loadActiveAccountId()) return;
         const batch = characterIds.slice(offset, offset + 200);
@@ -34,7 +35,7 @@ export function VectorMemoryGenerationBootstrap() {
           cache: "no-store",
           body: JSON.stringify({ characterIds: batch }),
         });
-        if (!response.ok) continue;
+        if (!response.ok) return;
         const payload = await response.json().catch(() => null) as { results?: GenerationResult[] } | null;
         if (!Array.isArray(payload?.results) || account.id !== loadActiveAccountId()) return;
         for (const item of payload.results) {
@@ -44,9 +45,11 @@ export function VectorMemoryGenerationBootstrap() {
             characterGeneration: item.characterGeneration!,
             memoryGeneration: item.memoryGeneration!,
           });
+          refreshedCharacterIds.add(item.characterId);
         }
       }
-      if (account.id !== loadActiveAccountId()) return;
+      if (account.id !== loadActiveAccountId()
+        || characterIds.some(characterId => !refreshedCharacterIds.has(characterId))) return;
       await hydrateChatStorage();
       if (account.id !== loadActiveAccountId()) return;
       await backfillHistoricalChatVectors();
