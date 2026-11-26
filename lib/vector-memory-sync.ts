@@ -721,9 +721,13 @@ export async function retryPendingMemoryIndexes(allowedCharacterIds?: string[]):
       entry.vectorMemoryAccountId === accountId && (!allowed || allowed.has(entry.characterId))
     );
     if (!pending.length) return 0;
-    const success = await syncMemoryEntriesToVectorCloudUnlocked(pending);
-    if (success) await removePendingMemoryIndexes(pending);
-    return success ? pending.length : 0;
+    const ready = pending.filter(entry =>
+      hasValidGeneration(entry) || Boolean(loadCachedVectorMemoryGeneration(accountId, entry.characterId))
+    );
+    if (!ready.length) return 0;
+    const success = await syncMemoryEntriesToVectorCloudUnlocked(ready);
+    if (success) await removePendingMemoryIndexes(ready);
+    return success ? ready.length : 0;
   });
 }
 
@@ -744,8 +748,15 @@ export async function syncImportedMemoryPending(allowedCharacterIds?: string[]):
       entry.vectorMemoryAccountId === accountId && (!allowed || allowed.has(entry.characterId))
     );
     if (!pending.length) return { synced: 0, success: true };
-    const success = await syncMemoryEntriesToVectorCloudUnlocked(pending);
-    if (success) await removeSyncedImportedMemoryPending(pending);
-    return { synced: success ? pending.length : 0, success };
+    const ready = pending.filter(entry =>
+      hasValidGeneration(entry) || Boolean(loadCachedVectorMemoryGeneration(accountId, entry.characterId))
+    );
+    if (!ready.length) return { synced: 0, success: false };
+    const success = await syncMemoryEntriesToVectorCloudUnlocked(ready);
+    if (success) await removeSyncedImportedMemoryPending(ready);
+    return {
+      synced: success ? ready.length : 0,
+      success: success && ready.length === pending.length,
+    };
   });
 }
