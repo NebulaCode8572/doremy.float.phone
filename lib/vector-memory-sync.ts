@@ -63,6 +63,7 @@ export async function addImportedMemoryPending(entries: ImportedMemoryPendingEnt
         vectorMemoryCharacterGeneration: _oldCharacterGeneration,
         vectorMemoryMemoryGeneration: _oldMemoryGeneration,
         vectorMemoryRevision: _oldRevision,
+        vectorMemoryIndexedFingerprint: _oldIndexedFingerprint,
         vectorMemoryConflictRevision: _oldConflictRevision,
         vectorMemoryPendingOperationId: _oldOperationId,
         vectorMemoryPendingFingerprint: _oldFingerprint,
