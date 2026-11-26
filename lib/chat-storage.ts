@@ -1348,9 +1348,7 @@ export async function backfillHistoricalChatVectors(allowedCharacterIds?: string
                 const stampedGeneration = await dbStampSessionVectorMemoryAndWait(
                     effectiveSession.id,
                     accountId,
-                    Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)
-                        ? effectiveSession.vectorMemoryCharacterGeneration!
-                        : generation.characterGeneration,
+                    generation.characterGeneration,
                 );
                 if (loadActiveAccountId() !== accountId) return;
                 if (stampedGeneration === null) continue;
