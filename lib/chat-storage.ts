@@ -4,7 +4,8 @@ import {
     chatDb,
     initChatDb,
     dbPutMessage, dbPutMessageAndWait, dbDeleteMessage, dbDeleteMessagesBySession, dbDeleteMessagesByIds,
-    dbPutMessages, dbPutSessions, dbPutMessagesAndWait, dbPutSessionsAndWait, dbPutContacts, dbDeleteSession,
+    dbPutMessages, dbPutSessions, dbPutContacts, dbDeleteSession,
+    dbStampSessionVectorMemoryAndWait, dbUpdateMessageOrdersAndWait, dbStampMessagesVectorMemoryAndWait,
     dbReplaceContacts, dbReplaceSessions, dbBulkPutMessages,
 } from "./chat-db";
 import { resolveUserIdentity } from "./settings-storage";
@@ -1336,106 +1337,93 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
             const generation = loadCachedVectorMemoryGeneration(accountId, originalSession.contactId);
             if (!generation) continue;
 
-            const desiredCharacterGeneration = Number.isSafeInteger(originalSession.vectorMemoryCharacterGeneration)
-                ? originalSession.vectorMemoryCharacterGeneration
-                : generation.characterGeneration;
-            if (loadActiveAccountId() !== accountId) return;
             const sessionIndex = _sessionsCache.findIndex(item => item.id === originalSession.id);
             if (sessionIndex < 0) continue;
             let effectiveSession = _sessionsCache[sessionIndex];
+            if (effectiveSession.vectorMemoryAccountId && effectiveSession.vectorMemoryAccountId !== accountId) continue;
 
-            // Already-stamped sessions need no write. Avoid overwriting a newer
-            // preview/unread update with the stale snapshot captured at loop start.
             if (effectiveSession.vectorMemoryAccountId !== accountId
                 || !Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)) {
-                const stampedSession: ChatSession = {
-                    ...effectiveSession,
-                    vectorMemoryAccountId: accountId,
-                    vectorMemoryCharacterGeneration: Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)
-                        ? effectiveSession.vectorMemoryCharacterGeneration
-                        : desiredCharacterGeneration,
-                };
-                await dbPutSessionsAndWait([stampedSession]);
-
-                // A user may delete the session while IndexedDB persistence is pending.
-                // Never let this backfill resurrect it or index its messages afterward.
+                const stampedGeneration = await dbStampSessionVectorMemoryAndWait(
+                    effectiveSession.id,
+                    accountId,
+                    Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)
+                        ? effectiveSession.vectorMemoryCharacterGeneration!
+                        : generation.characterGeneration,
+                );
                 if (loadActiveAccountId() !== accountId) return;
+                if (stampedGeneration === null) continue;
+
+                // Merge only the two metadata fields into the latest cache object.
+                // If the session was deleted while IndexedDB was updating, do not recreate it.
                 const currentSessionIndex = _sessionsCache.findIndex(item => item.id === originalSession.id);
-                if (currentSessionIndex < 0) {
-                    await chatDb.sessions.delete(originalSession.id);
-                    continue;
-                }
-                effectiveSession = _sessionsCache[currentSessionIndex];
-                if (effectiveSession.vectorMemoryAccountId !== accountId
-                    || !Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)) {
-                    effectiveSession = {
-                        ...effectiveSession,
-                        vectorMemoryAccountId: accountId,
-                        vectorMemoryCharacterGeneration: Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)
-                            ? effectiveSession.vectorMemoryCharacterGeneration
-                            : stampedSession.vectorMemoryCharacterGeneration,
-                    };
-                    _sessionsCache[currentSessionIndex] = effectiveSession;
-                    await dbPutSessionsAndWait([effectiveSession]);
-                }
-            }
-
-            const session = effectiveSession;
-            let sessionMessages = _messagesCache.filter(message => message.sessionId === session.id);
-            if (sessionMessages.some(message => !Number.isSafeInteger(message.order) || (message.order ?? -1) < 0)) {
-                const originalOrderById = new Map(sessionMessages.map(message => [message.id, message.order]));
-                sessionMessages = [...sessionMessages]
-                    .sort(compareChatMessages)
-                    .map((message, index) => message.order === index ? message : { ...message, order: index });
-                const orderedById = new Map(sessionMessages.map(message => [message.id, message]));
-                const changedOrderMessages = sessionMessages.filter((message, index) => originalOrderById.get(message.id) !== index);
-                if (changedOrderMessages.length) {
-                    await dbPutMessagesAndWait(changedOrderMessages);
-                    _messagesCache = _messagesCache.map(message => orderedById.get(message.id) ?? message);
-                }
-            }
-            const eligibleMessages: ChatMessage[] = [];
-            const changedMessages: ChatMessage[] = [];
-            for (const message of sessionMessages) {
-                if (message.vectorMemoryAccountId && message.vectorMemoryAccountId !== accountId) continue;
-                const stamped: ChatMessage = {
-                    ...message,
+                if (currentSessionIndex < 0) continue;
+                const latestSession = _sessionsCache[currentSessionIndex];
+                if (latestSession.vectorMemoryAccountId && latestSession.vectorMemoryAccountId !== accountId) continue;
+                effectiveSession = {
+                    ...latestSession,
                     vectorMemoryAccountId: accountId,
-                    vectorMemoryCharacterGeneration:
-                        Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
-                            ? message.vectorMemoryCharacterGeneration
-                            : effectiveSession.vectorMemoryCharacterGeneration,
+                    vectorMemoryCharacterGeneration: Number.isSafeInteger(latestSession.vectorMemoryCharacterGeneration)
+                        ? latestSession.vectorMemoryCharacterGeneration
+                        : stampedGeneration,
                 };
-                eligibleMessages.push(stamped);
-                if (stamped.vectorMemoryAccountId !== message.vectorMemoryAccountId
-                    || stamped.vectorMemoryCharacterGeneration !== message.vectorMemoryCharacterGeneration) {
-                    changedMessages.push(stamped);
-                }
-            }
-            if (changedMessages.length) {
-                await dbPutMessagesAndWait(changedMessages);
-                for (const stamped of changedMessages) {
-                    const index = _messagesCache.findIndex(item => item.id === stamped.id);
-                    if (index >= 0) _messagesCache[index] = stamped;
-                }
-                updatedMessageCount += changedMessages.length;
+                _sessionsCache[currentSessionIndex] = effectiveSession;
             }
 
-            // Deletion can race the awaited message write above. If the session
-            // disappeared meanwhile, clean any late bulkPut and never enqueue it.
+            let sessionMessages = _messagesCache.filter(message => message.sessionId === effectiveSession.id);
+            if (sessionMessages.some(message => !Number.isSafeInteger(message.order) || (message.order ?? -1) < 0)) {
+                const ordered = [...sessionMessages]
+                    .sort(compareChatMessages)
+                    .map((message, index) => ({ id: message.id, order: index }));
+                const currentOrderById = new Map(sessionMessages.map(message => [message.id, message.order]));
+                const changedOrders = ordered.filter(item => currentOrderById.get(item.id) !== item.order);
+                if (changedOrders.length) {
+                    await dbUpdateMessageOrdersAndWait(changedOrders);
+                    const orderById = new Map(changedOrders.map(item => [item.id, item.order]));
+                    _messagesCache = _messagesCache.map(message => orderById.has(message.id)
+                        ? { ...message, order: orderById.get(message.id)! }
+                        : message);
+                }
+                sessionMessages = _messagesCache.filter(message => message.sessionId === effectiveSession.id);
+            }
+
+            const stampCandidates = sessionMessages
+                .filter(message => !message.vectorMemoryAccountId || message.vectorMemoryAccountId === accountId)
+                .map(message => ({
+                    id: message.id,
+                    characterGeneration: Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
+                        ? message.vectorMemoryCharacterGeneration!
+                        : effectiveSession.vectorMemoryCharacterGeneration!,
+                }));
+            const stampedMessages = await dbStampMessagesVectorMemoryAndWait(stampCandidates, accountId);
             if (loadActiveAccountId() !== accountId) return;
-            if (!_sessionsCache.some(item => item.id === session.id)) {
-                _messagesCache = _messagesCache.filter(message => message.sessionId !== session.id);
-                await chatDb.messages.where("sessionId").equals(session.id).delete();
-                continue;
+            if (stampedMessages.length) {
+                const generationById = new Map(stampedMessages.map(item => [item.id, item.characterGeneration]));
+                _messagesCache = _messagesCache.map(message => {
+                    const characterGeneration = generationById.get(message.id);
+                    return characterGeneration === undefined ? message : {
+                        ...message,
+                        vectorMemoryAccountId: accountId,
+                        vectorMemoryCharacterGeneration: characterGeneration,
+                    };
+                });
+                updatedMessageCount += stampedMessages.length;
             }
 
+            // Deletion can race the metadata transaction. Never enqueue chunks for a
+            // session that has disappeared from the live cache.
+            if (!_sessionsCache.some(item => item.id === effectiveSession.id)) continue;
+            const eligibleMessages = _messagesCache.filter(message =>
+                message.sessionId === effectiveSession.id
+                && message.vectorMemoryAccountId === accountId
+                && Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
+            );
             const buckets = [...new Set(eligibleMessages
-                .filter(message => Number.isSafeInteger(message.vectorMemoryCharacterGeneration))
                 .map(message => Math.floor(Math.max(0, message.order ?? 0) / 4)))]
                 .sort((a, b) => a - b);
             for (let offset = 0; offset < buckets.length; offset += 16) {
                 if (loadActiveAccountId() !== accountId) return;
+                if (!_sessionsCache.some(item => item.id === effectiveSession.id)) break;
                 refreshChatMessageBucketsToVectorCloud(
                     effectiveSession,
                     _messagesCache,
