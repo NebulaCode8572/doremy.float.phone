@@ -1336,41 +1336,51 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
             const generation = loadCachedVectorMemoryGeneration(accountId, originalSession.contactId);
             if (!generation) continue;
 
-            const session: ChatSession = {
-                ...originalSession,
-                vectorMemoryAccountId: accountId,
-                vectorMemoryCharacterGeneration:
-                    Number.isSafeInteger(originalSession.vectorMemoryCharacterGeneration)
-                        ? originalSession.vectorMemoryCharacterGeneration
-                        : generation.characterGeneration,
-            };
+            const desiredCharacterGeneration = Number.isSafeInteger(originalSession.vectorMemoryCharacterGeneration)
+                ? originalSession.vectorMemoryCharacterGeneration
+                : generation.characterGeneration;
             if (loadActiveAccountId() !== accountId) return;
-            const sessionIndex = _sessionsCache.findIndex(item => item.id === session.id);
+            const sessionIndex = _sessionsCache.findIndex(item => item.id === originalSession.id);
             if (sessionIndex < 0) continue;
-            await dbPutSessionsAndWait([session]);
+            let effectiveSession = _sessionsCache[sessionIndex];
 
-            // A user may delete the session while IndexedDB persistence is pending.
-            // Never let this backfill resurrect it or index its messages afterward.
-            if (loadActiveAccountId() !== accountId) return;
-            const currentSessionIndex = _sessionsCache.findIndex(item => item.id === session.id);
-            if (currentSessionIndex < 0) {
-                await chatDb.sessions.delete(session.id);
-                continue;
-            }
-            let effectiveSession = _sessionsCache[currentSessionIndex];
+            // Already-stamped sessions need no write. Avoid overwriting a newer
+            // preview/unread update with the stale snapshot captured at loop start.
             if (effectiveSession.vectorMemoryAccountId !== accountId
                 || !Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)) {
-                effectiveSession = {
+                const stampedSession: ChatSession = {
                     ...effectiveSession,
                     vectorMemoryAccountId: accountId,
                     vectorMemoryCharacterGeneration: Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)
                         ? effectiveSession.vectorMemoryCharacterGeneration
-                        : session.vectorMemoryCharacterGeneration,
+                        : desiredCharacterGeneration,
                 };
-                _sessionsCache[currentSessionIndex] = effectiveSession;
-                await dbPutSessionsAndWait([effectiveSession]);
+                await dbPutSessionsAndWait([stampedSession]);
+
+                // A user may delete the session while IndexedDB persistence is pending.
+                // Never let this backfill resurrect it or index its messages afterward.
+                if (loadActiveAccountId() !== accountId) return;
+                const currentSessionIndex = _sessionsCache.findIndex(item => item.id === originalSession.id);
+                if (currentSessionIndex < 0) {
+                    await chatDb.sessions.delete(originalSession.id);
+                    continue;
+                }
+                effectiveSession = _sessionsCache[currentSessionIndex];
+                if (effectiveSession.vectorMemoryAccountId !== accountId
+                    || !Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)) {
+                    effectiveSession = {
+                        ...effectiveSession,
+                        vectorMemoryAccountId: accountId,
+                        vectorMemoryCharacterGeneration: Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)
+                            ? effectiveSession.vectorMemoryCharacterGeneration
+                            : stampedSession.vectorMemoryCharacterGeneration,
+                    };
+                    _sessionsCache[currentSessionIndex] = effectiveSession;
+                    await dbPutSessionsAndWait([effectiveSession]);
+                }
             }
 
+            const session = effectiveSession;
             let sessionMessages = _messagesCache.filter(message => message.sessionId === session.id);
             if (sessionMessages.some(message => !Number.isSafeInteger(message.order) || (message.order ?? -1) < 0)) {
                 const originalOrderById = new Map(sessionMessages.map(message => [message.id, message.order]));
