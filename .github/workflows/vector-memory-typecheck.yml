@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/remove-vector-memory-toggle
+  pull_request:
+    branches:
+      - feature/vector-memory
 
 permissions:
   contents: read
