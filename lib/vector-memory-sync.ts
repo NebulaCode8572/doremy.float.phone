@@ -668,6 +668,7 @@ export async function backfillLocalMemoryVectors(allowedCharacterIds?: string[])
     const candidates: VectorSyncEntry[] = [];
     for (const entry of localEntries) {
       if ((entry.type !== "core" && entry.type !== "long_term")
+        || (!entry.vectorMemoryAccountId && entry.sourceApp !== "chat")
         || (entry.vectorMemoryAccountId && entry.vectorMemoryAccountId !== accountId)
         || entry.metadata?.includesGroupChat === true
         || entry.metadata?.includesStaleChat === true
