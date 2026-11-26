@@ -50,7 +50,7 @@ export async function saveVectorMemorySettings(userId: string, input: { baseUrl:
 
 import { Agent, fetch as undiciFetch } from "undici";
 
-export async function testVectorMemoryEmbedding(userId: string): Promise<{ dimensions: number }> {
+export async function testVectorMemoryEmbedding(userId: string): Promise<{ dimensions: number; embedding: number[] }> {
   const { publicSettings, apiKey } = await loadVectorMemorySettings(userId);
   if (!publicSettings.configured || !apiKey) throw new Error("请先保存 Vector Memory 配置");
   const { url, addresses } = await resolvePublicEndpoint(publicSettings.baseUrl);
@@ -79,6 +79,6 @@ export async function testVectorMemoryEmbedding(userId: string): Promise<{ dimen
     if (!Array.isArray(vector) || vector.length !== 1024 || vector.some((n: unknown) => typeof n !== "number" || !Number.isFinite(n))) {
       throw new Error(`测试失败：模型返回的向量维度不是 1024（实际 ${Array.isArray(vector) ? vector.length : "无效"}）`);
     }
-    return { dimensions: vector.length };
+    return { dimensions: vector.length, embedding: vector as number[] };
   } finally { await dispatcher.close(); }
 }
