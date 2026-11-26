@@ -347,14 +347,14 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
     await enqueuePendingMemoryDeletes(pendingDeletes);
     const completed: PendingMemoryDelete[] = [];
     for (const entry of entries) {
-      const pendingEntry = pendingDeletes.find(item => pendingDeleteKey(item) === pendingDeleteKey({
-        accountId: entry.vectorMemoryAccountId!,
+      const ownerAccountId = entry.vectorMemoryAccountId!;
+      const pendingEntry: PendingMemoryDelete = {
+        accountId: ownerAccountId,
         characterId: entry.characterId,
         id: entry.id,
         sourceApp: entry.sourceApp,
         type: entry.type === "core" ? "core" : "long_term",
-      }))!;
-      const ownerAccountId = entry.vectorMemoryAccountId!;
+      };
       if (loadActiveAccountId() !== ownerAccountId) continue;
       try {
         const response = await fetch("/api/vector-memory-entry", {
