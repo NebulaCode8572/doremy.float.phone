@@ -20,7 +20,7 @@ import { loadNativeTimeline, formatTimelineForSummarization, filterTimelineByAll
 import { generateEmbedding, resolveEmbeddingModel } from "./memory-embedding";
 import { simpleLLMCall } from "./api-helpers";
 import { maybeRunCoreMemoryPipeline } from "./core-memory-builder";
-import { syncMemoryEntriesToVectorCloud } from "./vector-memory-sync";
+import { deleteMemoryEntriesFromVectorCloud, syncMemoryEntriesToVectorCloud } from "./vector-memory-sync";
 import { stampNewMemoryEntry, loadCachedVectorMemoryGeneration } from "./vector-memory-generation";
 import { loadActiveAccountId } from "./account-client";
 
