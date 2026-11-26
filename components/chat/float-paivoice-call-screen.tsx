@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LoaderCircle, Mic, MicOff, Phone, Volume2, VolumeX, PictureInPicture2, Plus } from "lucide-react";
+import { LoaderCircle, Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, PictureInPicture2, Plus } from "lucide-react";
 
 import type { Character } from "@/lib/character-types";
 import type { ChatSession } from "@/lib/chat-storage";
