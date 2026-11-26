@@ -1,5 +1,5 @@
 name: Web Typecheck
-# Run the same full web checks on the isolated PaiVoice integration branch.
+# Run the same full web checks on isolated integration branches.
 
 on:
   push:
