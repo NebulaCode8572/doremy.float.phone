@@ -33,3 +33,9 @@ jobs:
         run: npx tsc --noEmit
       - name: Production build
         run: npm run build
+      - name: SDK consistency checks
+        run: npm run check:sdk
+      - name: WeChat prompt equivalence
+        run: npm run check:weixin
+      - name: Personal push distribution check
+        run: npm run check:push
