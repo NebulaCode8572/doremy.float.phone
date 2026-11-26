@@ -1,4 +1,3 @@
-import { loadMemoryConfig } from "@/lib/memory-storage";
 import { hydrateKvDb, kvGet, kvSetAsync, registerKvMigration, registerDynamicPrefix } from "@/lib/kv-db";
 import { loadActiveAccountId } from "@/lib/account-client";
 import type { ChatMessage, ChatSession } from "@/lib/chat-storage";
@@ -197,11 +196,10 @@ export async function retryPendingChatVectorChunks(
   const accountId = loadActiveAccountId();
   if (!accountId) return 0;
   const pending = readPendingChatChunks().filter(entry => entry.accountId === accountId);
-  const indexingEnabled = loadMemoryConfig().vectorMemoryEnabled;
   let queued = 0;
   for (const entry of pending) {
     const session = sessions.find(item => item.id === entry.sessionId && item.contactId === entry.characterId && item.vectorMemoryAccountId === accountId && !item.isGroup);
-    if (entry.operation === "delete" && (!indexingEnabled || !session)) {
+    if (entry.operation === "delete" && !session) {
       try {
         const stateKey = activeChunkStateKey(entry.accountId, entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration);
         const state = loadActiveChunkState(stateKey);
@@ -213,7 +211,6 @@ export async function retryPendingChatVectorChunks(
       }
       continue;
     }
-    if (!indexingEnabled) continue;
     if (!session) {
       await clearChatChunkPending(entry);
       continue;
@@ -351,7 +348,7 @@ export function refreshChatMessageBucketsToVectorCloud(
       };
       const stateKey = activeChunkStateKey(accountId, session.contactId, session.id, bucket, characterGeneration);
 
-      // Deletions must reach the cloud even when new Vector Memory indexing is disabled.
+      // Empty buckets must still be deleted from the cloud.
       if (selected.length === 0) {
         enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, characterGeneration, accountId), async () => {
           try {
@@ -366,8 +363,6 @@ export function refreshChatMessageBucketsToVectorCloud(
         });
         continue;
       }
-
-      if (!loadMemoryConfig().vectorMemoryEnabled) continue;
 
       const content = selected
         .map(({ item, text }) => `${item.role === "user" ? "用户" : "角色"}：${text}`)
@@ -397,7 +392,6 @@ export function refreshChatMessageBucketsToVectorCloud(
           await markChatChunkPending(queueEntry);
           return;
         }
-        if (!loadMemoryConfig().vectorMemoryEnabled) return;
         try {
           await hydrateKvDb();
           const state = loadActiveChunkState(stateKey);
