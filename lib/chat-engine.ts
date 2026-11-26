@@ -2070,7 +2070,10 @@ export async function buildChatPromptMessages(
             .join("\n"),
         wbActivationContext.slice(-1800),
     ].filter(Boolean).join("\n").slice(-5000);
-    if (!session.isGroup && vectorMemorySessionAccountId === loadActiveAccountId() && vectorRecallQuery.trim()) {
+    const vectorRecallAllowed = !options?.appTags?.includes("offline")
+        && !options?.promptProfile?.appTags?.includes("offline");
+    if (!session.isGroup && vectorRecallAllowed
+        && vectorMemorySessionAccountId === loadActiveAccountId() && vectorRecallQuery.trim()) {
         const vectorRecallText = await retrieveVectorMemoryForPrompt(character.id, vectorRecallQuery).catch(() => "");
         if (vectorRecallText) {
             const firstConversationMessage = llmMessages.findIndex(message => message.role === "user");
