@@ -670,6 +670,10 @@ export async function backfillLocalMemoryVectors(allowedCharacterIds?: string[])
       if ((entry.type !== "core" && entry.type !== "long_term")
         || (!entry.vectorMemoryAccountId && entry.sourceApp !== "chat")
         || (entry.vectorMemoryAccountId && entry.vectorMemoryAccountId !== accountId)
+        || (Number.isSafeInteger(entry.vectorMemoryCharacterGeneration)
+          && entry.vectorMemoryCharacterGeneration !== generation.characterGeneration)
+        || (Number.isSafeInteger(entry.vectorMemoryMemoryGeneration)
+          && entry.vectorMemoryMemoryGeneration !== generation.memoryGeneration)
         || entry.metadata?.includesGroupChat === true
         || entry.metadata?.includesStaleChat === true
         || entry.metadata?.includesUnverifiedTimeline === true
