@@ -42,6 +42,7 @@ export async function supabaseRestFetch<T>(
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
+    signal: init?.signal ?? AbortSignal.timeout(20_000),
     cache: "no-store",
   });
   const text = await response.text();
