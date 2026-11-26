@@ -11,7 +11,12 @@ export async function retrieveVectorMemoryForPrompt(characterId: string, query: 
       credentials: "same-origin",
       body: JSON.stringify({ characterId, query: query.slice(0, 5000) }),
     });
-    if (!response.ok) return "";
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => null) as { error?: unknown } | null;
+      console.warn("[VectorMemory] Search endpoint returned HTTP " + response.status
+        + (typeof errorPayload?.error === "string" ? ": " + errorPayload.error : ""));
+      return "";
+    }
     const payload = await response.json() as { matches?: Match[] };
     const matches = Array.isArray(payload.matches) ? payload.matches.slice(0, 8) : [];
     const selected: string[] = [];
