@@ -167,6 +167,7 @@ async function performPendingChatSessionDelete(entry: PendingChatSessionDelete):
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
+    signal: AbortSignal.timeout(20_000),
     body: JSON.stringify({ characterId: entry.characterId, sessionId: entry.sessionId }),
   });
   if (!response.ok) return false;
@@ -310,6 +311,7 @@ async function deleteChatChunk(accountId: string, characterId: string, sourceId:
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
+    signal: AbortSignal.timeout(20_000),
     body: JSON.stringify({ characterId, sourceId }),
   });
   if (!response.ok) throw new Error(`[VectorMemory] Chat chunk deletion returned HTTP ${response.status}`);
@@ -504,6 +506,7 @@ export function refreshChatMessageBucketsToVectorCloud(
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "same-origin",
+            signal: AbortSignal.timeout(45_000),
             body: JSON.stringify({ entries: [{
               ...payloadBase,
               id: sourceId,
