@@ -69,19 +69,15 @@ export function encodeSupabaseFilter(value: string): string {
 }
 
 
-// Vector Memory can use an isolated Supabase project while account/session
-// authentication continues using the primary application database.
-// If either dedicated variable is supplied, require the matching pair rather
-// than accidentally sending a production key to the test project (or vice versa).
+// Vector Memory must use its dedicated project. Never fall back to the
+// primary application Supabase project: auth/session data and cloud vectors
+// are intentionally isolated, and a missing dedicated config must fail closed.
 export function getVectorMemorySupabaseServerConfig(): SupabaseConfig | null {
   const dedicatedUrl = process.env.VECTOR_MEMORY_SUPABASE_URL;
   const dedicatedKey = process.env.VECTOR_MEMORY_SUPABASE_SERVICE_ROLE_KEY
     || process.env.VECTOR_MEMORY_SUPABASE_SECRET_KEY;
-  if (dedicatedUrl || dedicatedKey) {
-    if (!dedicatedUrl || !dedicatedKey) return null;
-    return { url: dedicatedUrl.replace(/\/$/, ""), key: dedicatedKey };
-  }
-  return getSupabaseServerConfig();
+  if (!dedicatedUrl || !dedicatedKey) return null;
+  return { url: dedicatedUrl.replace(/\/$/, ""), key: dedicatedKey };
 }
 
 export async function vectorMemorySupabaseRestFetch<T>(
