@@ -2060,8 +2060,18 @@ export async function buildChatPromptMessages(
     const vectorMemorySessionAccountId = latestVectorMemorySession
         ? latestVectorMemorySession.vectorMemoryAccountId
         : session.vectorMemoryAccountId;
-    if (!session.isGroup && vectorMemorySessionAccountId === loadActiveAccountId()) {
-        const vectorRecallText = await retrieveVectorMemoryForPrompt(character.id, wbActivationContext).catch(() => "");
+    const vectorRecallQuery = [
+        historyForPrompt
+            .filter(message => (message.role === "user" || message.role === "assistant")
+                && !message.isRetracted && message.status !== "rejected"
+                && !message.mediaType && typeof message.content === "string" && message.content.trim())
+            .slice(-8)
+            .map(message => `${message.role === "user" ? "用户" : "角色"}：${message.content.trim()}`)
+            .join("\n"),
+        wbActivationContext.slice(-1800),
+    ].filter(Boolean).join("\n").slice(-5000);
+    if (!session.isGroup && vectorMemorySessionAccountId === loadActiveAccountId() && vectorRecallQuery.trim()) {
+        const vectorRecallText = await retrieveVectorMemoryForPrompt(character.id, vectorRecallQuery).catch(() => "");
         if (vectorRecallText) llmMessages.push({ role: "system", content: vectorRecallText });
     }
     const avatarChangeIntent = !session.isGroup
