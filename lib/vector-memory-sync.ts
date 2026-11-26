@@ -4,7 +4,7 @@ import { getAllCharacterIdsWithMemories, loadMemoryEntries, saveMemoryEntry } fr
 import { loadActiveAccountId } from "@/lib/account-client";
 import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
-export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata" | "vectorMemoryAccountId" | "vectorMemoryCharacterGeneration" | "vectorMemoryMemoryGeneration" | "vectorMemoryRevision" | "vectorMemoryConflictRevision" | "vectorMemoryPendingOperationId" | "vectorMemoryPendingFingerprint">, "sourceApp"> & { sourceApp: string; expectedRevision?: number };
+export type VectorSyncEntry = Omit<Pick<MemoryEntry, "id" | "characterId" | "sourceApp" | "type" | "content" | "createdAt" | "updatedAt" | "metadata" | "vectorMemoryAccountId" | "vectorMemoryCharacterGeneration" | "vectorMemoryMemoryGeneration" | "vectorMemoryRevision" | "vectorMemoryIndexedFingerprint" | "vectorMemoryConflictRevision" | "vectorMemoryPendingOperationId" | "vectorMemoryPendingFingerprint">, "sourceApp"> & { sourceApp: string; expectedRevision?: number };
 
 function isEligibleVectorMemoryEntry(entry: VectorSyncEntry): boolean {
   return typeof entry.vectorMemoryAccountId === "string" && entry.vectorMemoryAccountId.length > 0
@@ -83,6 +83,7 @@ export async function addImportedMemoryPending(entries: ImportedMemoryPendingEnt
     const current = generations.get(entry.characterId);
     const {
       vectorMemoryRevision: _importedRevision,
+      vectorMemoryIndexedFingerprint: _importedIndexedFingerprint,
       vectorMemoryConflictRevision: _importedConflictRevision,
       vectorMemoryPendingOperationId: _importedOperationId,
       vectorMemoryPendingFingerprint: _importedFingerprint,
@@ -432,6 +433,7 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
 
 function vectorMemoryPayloadFingerprint(entry: VectorSyncEntry): string {
   const raw = JSON.stringify({
+    accountId: entry.vectorMemoryAccountId,
     id: entry.id, characterId: entry.characterId, sourceApp: entry.sourceApp,
     type: entry.type, content: entry.content, metadata: entry.metadata ?? {},
     characterGeneration: entry.vectorMemoryCharacterGeneration,
@@ -462,6 +464,7 @@ async function persistVectorMemoryRevision(entry: VectorSyncEntry, revision: num
     vectorMemoryAccountId: entry.vectorMemoryAccountId,
     vectorMemoryCharacterGeneration: entry.vectorMemoryCharacterGeneration,
     vectorMemoryMemoryGeneration: entry.vectorMemoryMemoryGeneration,
+    vectorMemoryIndexedFingerprint: vectorMemoryPayloadFingerprint(entry),
     // Even if the user edited the local source while the request was in flight,
     // this revision is the server-acknowledged base that the newer edit must CAS
     // against. Preserve the newer content and any newer pending operation.
@@ -675,6 +678,11 @@ export async function backfillLocalMemoryVectors(allowedCharacterIds?: string[])
         vectorMemoryCharacterGeneration: generation.characterGeneration,
         vectorMemoryMemoryGeneration: generation.memoryGeneration,
       };
+      if (entry.vectorMemoryIndexedFingerprint === vectorMemoryPayloadFingerprint(stamped as VectorSyncEntry)
+        && Number.isSafeInteger(entry.vectorMemoryRevision)
+        && entry.vectorMemoryCharacterGeneration === generation.characterGeneration
+        && entry.vectorMemoryMemoryGeneration === generation.memoryGeneration
+        && !entry.vectorMemoryPendingOperationId) continue;
       if (entry.vectorMemoryAccountId !== accountId
         || entry.vectorMemoryCharacterGeneration !== generation.characterGeneration
         || entry.vectorMemoryMemoryGeneration !== generation.memoryGeneration) {
