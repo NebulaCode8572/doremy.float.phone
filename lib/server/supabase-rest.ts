@@ -67,3 +67,50 @@ export async function supabaseRestFetch<T>(
 export function encodeSupabaseFilter(value: string): string {
   return encodeURIComponent(value);
 }
+
+
+// Vector Memory can use an isolated Supabase project while account/session
+// authentication continues using the primary application database.
+// If either dedicated variable is supplied, require the matching pair rather
+// than accidentally sending a production key to the test project (or vice versa).
+export function getVectorMemorySupabaseServerConfig(): SupabaseConfig | null {
+  const dedicatedUrl = process.env.VECTOR_MEMORY_SUPABASE_URL;
+  const dedicatedKey = process.env.VECTOR_MEMORY_SUPABASE_SERVICE_ROLE_KEY
+    || process.env.VECTOR_MEMORY_SUPABASE_SECRET_KEY;
+  if (dedicatedUrl || dedicatedKey) {
+    if (!dedicatedUrl || !dedicatedKey) return null;
+    return { url: dedicatedUrl.replace(/\\/$/, ""), key: dedicatedKey };
+  }
+  return getSupabaseServerConfig();
+}
+
+export async function vectorMemorySupabaseRestFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<SupabaseRestResult<T>> {
+  const config = getVectorMemorySupabaseServerConfig();
+  if (!config) return { ok: false, error: "missing_vector_memory_supabase_env", status: 503 };
+
+  const response = await fetch(`${config.url}/rest/v1/${path}`, {
+    ...init,
+    headers: {
+      apikey: config.key,
+      Authorization: `Bearer ${config.key}`,
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+    cache: "no-store",
+  });
+  const text = await response.text();
+  let data: unknown = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch { data = text; }
+  }
+  if (!response.ok) {
+    const message = typeof data === "object" && data && "message" in data
+      ? String((data as { message?: unknown }).message)
+      : text || response.statusText;
+    return { ok: false, error: message, status: response.status };
+  }
+  return { ok: true, data: data as T, status: response.status };
+}
