@@ -1357,11 +1357,13 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
             }
             let effectiveSession = _sessionsCache[currentSessionIndex];
             if (effectiveSession.vectorMemoryAccountId !== accountId
-                || effectiveSession.vectorMemoryCharacterGeneration !== session.vectorMemoryCharacterGeneration) {
+                || !Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)) {
                 effectiveSession = {
                     ...effectiveSession,
                     vectorMemoryAccountId: accountId,
-                    vectorMemoryCharacterGeneration: session.vectorMemoryCharacterGeneration,
+                    vectorMemoryCharacterGeneration: Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)
+                        ? effectiveSession.vectorMemoryCharacterGeneration
+                        : session.vectorMemoryCharacterGeneration,
                 };
                 _sessionsCache[currentSessionIndex] = effectiveSession;
                 await dbPutSessionsAndWait([effectiveSession]);
@@ -1390,7 +1392,7 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
                     vectorMemoryCharacterGeneration:
                         Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
                             ? message.vectorMemoryCharacterGeneration
-                            : session.vectorMemoryCharacterGeneration,
+                            : effectiveSession.vectorMemoryCharacterGeneration,
                 };
                 eligibleMessages.push(stamped);
                 if (stamped.vectorMemoryAccountId !== message.vectorMemoryAccountId
