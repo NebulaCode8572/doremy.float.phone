@@ -6,7 +6,8 @@ import { hydrateKvDb } from "@/lib/kv-db";
 import { loadActiveAccountId } from "@/lib/account-client";
 import { CHARACTERS_UPDATED_EVENT, loadCharacters } from "@/lib/character-storage";
 import { saveCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
-import { hydrateChatStorage, backfillHistoricalChatVectors } from "@/lib/chat-storage";
+import { hydrateChatStorage, isChatStorageHydrated, loadChatMessages, loadChatSessions, backfillHistoricalChatVectors } from "@/lib/chat-storage";
+import { retryPendingChatVectorChunks } from "@/lib/vector-memory-chat-sync";
 
 type GenerationResult = {
   characterId: string;
@@ -51,6 +52,8 @@ export function VectorMemoryGenerationBootstrap() {
       if (account.id !== loadActiveAccountId()
         || characterIds.some(characterId => !refreshedCharacterIds.has(characterId))) return;
       await hydrateChatStorage();
+      if (!isChatStorageHydrated() || account.id !== loadActiveAccountId()) return;
+      await retryPendingChatVectorChunks(loadChatSessions(), loadChatMessages);
       if (account.id !== loadActiveAccountId()) return;
       await backfillHistoricalChatVectors();
     } catch {
