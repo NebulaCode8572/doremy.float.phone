@@ -28,3 +28,5 @@ jobs:
         run: npm ci
       - name: TypeScript typecheck
         run: npx tsc --noEmit
+      - name: Production build
+        run: npm run build
