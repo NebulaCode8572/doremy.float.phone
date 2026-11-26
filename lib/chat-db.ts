@@ -247,7 +247,8 @@ export async function dbStampSessionVectorMemoryAndWait(
     return chatDb.transaction("rw", chatDb.sessions, async () => {
         const current = await chatDb.sessions.get(id);
         if (!current || (current.vectorMemoryAccountId && current.vectorMemoryAccountId !== accountId)) return null;
-        const characterGeneration = Number.isSafeInteger(current.vectorMemoryCharacterGeneration)
+        const characterGeneration = current.vectorMemoryAccountId === accountId
+            && Number.isSafeInteger(current.vectorMemoryCharacterGeneration)
             ? current.vectorMemoryCharacterGeneration!
             : fallbackCharacterGeneration;
         await chatDb.sessions.update(id, {
@@ -284,7 +285,8 @@ export async function dbStampMessagesVectorMemoryAndWait(
             for (const item of batch) {
                 const current = await chatDb.messages.get(item.id);
                 if (!current || (current.vectorMemoryAccountId && current.vectorMemoryAccountId !== accountId)) continue;
-                const characterGeneration = Number.isSafeInteger(current.vectorMemoryCharacterGeneration)
+                const characterGeneration = current.vectorMemoryAccountId === accountId
+                    && Number.isSafeInteger(current.vectorMemoryCharacterGeneration)
                     ? current.vectorMemoryCharacterGeneration!
                     : item.characterGeneration;
                 await chatDb.messages.update(item.id, {
