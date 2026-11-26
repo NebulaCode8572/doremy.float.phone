@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentAccount } from "@/lib/server/account-auth";
-import { getSupabaseServerConfig, supabaseRestFetch } from "@/lib/server/supabase-rest";
+import { getSupabaseServerConfig, vectorMemorySupabaseRestFetch } from "@/lib/server/supabase-rest";
 import { readLimitedJson } from "@/lib/server/read-limited-json";
 import { generateVectorMemoryEmbedding } from "@/lib/server/vector-memory-embedding";
 
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     const characterId = typeof body.characterId === "string" ? body.characterId.trim() : "";
     if (!query || query.length > 5000 || !characterId || characterId.length > 160) return NextResponse.json({ error: "检索参数无效" }, { status: 400 });
     const embedding = await generateVectorMemoryEmbedding(account.id, query);
-    const result = await supabaseRestFetch<Match[]>("rpc/match_vector_memory", {
+    const result = await vectorMemorySupabaseRestFetch<Match[]>("rpc/match_vector_memory", {
       method: "POST",
       body: JSON.stringify({
         query_embedding: embedding,
