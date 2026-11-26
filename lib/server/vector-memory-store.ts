@@ -1,4 +1,4 @@
-import { supabaseRestFetch } from "@/lib/server/supabase-rest";
+import { vectorMemorySupabaseRestFetch } from "@/lib/server/supabase-rest";
 
 export type VectorMemorySourceKind = "summary" | "chat_chunk" | "core_memory" | "long_term_memory";
 export type VectorMemoryRecord = {
@@ -27,7 +27,7 @@ function validateRecord(record: VectorMemoryRecord): void {
 export type VectorMemoryGeneration = { characterGeneration: number; memoryGeneration: number };
 
 export async function getVectorMemoryGeneration(userId: string, characterId: string): Promise<VectorMemoryGeneration> {
-  const result = await supabaseRestFetch<unknown>("rpc/get_vector_memory_generation", {
+  const result = await vectorMemorySupabaseRestFetch<unknown>("rpc/get_vector_memory_generation", {
     method: "POST",
     body: JSON.stringify({ p_user_id: userId, p_character_id: characterId }),
   });
@@ -64,7 +64,7 @@ export async function commitVectorMemoryCas(
   if (!Number.isSafeInteger(record.expectedRevision) || record.expectedRevision < 0) {
     throw new Error("Vector Memory expected revision 无效");
   }
-  const result = await supabaseRestFetch<unknown>("rpc/commit_vector_memory_cas", {
+  const result = await vectorMemorySupabaseRestFetch<unknown>("rpc/commit_vector_memory_cas", {
     method: "POST",
     body: JSON.stringify({
       p_user_id: record.userId,
@@ -102,7 +102,7 @@ export async function commitVectorMemoryCas(
 }
 
 async function callDeleteRpc(name: string, body: Record<string, unknown>): Promise<void> {
-  const result = await supabaseRestFetch<unknown>(`rpc/${name}`, {
+  const result = await vectorMemorySupabaseRestFetch<unknown>(`rpc/${name}`, {
     method: "POST",
     body: JSON.stringify(body),
   });
