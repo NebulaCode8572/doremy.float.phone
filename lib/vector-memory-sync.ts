@@ -672,7 +672,8 @@ export async function backfillLocalMemoryVectors(allowedCharacterIds?: string[])
         || (entry.vectorMemoryAccountId && entry.vectorMemoryAccountId !== accountId)
         || entry.metadata?.includesGroupChat === true
         || entry.metadata?.includesStaleChat === true
-        || entry.metadata?.includesUnverifiedTimeline === true) continue;
+        || entry.metadata?.includesUnverifiedTimeline === true
+        || entry.vectorMemoryConflictRevision !== undefined) continue;
       const stamped: MemoryEntry = {
         ...entry,
         vectorMemoryAccountId: accountId,
