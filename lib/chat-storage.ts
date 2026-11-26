@@ -1363,9 +1363,7 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
                 effectiveSession = {
                     ...latestSession,
                     vectorMemoryAccountId: accountId,
-                    vectorMemoryCharacterGeneration: Number.isSafeInteger(latestSession.vectorMemoryCharacterGeneration)
-                        ? latestSession.vectorMemoryCharacterGeneration
-                        : stampedGeneration,
+                    vectorMemoryCharacterGeneration: stampedGeneration,
                 };
                 _sessionsCache[currentSessionIndex] = effectiveSession;
             }
