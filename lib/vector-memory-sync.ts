@@ -615,11 +615,14 @@ export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[])
     return syncMemoryEntriesToVectorCloudUnlocked(entries);
   });
 }
-export async function retryPendingMemoryIndexes(): Promise<number> {
+export async function retryPendingMemoryIndexes(allowedCharacterIds?: string[]): Promise<number> {
   return withVectorCloudMutation(async () => {
     await hydrateKvDb();
     const accountId = loadActiveAccountId();
-    const pending = loadPendingMemoryIndexes().filter(entry => entry.vectorMemoryAccountId === accountId);
+    const allowed = allowedCharacterIds ? new Set(allowedCharacterIds) : null;
+    const pending = loadPendingMemoryIndexes().filter(entry =>
+      entry.vectorMemoryAccountId === accountId && (!allowed || allowed.has(entry.characterId))
+    );
     if (!pending.length) return 0;
     const success = await syncMemoryEntriesToVectorCloudUnlocked(pending);
     if (success) await removePendingMemoryIndexes(pending);
@@ -635,11 +638,14 @@ export async function retryPendingMemoryVectorDeletes(): Promise<number> {
   });
 }
 
-export async function syncImportedMemoryPending(): Promise<{ synced: number; success: boolean }> {
+export async function syncImportedMemoryPending(allowedCharacterIds?: string[]): Promise<{ synced: number; success: boolean }> {
   return withVectorCloudMutation(async () => {
     await hydrateKvDb();
     const accountId = loadActiveAccountId();
-    const pending = loadImportedMemoryPending().filter(entry => entry.vectorMemoryAccountId === accountId);
+    const allowed = allowedCharacterIds ? new Set(allowedCharacterIds) : null;
+    const pending = loadImportedMemoryPending().filter(entry =>
+      entry.vectorMemoryAccountId === accountId && (!allowed || allowed.has(entry.characterId))
+    );
     if (!pending.length) return { synced: 0, success: true };
     const success = await syncMemoryEntriesToVectorCloudUnlocked(pending);
     if (success) await removeSyncedImportedMemoryPending(pending);
