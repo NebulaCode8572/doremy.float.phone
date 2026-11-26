@@ -1409,6 +1409,15 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
                 updatedMessageCount += changedMessages.length;
             }
 
+            // Deletion can race the awaited message write above. If the session
+            // disappeared meanwhile, clean any late bulkPut and never enqueue it.
+            if (!_sessionsCache.some(item => item.id === session.id)
+                || loadActiveAccountId() !== accountId) {
+                _messagesCache = _messagesCache.filter(message => message.sessionId !== session.id);
+                await chatDb.messages.where("sessionId").equals(session.id).delete();
+                continue;
+            }
+
             const buckets = [...new Set(eligibleMessages
                 .filter(message => Number.isSafeInteger(message.vectorMemoryCharacterGeneration))
                 .map(message => Math.floor(Math.max(0, message.order ?? 0) / 4)))]
