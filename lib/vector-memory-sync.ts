@@ -332,9 +332,6 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
     entries = entries.filter(entry => typeof entry.vectorMemoryAccountId === "string" && entry.vectorMemoryAccountId.length > 0);
     if (!entries.length) return;
     await hydrateKvDb();
-    await removePendingMemoryIndexes(entries);
-    await removeImportedMemoryPendingEntries(entries);
-
     const pendingDeletes: PendingMemoryDelete[] = entries.map(entry => ({
       accountId: entry.vectorMemoryAccountId!,
       characterId: entry.characterId,
@@ -342,9 +339,11 @@ export async function deleteMemoryEntriesFromVectorCloud(entries: VectorSyncEntr
       sourceApp: entry.sourceApp,
       type: entry.type === "core" ? "core" : "long_term",
     }));
-    // Persist deletion intent before the first network request so a tab/process
-    // exit cannot leave an untracked cloud source behind.
+    // Persist deletion intent before removing stale upsert retries or sending
+    // the first network request, so an interruption cannot orphan cloud data.
     await enqueuePendingMemoryDeletes(pendingDeletes);
+    await removePendingMemoryIndexes(entries);
+    await removeImportedMemoryPendingEntries(entries);
     const completed: PendingMemoryDelete[] = [];
     for (const entry of entries) {
       const ownerAccountId = entry.vectorMemoryAccountId!;
