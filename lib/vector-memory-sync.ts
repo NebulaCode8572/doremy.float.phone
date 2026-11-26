@@ -393,6 +393,7 @@ export async function deleteCharacterMemoryVectorsFromVectorCloud(characterId: s
     }
     const response = await fetch("/api/vector-memory-entry", {
       method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+      signal: AbortSignal.timeout(20_000),
       body: JSON.stringify({ characterId, memoryOnly: true }),
     });
     if (response.ok) {
@@ -426,6 +427,7 @@ export async function deleteCharacterVectorsFromVectorCloud(characterId: string)
     }
     const response = await fetch("/api/vector-memory-entry", {
       method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+      signal: AbortSignal.timeout(20_000),
       body: JSON.stringify({ characterId }),
     });
     if (response.ok) {
