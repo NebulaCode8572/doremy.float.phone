@@ -28,7 +28,6 @@ export function VectorMemoryGenerationBootstrap() {
     if (!account.id || account.id !== loadActiveAccountId()) return;
     await hydrateKvDb();
     const characterIds = [...new Set(loadCharacters().map(character => character.id))];
-    if (!characterIds.length) return;
     try {
       const refreshedCharacterIds = new Set<string>();
       for (let offset = 0; offset < characterIds.length; offset += 200) {
@@ -41,9 +40,16 @@ export function VectorMemoryGenerationBootstrap() {
           cache: "no-store",
           body: JSON.stringify({ characterIds: batch }),
         });
-        if (!response.ok) return;
+        if (!response.ok) {
+          console.warn("[VectorMemory] Generation refresh returned HTTP " + response.status + "; continuing with successfully refreshed characters.");
+          break;
+        }
         const payload = await response.json().catch(() => null) as { results?: GenerationResult[] } | null;
-        if (!Array.isArray(payload?.results) || account.id !== loadActiveAccountId()) return;
+        if (account.id !== loadActiveAccountId()) return;
+        if (!Array.isArray(payload?.results)) {
+          console.warn("[VectorMemory] Generation refresh returned malformed results; continuing with successfully refreshed characters.");
+          break;
+        }
         for (const item of payload.results) {
           if (!item.success || !item.characterId
             || !Number.isSafeInteger(item.characterGeneration) || !Number.isSafeInteger(item.memoryGeneration)) continue;
@@ -54,29 +60,36 @@ export function VectorMemoryGenerationBootstrap() {
           refreshedCharacterIds.add(item.characterId);
         }
       }
-      if (account.id !== loadActiveAccountId()
-        || characterIds.some(characterId => !refreshedCharacterIds.has(characterId))) return;
-      // Recover durable memory-index and deletion queues after fresh server
-      // generations are cached. Each queue is isolated so one failure does not
-      // prevent chat-chunk recovery or historical backfill.
+      if (account.id !== loadActiveAccountId()) return;
+      if (refreshedCharacterIds.size < characterIds.length) {
+        console.warn("[VectorMemory] Some character generations could not be refreshed; only fresh generations will be indexed.");
+      }
+      // Deletions do not depend on a current generation, so always recover them.
+      // Index/retry only characters whose server generations were refreshed this run.
       await retryPendingMemoryVectorDeletes().catch(error => {
         console.warn("[VectorMemory] Pending memory deletions remain queued.", error);
       });
       if (account.id !== loadActiveAccountId()) return;
-      await retryPendingMemoryIndexes().catch(error => {
-        console.warn("[VectorMemory] Pending memory indexes remain queued.", error);
-      });
-      if (account.id !== loadActiveAccountId()) return;
-      await syncImportedMemoryPending().catch(error => {
-        console.warn("[VectorMemory] Imported memory indexes remain queued.", error);
-      });
-      if (account.id !== loadActiveAccountId()) return;
+      const refreshedIds = [...refreshedCharacterIds];
+      if (refreshedIds.length) {
+        await retryPendingMemoryIndexes(refreshedIds).catch(error => {
+          console.warn("[VectorMemory] Pending memory indexes remain queued.", error);
+        });
+        if (account.id !== loadActiveAccountId()) return;
+        await syncImportedMemoryPending(refreshedIds).catch(error => {
+          console.warn("[VectorMemory] Imported memory indexes remain queued.", error);
+        });
+        if (account.id !== loadActiveAccountId()) return;
+      }
 
       await hydrateChatStorage();
       if (!isChatStorageHydrated() || account.id !== loadActiveAccountId()) return;
-      await retryPendingChatVectorChunks(loadChatSessions(), loadChatMessages);
+      const refreshedSessions = loadChatSessions().filter(session =>
+        Boolean(session.contactId) && refreshedCharacterIds.has(session.contactId)
+      );
+      await retryPendingChatVectorChunks(refreshedSessions, loadChatMessages);
       if (account.id !== loadActiveAccountId()) return;
-      await backfillHistoricalChatVectors();
+      await backfillHistoricalChatVectors(refreshedIds);
     } catch (error) {
       // Generation unavailable means cloud indexing pauses; local chat/memory writes continue.
       // Keep the failure visible so a configuration/network problem is diagnosable.
