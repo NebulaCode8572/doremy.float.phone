@@ -1,3 +1,5 @@
+export const VECTOR_MEMORY_SETTINGS_UPDATED_EVENT = "vector-memory-settings-updated";
+
 import { kvGet, kvSet, registerDynamicPrefix } from "@/lib/kv-db";
 import { loadActiveAccountId } from "@/lib/account-client";
 
