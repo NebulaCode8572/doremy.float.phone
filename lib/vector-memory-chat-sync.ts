@@ -335,7 +335,10 @@ export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, bu
   const accountId = loadActiveAccountId();
   if (typeof window === "undefined" || !accountId || session.vectorMemoryAccountId !== accountId || session.isGroup || !session.contactId) return;
   for (const bucket of [...new Set(buckets.filter(value => Number.isInteger(value) && value >= 0))]) {
-    const generation = session.vectorMemoryCharacterGeneration;
+    const generation = Number.isSafeInteger(session.vectorMemoryCharacterGeneration)
+      && (session.vectorMemoryCharacterGeneration ?? -1) >= 0
+      ? session.vectorMemoryCharacterGeneration
+      : undefined;
     const queueEntry: PendingChatChunk = {
       accountId, characterId: session.contactId, sessionId: session.id, bucket,
       ...(generation !== undefined ? { characterGeneration: generation } : {}),
