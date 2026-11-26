@@ -11,7 +11,7 @@ import { resolveUserIdentity } from "./settings-storage";
 import { loadCharacters, saveCharacters } from "./character-storage";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { loadActiveAccountId } from "./account-client";
-import { loadCachedVectorMemoryGeneration } from "./vector-memory-generation";
+import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "./vector-memory-generation";
 import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-hooks";
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
@@ -1297,6 +1297,9 @@ export function hydrateChatStorage(): Promise<void> {
         if (normalizedContacts.changed) dbReplaceContacts(normalizedContacts.items);
         if (normalizedSessions.changed || redirectedMessages > 0 || refreshedSessions.changed) dbReplaceSessions(refreshedSessions.items);
         _hydrated = true;
+        // Backfill private-chat history after local storage is ready. This is
+        // account-scoped, generation-stamped, and runs in small bucket batches.
+        void backfillHistoricalChatVectors();
     }).catch(err => {
         console.warn("[ChatStorage] hydration failed, will retry on next call:", err);
         _hydratePromise = null;
@@ -1306,6 +1309,96 @@ export function hydrateChatStorage(): Promise<void> {
 
 export function isChatStorageHydrated(): boolean {
     return _hydrated;
+}
+
+let _vectorHistoryBackfillPromise: Promise<void> | null = null;
+
+async function backfillHistoricalChatVectors(): Promise<void> {
+    if (typeof window === "undefined" || _vectorHistoryBackfillPromise) return;
+    const accountId = loadActiveAccountId();
+    if (!accountId) return;
+
+    _vectorHistoryBackfillPromise = (async () => {
+        const eligibleSessions = _sessionsCache.filter(session =>
+            !session.isGroup
+            && Boolean(session.contactId)
+            && (!session.vectorMemoryAccountId || session.vectorMemoryAccountId === accountId)
+        );
+        const characterIds = [...new Set(eligibleSessions.map(session => session.contactId))];
+        for (const characterId of characterIds) {
+            if (loadActiveAccountId() !== accountId) return;
+            await refreshCachedVectorMemoryGeneration(characterId);
+        }
+
+        let updatedMessageCount = 0;
+        for (const originalSession of eligibleSessions) {
+            if (loadActiveAccountId() !== accountId) return;
+            const generation = loadCachedVectorMemoryGeneration(accountId, originalSession.contactId);
+            if (!generation) continue;
+
+            const session: ChatSession = {
+                ...originalSession,
+                vectorMemoryAccountId: accountId,
+                vectorMemoryCharacterGeneration:
+                    Number.isSafeInteger(originalSession.vectorMemoryCharacterGeneration)
+                        ? originalSession.vectorMemoryCharacterGeneration
+                        : generation.characterGeneration,
+            };
+            const sessionIndex = _sessionsCache.findIndex(item => item.id === session.id);
+            if (sessionIndex >= 0) _sessionsCache[sessionIndex] = session;
+            dbPutSessions([session]);
+
+            const sessionMessages = _messagesCache.filter(message => message.sessionId === session.id);
+            const eligibleMessages: ChatMessage[] = [];
+            const changedMessages: ChatMessage[] = [];
+            for (const message of sessionMessages) {
+                if (message.vectorMemoryAccountId && message.vectorMemoryAccountId !== accountId) continue;
+                const stamped: ChatMessage = {
+                    ...message,
+                    vectorMemoryAccountId: accountId,
+                    vectorMemoryCharacterGeneration:
+                        Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
+                            ? message.vectorMemoryCharacterGeneration
+                            : session.vectorMemoryCharacterGeneration,
+                };
+                eligibleMessages.push(stamped);
+                if (stamped.vectorMemoryAccountId !== message.vectorMemoryAccountId
+                    || stamped.vectorMemoryCharacterGeneration !== message.vectorMemoryCharacterGeneration) {
+                    const index = _messagesCache.findIndex(item => item.id === message.id);
+                    if (index >= 0) _messagesCache[index] = stamped;
+                    changedMessages.push(stamped);
+                }
+            }
+            if (changedMessages.length) {
+                dbPutMessages(changedMessages);
+                updatedMessageCount += changedMessages.length;
+            }
+
+            const buckets = [...new Set(eligibleMessages
+                .filter(message => Number.isSafeInteger(message.vectorMemoryCharacterGeneration))
+                .map(message => Math.floor(Math.max(0, message.order ?? 0) / 4)))]
+                .sort((a, b) => a - b);
+            for (let offset = 0; offset < buckets.length; offset += 16) {
+                if (loadActiveAccountId() !== accountId) return;
+                refreshChatMessageBucketsToVectorCloud(
+                    session,
+                    _messagesCache,
+                    buckets.slice(offset, offset + 16),
+                );
+                if (offset + 16 < buckets.length) {
+                    await new Promise<void>(resolve => window.setTimeout(resolve, 200));
+                }
+            }
+        }
+        if (updatedMessageCount > 0) {
+            console.info(`[VectorMemory] Historical chat backfill stamped ${updatedMessageCount} messages.`);
+        }
+    })().catch(error => {
+        console.warn("[VectorMemory] Historical chat backfill failed; pending chunks remain retryable.", error);
+    }).finally(() => {
+        _vectorHistoryBackfillPromise = null;
+    });
+    return _vectorHistoryBackfillPromise;
 }
 
 function _loadAllMessages(): ChatMessage[] {
