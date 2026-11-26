@@ -9,6 +9,7 @@ import { saveCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation
 import { hydrateChatStorage, isChatStorageHydrated, loadChatMessages, loadChatSessions, backfillHistoricalChatVectors } from "@/lib/chat-storage";
 import { retryPendingChatVectorChunks } from "@/lib/vector-memory-chat-sync";
 import {
+  backfillLocalMemoryVectors,
   retryPendingMemoryIndexes,
   retryPendingMemoryVectorDeletes,
   syncImportedMemoryPending,
@@ -72,6 +73,11 @@ export function VectorMemoryGenerationBootstrap() {
       if (account.id !== loadActiveAccountId()) return;
       const refreshedIds = [...refreshedCharacterIds];
       if (refreshedIds.length) {
+        await backfillLocalMemoryVectors(refreshedIds).catch(error => {
+          console.warn("[VectorMemory] Historical core/long-term memory backfill remains queued.", error);
+          return 0;
+        });
+        if (account.id !== loadActiveAccountId()) return;
         await retryPendingMemoryIndexes(refreshedIds).catch(error => {
           console.warn("[VectorMemory] Pending memory indexes remain queued.", error);
         });
