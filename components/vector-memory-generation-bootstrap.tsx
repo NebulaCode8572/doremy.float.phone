@@ -77,8 +77,10 @@ export function VectorMemoryGenerationBootstrap() {
       await retryPendingChatVectorChunks(loadChatSessions(), loadChatMessages);
       if (account.id !== loadActiveAccountId()) return;
       await backfillHistoricalChatVectors();
-    } catch {
+    } catch (error) {
       // Generation unavailable means cloud indexing pauses; local chat/memory writes continue.
+      // Keep the failure visible so a configuration/network problem is diagnosable.
+      console.warn("[VectorMemory] Generation bootstrap paused; pending work remains queued.", error);
     }
   }, [account.id]);
 
