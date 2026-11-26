@@ -204,7 +204,7 @@ function loadPendingMemoryIndexes(): VectorSyncEntry[] {
   try {
     const raw = kvGet(INDEX_PENDING_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.characterId === "string" && typeof item.id === "string" && typeof item.sourceApp === "string" && (item.type === "core" || item.type === "long_term" || item.type === "summary") && typeof item.content === "string" && typeof item.createdAt === "string" && typeof item.updatedAt === "string" && hasValidGeneration(item)) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.characterId === "string" && typeof item.id === "string" && typeof item.sourceApp === "string" && (item.type === "core" || item.type === "long_term" || item.type === "summary") && typeof item.content === "string" && typeof item.createdAt === "string" && typeof item.updatedAt === "string" && isEligibleVectorMemoryEntry(item)) : [];
   } catch { return []; }
 }
 async function enqueuePendingMemoryIndexes(entries: VectorSyncEntry[]): Promise<void> {
