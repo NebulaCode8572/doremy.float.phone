@@ -77,7 +77,16 @@ export function getVectorMemorySupabaseServerConfig(): SupabaseConfig | null {
   const dedicatedKey = process.env.VECTOR_MEMORY_SUPABASE_SERVICE_ROLE_KEY
     || process.env.VECTOR_MEMORY_SUPABASE_SECRET_KEY;
   if (!dedicatedUrl || !dedicatedKey) return null;
-  return { url: dedicatedUrl.replace(/\/$/, ""), key: dedicatedKey };
+  try {
+    const parsed = new URL(dedicatedUrl);
+    // This branch is being verified against the isolated test project only.
+    // Refuse every other Supabase host so a misconfigured environment cannot
+    // silently direct Vector Memory writes to the production application project.
+    if (parsed.protocol !== "https:" || parsed.hostname !== "hcohoykrxearxqsdbotg.supabase.co") return null;
+    return { url: parsed.toString().replace(/\/$/, ""), key: dedicatedKey };
+  } catch {
+    return null;
+  }
 }
 
 export async function vectorMemorySupabaseRestFetch<T>(
