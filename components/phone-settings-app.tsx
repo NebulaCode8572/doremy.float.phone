@@ -29,6 +29,7 @@ import { ScreenshotSettings } from "./screenshot/screenshot-settings";
 import { WidgetSettings } from "./widget/widget-settings";
 import { DailyAlarmSettings } from "./settings/daily-alarm-settings";
 import { VisionApiSettings } from "./settings/vision-api-settings";
+import { VectorMemorySettings } from "./settings/vector-memory-settings";
 import { StrictLearningSettings } from "./settings/strict-learning-settings";
 import { fetchIsAdmin } from "@/lib/moderation-client";
 import { PageShell } from "./ui/page-shell";
@@ -54,6 +55,7 @@ type SubPage =
     | "main"
     | "api"
     | "vision"
+    | "vectorMemory"
     | "strictLearning"
     | "voice"
     | "imageGeneration"
@@ -80,6 +82,7 @@ type SubPage =
 const SETTINGS_MENU = [
     { id: "api", icon: HardDrive, label: "API 设置", desc: "大模型接口", iconColor: BINDING_ACCENTS.api , glass: "api" },
     { id: "vision", icon: Image, label: "视觉模型 API", desc: "全局图片理解模型", iconColor: CONTENT_APP_ACCENTS.moments, glass: "image-generation" },
+    { id: "vectorMemory", icon: Database, label: "向量记忆", desc: "Embedding 与云端记忆检索", iconColor: BINDING_ACCENTS.memory, glass: "data" },
     { id: "strictLearning", icon: BookOpen, label: "严格学习模式", desc: "学习任务与凭证审核", iconColor: CONTENT_APP_ACCENTS.chat, glass: "" },
     { id: "voice", icon: Mic, label: "语音 API", desc: "语音合成", iconColor: BINDING_ACCENTS.voice , glass: "voice" },
     { id: "imageGeneration", icon: Image, label: "图像生成 API", desc: "模型、参考图与提示词", iconColor: CONTENT_APP_ACCENTS.moments , glass: "image-generation" },
@@ -205,7 +208,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
 
     const defaultTitle = currentPage === "main"
         ? "设置"
-        : currentPage === "api" || currentPage === "vision" || currentPage === "strictLearning" || currentPage === "voice" || currentPage === "imageGeneration" || currentPage === "presets" || currentPage === "worldbook" || currentPage === "regex" || currentPage === "identity"
+        : currentPage === "api" || currentPage === "vision" || currentPage === "vectorMemory" || currentPage === "strictLearning" || currentPage === "voice" || currentPage === "imageGeneration" || currentPage === "presets" || currentPage === "worldbook" || currentPage === "regex" || currentPage === "identity"
             ? ""
             : currentPage === "moderation"
                 ? "管理中心"
@@ -329,6 +332,8 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                 return <ApiSettings />;
             case "vision":
                 return <VisionApiSettings />;
+            case "vectorMemory":
+                return <VectorMemorySettings />;
             case "strictLearning":
                 return <StrictLearningSettings />;
             case "voice":
@@ -510,7 +515,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                         <CardGrid
                             label="API Config"
                             labelClassName="settings-menu-section-title"
-                            items={SETTINGS_MENU.filter(item => ["api", "vision", "voice"].includes(item.id)).map(makeCardItem)}
+                            items={SETTINGS_MENU.filter(item => ["api", "vision", "vectorMemory", "voice"].includes(item.id)).map(makeCardItem)}
                         />
                         <div className="settings-data-rules-section">
                             <h3 className="settings-menu-section-title">Data & Rules</h3>
