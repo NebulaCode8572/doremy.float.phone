@@ -425,14 +425,17 @@ export function refreshChatMessageBucketsToVectorCloud(
             // Device-scoped identity prevents two devices with independent local
             // counters from overwriting or reserving the same chat source.
             sourceId = `session:${session.id}:g:${characterGeneration}:device:${deviceId}:chunk:${bucket}:v:${nextVersion}-${createChatVectorSourceNonce()}`;
-            if (state.sourceId) await deleteChatChunk(accountId, session.contactId!, state.sourceId);
             nextState = { version: nextVersion, sourceId, fingerprint };
           }
           const operationId = nextState.operationId ?? createChatVectorOperationId();
           nextState = { ...nextState, operationId };
-          // Persist retry intent before persisting an in-flight CAS operation or
-          // sending the request. A tab/process exit at any later point is recoverable.
+          // Persist retry intent before deleting the previous source, saving the
+          // new CAS operation, or sending the request. A crash at any point after
+          // this marker can safely retry the idempotent source deletion and upsert.
           await markChatChunkPending(queueEntry);
+          if (state.sourceId && state.fingerprint !== fingerprint) {
+            await deleteChatChunk(accountId, session.contactId!, state.sourceId);
+          }
           await saveActiveChunkState(stateKey, nextState);
 
           if (loadActiveAccountId() !== accountId) {
