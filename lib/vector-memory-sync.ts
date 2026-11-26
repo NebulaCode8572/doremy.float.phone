@@ -145,8 +145,12 @@ export async function removeSyncedImportedMemoryPending(entries: ImportedMemoryP
       uploaded.content !== entry.content ||
       uploaded.createdAt !== entry.createdAt ||
       uploaded.updatedAt !== entry.updatedAt ||
-      uploaded.vectorMemoryCharacterGeneration !== entry.vectorMemoryCharacterGeneration ||
-      uploaded.vectorMemoryMemoryGeneration !== entry.vectorMemoryMemoryGeneration ||
+      (uploaded.vectorMemoryCharacterGeneration !== undefined
+        && entry.vectorMemoryCharacterGeneration !== undefined
+        && uploaded.vectorMemoryCharacterGeneration !== entry.vectorMemoryCharacterGeneration) ||
+      (uploaded.vectorMemoryMemoryGeneration !== undefined
+        && entry.vectorMemoryMemoryGeneration !== undefined
+        && uploaded.vectorMemoryMemoryGeneration !== entry.vectorMemoryMemoryGeneration) ||
       JSON.stringify(uploaded.metadata ?? {}) !== JSON.stringify(entry.metadata ?? {});
   });
   await kvSetAsync(IMPORT_PENDING_KEY, JSON.stringify(remaining));
