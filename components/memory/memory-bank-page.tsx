@@ -357,8 +357,8 @@ export function MemoryBankPage({
 
     const handleDeleteEntry = async (id: string) => {
         const entry = [...coreEntries, ...longTermEntries].find(item => item.id === id);
+        if (entry) await deleteMemoryEntriesFromVectorCloud([entry]);
         await deleteMemoryEntry(id);
-        if (entry) void deleteMemoryEntriesFromVectorCloud([entry]);
         setCoreEntries(prev => prev.filter(e => e.id !== id));
         setLongTermEntries(prev => prev.filter(e => e.id !== id));
         setEntryMenuId(null);
@@ -368,8 +368,8 @@ export function MemoryBankPage({
     const handleClearEntries = async (type: "core" | "long_term") => {
         if (!selectedCharId) return;
         const entries = type === "core" ? coreEntries : longTermEntries;
+        await deleteMemoryEntriesFromVectorCloud(entries);
         await deleteCharacterMemoriesByType(selectedCharId, type);
-        void deleteMemoryEntriesFromVectorCloud(entries);
         if (type === "core") setCoreEntries([]);
         else setLongTermEntries([]);
         loadCharacterList();
