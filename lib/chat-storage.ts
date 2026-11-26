@@ -1312,9 +1312,10 @@ export function isChatStorageHydrated(): boolean {
 let _vectorHistoryBackfillPromise: Promise<void> | null = null;
 let _vectorHistoryBackfillAccountId = "";
 
-export async function backfillHistoricalChatVectors(): Promise<void> {
+export async function backfillHistoricalChatVectors(allowedCharacterIds?: string[]): Promise<void> {
     if (typeof window === "undefined") return;
     const accountId = loadActiveAccountId();
+    const allowedCharacters = allowedCharacterIds ? new Set(allowedCharacterIds) : null;
     if (!accountId) return;
 
     if (_vectorHistoryBackfillPromise) {
@@ -1329,6 +1330,7 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
         const eligibleSessions = _sessionsCache.filter(session =>
             !session.isGroup
             && Boolean(session.contactId)
+            && (!allowedCharacters || allowedCharacters.has(session.contactId))
             && (!session.vectorMemoryAccountId || session.vectorMemoryAccountId === accountId)
         );
         let updatedMessageCount = 0;
