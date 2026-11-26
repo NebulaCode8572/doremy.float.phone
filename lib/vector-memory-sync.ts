@@ -627,9 +627,11 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
           && Number.isSafeInteger(result.revision) && Number(result.revision) > 0) {
           await persistVectorMemoryRevision(entry, Number(result.revision));
           await removePendingMemoryIndexes([entry]);
+          await removeSyncedImportedMemoryPending([entry]);
         } else if (result?.success === true && (result.status === "deleted" || result.status === "stale_generation")) {
           await clearVectorMemoryConflict(entry);
           await removePendingMemoryIndexes([entry]);
+          await removeSyncedImportedMemoryPending([entry]);
         } else {
           allSucceeded = false;
           if (result?.status === "conflict" && Number.isSafeInteger(result.currentRevision)
