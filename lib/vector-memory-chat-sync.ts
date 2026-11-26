@@ -236,6 +236,13 @@ function enqueueChatChunkOperation(key: string, operation: () => Promise<void>):
   });
 }
 
+/** Wait until every queued chat-chunk write/delete currently in flight has settled. */
+export async function waitForChatVectorChunkQueue(): Promise<void> {
+  while (chunkOperationQueues.size > 0) {
+    await Promise.all([...chunkOperationQueues.values()]);
+  }
+}
+
 function chunkQueueKey(characterId: string, sessionId: string, bucket: number, characterGeneration?: number, accountId = loadActiveAccountId()): string {
   return `${accountId}:${characterId}:${sessionId}:${characterGeneration ?? "legacy"}:${bucket}`;
 }
