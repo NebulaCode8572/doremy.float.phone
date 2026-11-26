@@ -198,7 +198,9 @@ export function loadMemoryConfig(): MemoryConfig {
 
 export function saveMemoryConfig(config: MemoryConfig): void {
     if (typeof window === "undefined") return;
-    kvSet(CONFIG_KEY, JSON.stringify(config));
+    const persisted = { ...config } as MemoryConfig & { vectorMemoryEnabled?: unknown };
+    delete persisted.vectorMemoryEnabled;
+    kvSet(CONFIG_KEY, JSON.stringify(persisted));
 }
 
 // ── Per-character event counter (localStorage) ──
