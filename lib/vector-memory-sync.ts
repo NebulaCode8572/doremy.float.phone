@@ -726,7 +726,10 @@ export async function retryPendingMemoryIndexes(allowedCharacterIds?: string[]):
     );
     if (!ready.length) return 0;
     const success = await syncMemoryEntriesToVectorCloudUnlocked(ready);
-    if (success) await removePendingMemoryIndexes(ready);
+    if (success) {
+      await removePendingMemoryIndexes(ready);
+      await removeSyncedImportedMemoryPending(ready);
+    }
     return success ? ready.length : 0;
   });
 }
