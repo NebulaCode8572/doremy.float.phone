@@ -188,7 +188,7 @@ export function loadMemoryConfig(): MemoryConfig {
         // in the persisted config could let a stale UI snapshot reintroduce it.
         if (Object.prototype.hasOwnProperty.call(stored, "vectorMemoryEnabled")) {
             delete stored.vectorMemoryEnabled;
-            kvSet(CONFIG_KEY, JSON.stringify(stored));
+            try { kvSet(CONFIG_KEY, JSON.stringify(stored)); } catch { /* Cleanup failure must not hide the rest of the config. */ }
         }
         return { ...DEFAULT_MEMORY_CONFIG, ...stored };
     } catch {
