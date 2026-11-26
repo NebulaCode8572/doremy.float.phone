@@ -1,6 +1,6 @@
 import type { MemoryEntry } from "@/lib/memory-types";
 import { hydrateKvDb, kvGet, kvSetAsync, registerKvMigration } from "@/lib/kv-db";
-import { loadMemoryConfig, loadMemoryEntries, saveMemoryEntry } from "@/lib/memory-storage";
+import { loadMemoryEntries, saveMemoryEntry } from "@/lib/memory-storage";
 import { loadActiveAccountId } from "@/lib/account-client";
 import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
@@ -35,7 +35,7 @@ export function loadImportedMemoryPending(): ImportedMemoryPendingEntry[] {
 
 export async function addImportedMemoryPending(entries: ImportedMemoryPendingEntry[]): Promise<number> {
   await hydrateKvDb();
-  if (!entries.length || !loadMemoryConfig().vectorMemoryEnabled) return 0;
+  if (!entries.length) return 0;
   const accountId = loadActiveAccountId();
   if (!accountId) return loadImportedMemoryPending().length;
 
@@ -612,16 +612,12 @@ async function syncMemoryEntriesToVectorCloudUnlocked(entries: VectorSyncEntry[]
 }
 export async function syncMemoryEntriesToVectorCloud(entries: VectorSyncEntry[]): Promise<boolean> {
   return withVectorCloudMutation(async () => {
-    // The Vector Memory toggle is the master gate for ordinary indexing.
-    // Keep local saves unaffected and preserve any queued retries while disabled.
-    if (!loadMemoryConfig().vectorMemoryEnabled) return false;
     return syncMemoryEntriesToVectorCloudUnlocked(entries);
   });
 }
 export async function retryPendingMemoryIndexes(): Promise<number> {
   return withVectorCloudMutation(async () => {
     await hydrateKvDb();
-    if (!loadMemoryConfig().vectorMemoryEnabled) return 0;
     const accountId = loadActiveAccountId();
     const pending = loadPendingMemoryIndexes().filter(entry => entry.vectorMemoryAccountId === accountId);
     if (!pending.length) return 0;
@@ -645,7 +641,6 @@ export async function syncImportedMemoryPending(): Promise<{ synced: number; suc
     const accountId = loadActiveAccountId();
     const pending = loadImportedMemoryPending().filter(entry => entry.vectorMemoryAccountId === accountId);
     if (!pending.length) return { synced: 0, success: true };
-    if (!loadMemoryConfig().vectorMemoryEnabled) return { synced: 0, success: false };
     const success = await syncMemoryEntriesToVectorCloudUnlocked(pending);
     if (success) await removeSyncedImportedMemoryPending(pending);
     return { synced: success ? pending.length : 0, success };
