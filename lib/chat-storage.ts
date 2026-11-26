@@ -1576,10 +1576,11 @@ export function createGroupSession(groupName: string, participantIds: string[], 
 export function deleteChatSession(sessionId: string) {
     const sessions = loadChatSessions();
     const targetSession = sessions.find(s => s.id === sessionId);
+    // Start persisting the cloud deletion intent before removing local session data.
+    if (targetSession) deleteChatSessionVectorsFromCloud(targetSession);
     const filtered = sessions.filter(s => s.id !== sessionId);
     saveChatSessions(filtered);
     dbDeleteSession(sessionId);
-    if (targetSession) deleteChatSessionVectorsFromCloud(targetSession);
     clearChatSessionMessages(sessionId); // Cleanup associated messages
 }
 
