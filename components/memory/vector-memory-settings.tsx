@@ -45,7 +45,7 @@ export function VectorMemorySettings() {
       const response = await fetch("/api/vector-memory-settings/test", { method: "POST" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "连接测试失败");
-      setNotice(`连接成功 · ${data.dimensions} 维`);
+      setNotice(`Embedding 与向量数据库连接成功 · ${data.dimensions} 维`);
     } catch (e) { setNotice(e instanceof Error ? e.message : "连接测试失败"); }
     finally { setTesting(false); }
   }
