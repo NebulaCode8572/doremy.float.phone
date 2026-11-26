@@ -405,6 +405,9 @@ export function refreshChatMessageBucketsToVectorCloud(
           if (state.sourceId && state.fingerprint === fingerprint
             && Number.isSafeInteger(state.revision) && !state.operationId) {
             // The current snapshot is already committed for this device/bucket.
+            // A pending marker may have survived a crash after the commit but
+            // before its cleanup, so clear it when the committed fingerprint matches.
+            await clearChatChunkPending(queueEntry);
             return;
           }
           const deviceId = await getChatVectorDeviceId();
@@ -423,10 +426,12 @@ export function refreshChatMessageBucketsToVectorCloud(
           }
           const operationId = nextState.operationId ?? createChatVectorOperationId();
           nextState = { ...nextState, operationId };
+          // Persist retry intent before persisting an in-flight CAS operation or
+          // sending the request. A tab/process exit at any later point is recoverable.
+          await markChatChunkPending(queueEntry);
           await saveActiveChunkState(stateKey, nextState);
 
           if (loadActiveAccountId() !== accountId) {
-            await markChatChunkPending(queueEntry);
             return;
           }
           const response = await fetch("/api/vector-memory-index", {
