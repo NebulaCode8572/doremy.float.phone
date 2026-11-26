@@ -2057,8 +2057,10 @@ export async function buildChatPromptMessages(
     const latestVectorMemorySession = !session.isGroup
         ? loadChatSessions().find(item => item.id === session.id)
         : undefined;
-    if (!session.isGroup
-        && latestVectorMemorySession?.vectorMemoryAccountId === loadActiveAccountId()) {
+    const vectorMemorySessionAccountId = latestVectorMemorySession
+        ? latestVectorMemorySession.vectorMemoryAccountId
+        : session.vectorMemoryAccountId;
+    if (!session.isGroup && vectorMemorySessionAccountId === loadActiveAccountId()) {
         const vectorRecallText = await retrieveVectorMemoryForPrompt(character.id, wbActivationContext).catch(() => "");
         if (vectorRecallText) llmMessages.push({ role: "system", content: vectorRecallText });
     }
