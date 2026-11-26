@@ -765,7 +765,6 @@ export async function syncImportedMemoryPending(allowedCharacterIds?: string[]):
     );
     if (!ready.length) return { synced: 0, success: false };
     const success = await syncMemoryEntriesToVectorCloudUnlocked(ready);
-    if (success) await removeSyncedImportedMemoryPending(ready);
     return {
       synced: success ? ready.length : 0,
       success: success && ready.length === pending.length,
