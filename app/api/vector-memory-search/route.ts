@@ -32,7 +32,10 @@ export async function POST(request: Request) {
         match_count: 20,
       }),
     });
-    if (!result.ok) return NextResponse.json({ error: "Vector Memory 语义检索失败" }, { status: 502 });
+    if (!result.ok) {
+      console.warn("[VectorMemory] Search RPC failed with HTTP " + result.status);
+      return NextResponse.json({ error: "Vector Memory 语义检索失败" }, { status: 502 });
+    }
     const matches: Array<{ content: string; sourceKind: string; similarity: number; createdAt: string }> = [];
     const seenChatBuckets = new Set<string>();
     if (Array.isArray(result.data)) {
@@ -62,7 +65,8 @@ export async function POST(request: Request) {
       }
     }
     return NextResponse.json({ matches }, { headers: { "Cache-Control": "no-store" } });
-  } catch {
+  } catch (error) {
+    console.error("[VectorMemory] Search route failed.", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json({ error: "Vector Memory 检索失败" }, { status: 500 });
   }
 }
