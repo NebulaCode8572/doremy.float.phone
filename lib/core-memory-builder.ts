@@ -142,6 +142,7 @@ export async function runCoreMemoryPipeline(
             summarizedLongTermEntries: entries.length,
             timeSpan: `${earliest} ~ ${latest}`,
             sourceSessionIds,
+            ...(!sourcesBelongToAccount ? { includesUnverifiedTimeline: true } : {}),
         },
     };
     const coreEntry: MemoryEntry = sourcesBelongToAccount
