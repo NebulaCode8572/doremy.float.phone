@@ -217,7 +217,34 @@ export async function retryPendingChatVectorChunks(
       // and rebuild the bucket; absence of the current marker is not proof of deletion.
       continue;
     }
-    refreshChatMessageBucketsToVectorCloud(session, loadMessages(session.id), [entry.bucket], entry.characterGeneration);
+    const sessionMessages = loadMessages(session.id);
+    const hasCurrentGenerationMessages = sessionMessages.some(message =>
+      message.sessionId === session.id
+      && message.vectorMemoryAccountId === accountId
+      && message.vectorMemoryCharacterGeneration === entry.characterGeneration
+      && bucketForOrder(message.order) === entry.bucket
+    );
+    if (!hasCurrentGenerationMessages) {
+      // The bucket may have been emptied or moved to a newer character generation
+      // while the app was offline. Rebuild must delete the old generation's source,
+      // otherwise its stale content remains searchable forever.
+      const stateKey = activeChunkStateKey(entry.accountId, entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration);
+      enqueueChatChunkOperation(chunkQueueKey(entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration, accountId), async () => {
+        try {
+          await markChatChunkPending(entry);
+          const state = loadActiveChunkState(stateKey);
+          if (state.sourceId) await deleteChatChunk(accountId, entry.characterId, state.sourceId);
+          await saveActiveChunkState(stateKey, { version: state.version });
+          await clearChatChunkPending(entry);
+        } catch (error) {
+          await markChatChunkPending(entry);
+          throw error;
+        }
+      });
+      queued++;
+      continue;
+    }
+    refreshChatMessageBucketsToVectorCloud(session, sessionMessages, [entry.bucket], entry.characterGeneration);
     queued++;
   }
   return queued;
