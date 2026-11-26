@@ -1321,7 +1321,6 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
             && Boolean(session.contactId)
             && (!session.vectorMemoryAccountId || session.vectorMemoryAccountId === accountId)
         );
-        const characterIds = [...new Set(eligibleSessions.map(session => session.contactId!))];
         let updatedMessageCount = 0;
         for (const originalSession of eligibleSessions) {
             if (loadActiveAccountId() !== accountId) return;
