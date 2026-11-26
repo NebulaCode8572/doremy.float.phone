@@ -212,7 +212,9 @@ export async function retryPendingChatVectorChunks(
       continue;
     }
     if (!session) {
-      await clearChatChunkPending(entry);
+      // An upsert may belong to a legacy session that has not been stamped yet.
+      // Keep it pending until historical backfill can attach the current account
+      // and rebuild the bucket; absence of the current marker is not proof of deletion.
       continue;
     }
     refreshChatMessageBucketsToVectorCloud(session, loadMessages(session.id), [entry.bucket], entry.characterGeneration);
