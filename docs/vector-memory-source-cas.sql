@@ -52,7 +52,7 @@ alter table public.app_user_vector_memory_operations
   add column if not exists character_generation bigint not null default 0 check (character_generation >= 0),
   add column if not exists memory_generation bigint not null default 0 check (memory_generation >= 0);
 alter table public.app_user_vector_memory_operations enable row level security;
-revoke all on public.app_user_vector_memory_operations from public, anon, authenticated;
+revoke all on public.app_user_vector_memory_operations from public, anon, authenticated, service_role;
 grant select, insert, update on public.app_user_vector_memory_operations to service_role;
 
 create or replace function public.commit_vector_memory_cas(
