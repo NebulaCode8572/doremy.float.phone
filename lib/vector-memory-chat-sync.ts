@@ -300,6 +300,7 @@ export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, bu
           await deleteChatChunk(accountId, session.contactId!, `session:${session.id}:chunk:${bucket}`);
           return;
         }
+        if (queueEntry) await markChatChunkPending(queueEntry);
         const stateKey = activeChunkStateKey(accountId, session.contactId!, session.id, bucket, generation);
         const state = loadActiveChunkState(stateKey);
         if (state.sourceId) await deleteChatChunk(accountId, session.contactId!, state.sourceId);
@@ -359,6 +360,7 @@ export function refreshChatMessageBucketsToVectorCloud(
       if (selected.length === 0) {
         enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, characterGeneration, accountId), async () => {
           try {
+            await markChatChunkPending(queueEntry);
             const state = loadActiveChunkState(stateKey);
             if (state.sourceId) await deleteChatChunk(accountId, session.contactId!, state.sourceId);
             await saveActiveChunkState(stateKey, { version: state.version });
