@@ -1344,14 +1344,16 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
                         ? originalSession.vectorMemoryCharacterGeneration
                         : generation.characterGeneration,
             };
+            if (loadActiveAccountId() !== accountId) return;
             const sessionIndex = _sessionsCache.findIndex(item => item.id === session.id);
-            if (sessionIndex < 0 || loadActiveAccountId() !== accountId) continue;
+            if (sessionIndex < 0) continue;
             await dbPutSessionsAndWait([session]);
 
             // A user may delete the session while IndexedDB persistence is pending.
             // Never let this backfill resurrect it or index its messages afterward.
+            if (loadActiveAccountId() !== accountId) return;
             const currentSessionIndex = _sessionsCache.findIndex(item => item.id === session.id);
-            if (currentSessionIndex < 0 || loadActiveAccountId() !== accountId) {
+            if (currentSessionIndex < 0) {
                 await chatDb.sessions.delete(session.id);
                 continue;
             }
@@ -1411,8 +1413,8 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
 
             // Deletion can race the awaited message write above. If the session
             // disappeared meanwhile, clean any late bulkPut and never enqueue it.
-            if (!_sessionsCache.some(item => item.id === session.id)
-                || loadActiveAccountId() !== accountId) {
+            if (loadActiveAccountId() !== accountId) return;
+            if (!_sessionsCache.some(item => item.id === session.id)) {
                 _messagesCache = _messagesCache.filter(message => message.sessionId !== session.id);
                 await chatDb.messages.where("sessionId").equals(session.id).delete();
                 continue;
