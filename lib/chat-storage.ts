@@ -1392,7 +1392,8 @@ export async function backfillHistoricalChatVectors(allowedCharacterIds?: string
                 )
                 .map(message => ({
                     id: message.id,
-                    characterGeneration: Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
+                    characterGeneration: message.vectorMemoryAccountId === accountId
+                        && Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
                         ? message.vectorMemoryCharacterGeneration!
                         : effectiveSession.vectorMemoryCharacterGeneration!,
                 }));
