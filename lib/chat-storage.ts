@@ -1309,12 +1309,21 @@ export function isChatStorageHydrated(): boolean {
 }
 
 let _vectorHistoryBackfillPromise: Promise<void> | null = null;
+let _vectorHistoryBackfillAccountId = "";
 
 export async function backfillHistoricalChatVectors(): Promise<void> {
-    if (typeof window === "undefined" || _vectorHistoryBackfillPromise) return;
+    if (typeof window === "undefined") return;
     const accountId = loadActiveAccountId();
     if (!accountId) return;
 
+    if (_vectorHistoryBackfillPromise) {
+        if (_vectorHistoryBackfillAccountId === accountId) return _vectorHistoryBackfillPromise;
+        await _vectorHistoryBackfillPromise;
+        if (loadActiveAccountId() !== accountId) return;
+        return backfillHistoricalChatVectors();
+    }
+
+    _vectorHistoryBackfillAccountId = accountId;
     _vectorHistoryBackfillPromise = (async () => {
         const eligibleSessions = _sessionsCache.filter(session =>
             !session.isGroup
@@ -1386,6 +1395,7 @@ export async function backfillHistoricalChatVectors(): Promise<void> {
         console.warn("[VectorMemory] Historical chat backfill failed; pending chunks remain retryable.", error);
     }).finally(() => {
         _vectorHistoryBackfillPromise = null;
+        _vectorHistoryBackfillAccountId = "";
     });
     return _vectorHistoryBackfillPromise;
 }
