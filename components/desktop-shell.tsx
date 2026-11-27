@@ -1606,10 +1606,19 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           const parsed = JSON.parse(rawV1) as Record<string, unknown>;
           const w1 = hydratedWidgets.filter(w => w.page === 1);
           const w2 = hydratedWidgets.filter(w => w.page === 2);
-          setLayout({
+          const migratedLayout = {
             page1: migratePageV1(parsed.page1, PAGE_1_DEFAULT, w1).filter(ic => !dockIds.has(ic.id)),
             page2: migratePageV1(parsed.page2, PAGE_2_DEFAULT, w2).filter(ic => !dockIds.has(ic.id)),
-          } as DesktopLayout);
+          } as DesktopLayout;
+          // Run the normal default-icon recovery after V1 migration too.
+          // Otherwise newly added built-in apps (including Vector Memory) never
+          // appear for users whose persisted layout is still on the V1 format.
+          const normalized = normalizeLayout(migratedLayout, hydratedWidgets, dockIds, hydratedFolders);
+          const sane = sanitizeDesktopFolders(hydratedFolders, normalized, hydratedDock, hydratedWidgets);
+          setFolders(sane.folders);
+          setLayout(sane.layout);
+          kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(sane.layout));
+          writeDesktopFolders(sane.folders);
           kvRemove(ICON_LAYOUT_STORAGE_KEY_V1);
           setDesktopReady(true);
           return;
