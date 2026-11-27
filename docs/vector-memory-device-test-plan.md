@@ -104,6 +104,7 @@ contain the Vector Memory migrations; it does not need the app's account tables.
   overwrite a newer generation already stored by the other tab; delayed generation
   API responses must not regress either cached counter.
 - Force two writers to race on the same chat source revision. The losing writer must advance to the returned current revision and retry with a fresh operation ID instead of remaining pending forever.
+- Change only memory_generation between a chat chunk's commit and its retry. Expected: the same chat operation remains idempotent because chat chunks are scoped to character_generation, not memory_generation.
 - Verify the settings GET/PUT, embedding connection test, memory deletion,
   indexing, chat-chunk deletion, generation lookup, and semantic search routes
   all check the dedicated Vector Memory database configuration rather than the
