@@ -279,7 +279,6 @@ export async function dbUpdateMessageOrdersAndWait(
 export async function dbStampMessagesVectorMemoryAndWait(
     updates: Array<{ id: string; characterGeneration: number; expectedCharacterGeneration?: number }>,
     accountId: string,
-    replaceGeneration = false,
 ): Promise<Array<{ id: string; characterGeneration: number }>> {
     const stamped: Array<{ id: string; characterGeneration: number }> = [];
     for (let start = 0; start < updates.length; start += 500) {
@@ -296,7 +295,6 @@ export async function dbStampMessagesVectorMemoryAndWait(
                     && current.vectorMemoryCharacterGeneration === item.expectedCharacterGeneration;
                 const characterGeneration = sameAccount
                     && currentGenerationIsValid
-                    && !replaceGeneration
                     && !mayReplaceExpectedStaleGeneration
                     ? current.vectorMemoryCharacterGeneration!
                     : item.characterGeneration;
