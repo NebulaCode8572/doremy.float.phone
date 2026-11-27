@@ -26,7 +26,7 @@ import {
     resolveMeetingInviteCardConfig,
     updateChatMessage,
 } from "./chat-storage";
-import { getStickerDescriptionCacheKey, extractStickerDescriptionMarkers } from "./sticker-description-cache";
+import { getStickerDescriptionCacheKey, getCachedStickerDescription, saveCachedStickerDescription, extractStickerDescriptionMarkers } from "./sticker-description-cache";
 import { extractTextToolDirectiveText, stripTextToolDirectives } from "./text-tool-protocol";
 import { applyWithProtectedAvatarDecisionMarkers, findUserAvatarChangeIntent } from "./chat-avatar-intent";
 import type { ApiConfig, PresetConfig, Prompt, PromptOrderEntry, RegexConfig } from "./settings-types";
@@ -283,9 +283,20 @@ export async function prepareVisionPromptImageMessage(msg: ChatMessage): Promise
         if (msg.role !== "user") return;
         const stickerUrl = msg.mediaData?.stickerUrl?.trim();
         if (!stickerUrl) return;
+        const stickerCacheKey = msg.mediaData?.stickerCacheKey || getStickerDescriptionCacheKey(stickerUrl);
+        const cachedDescription = msg.mediaData?.stickerDescription || getCachedStickerDescription(stickerCacheKey);
+        if (cachedDescription) {
+            msg.mediaData = {
+                ...(msg.mediaData ?? {}),
+                stickerCacheKey,
+                stickerDescription: cachedDescription,
+                stickerUrl: undefined,
+            };
+            return;
+        }
         msg.mediaData = {
             ...(msg.mediaData ?? {}),
-            stickerCacheKey: msg.mediaData?.stickerCacheKey || getStickerDescriptionCacheKey(stickerUrl),
+            stickerCacheKey,
         };
         const result = await resolveVisionImageRefForApi(stickerUrl);
         if ("url" in result) {
@@ -2776,7 +2787,12 @@ async function generateChatCompletionCore(
                     === entry.key,
             );
             if (!target || target.mediaData?.stickerDescription) continue;
-            const mediaData = { ...(target.mediaData ?? {}), stickerDescription: entry.description };
+            saveCachedStickerDescription(entry.key, entry.description);
+            const mediaData = {
+                ...(target.mediaData ?? {}),
+                stickerCacheKey: entry.key,
+                stickerDescription: entry.description,
+            };
             target.mediaData = mediaData;
             updateChatMessage(target.id, { mediaData });
         }
