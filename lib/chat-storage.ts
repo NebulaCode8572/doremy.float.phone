@@ -1389,12 +1389,9 @@ export async function backfillHistoricalChatVectors(allowedCharacterIds?: string
                     vectorMemoryAccountId: accountId,
                     vectorMemoryCharacterGeneration: stampedGeneration,
                 };
-                if (replaceStaleGeneration) {
-                    _messagesCache = _messagesCache.map(message => message.sessionId === effectiveSession.id
-                        && (!message.vectorMemoryAccountId || message.vectorMemoryAccountId === accountId)
-                        ? { ...message, vectorMemoryAccountId: accountId, vectorMemoryCharacterGeneration: stampedGeneration }
-                        : message);
-                }
+                // Do not pre-stamp the message cache here. The IndexedDB message rows
+                // may still carry the old generation; keep that observed value so the
+                // per-message CAS below can safely replace it and recover after a crash.
                 _sessionsCache[currentSessionIndex] = effectiveSession;
             }
 
