@@ -96,7 +96,8 @@ contain the Vector Memory migrations; it does not need the app's account tables.
   message rows are stamped. On the next run, messages whose generation differs
   from the session must be repaired and indexed.
 - Run two tabs with different cached generation snapshots. A stale tab must not
-  overwrite a newer generation already stored by the other tab.
+  overwrite a newer generation already stored by the other tab; delayed generation
+  API responses must not regress either cached counter.
 - Verify the settings GET/PUT, embedding connection test, memory deletion,
   indexing, chat-chunk deletion, generation lookup, and semantic search routes
   all check the dedicated Vector Memory database configuration rather than the
