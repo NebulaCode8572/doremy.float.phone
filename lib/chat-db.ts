@@ -243,14 +243,20 @@ export async function dbStampSessionVectorMemoryAndWait(
     id: string,
     accountId: string,
     fallbackCharacterGeneration: number,
-    replaceGeneration = false,
+    expectedStaleGeneration?: number,
 ): Promise<number | null> {
     return chatDb.transaction("rw", chatDb.sessions, async () => {
         const current = await chatDb.sessions.get(id);
         if (!current || (current.vectorMemoryAccountId && current.vectorMemoryAccountId !== accountId)) return null;
-        const characterGeneration = !replaceGeneration
-            && current.vectorMemoryAccountId === accountId
-            && Number.isSafeInteger(current.vectorMemoryCharacterGeneration)
+        const sameAccount = current.vectorMemoryAccountId === accountId;
+        const currentGenerationIsValid = Number.isSafeInteger(current.vectorMemoryCharacterGeneration);
+        const mayReplaceExpectedStaleGeneration = sameAccount
+            && currentGenerationIsValid
+            && expectedStaleGeneration !== undefined
+            && current.vectorMemoryCharacterGeneration === expectedStaleGeneration;
+        // A concurrent tab may already have stamped a newer server generation.
+        // Replace only the exact stale value observed by this backfill pass.
+        const characterGeneration = sameAccount && currentGenerationIsValid && !mayReplaceExpectedStaleGeneration
             ? current.vectorMemoryCharacterGeneration!
             : fallbackCharacterGeneration;
         await chatDb.sessions.update(id, {
