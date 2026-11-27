@@ -44,7 +44,14 @@ export function saveCachedVectorMemoryGeneration(
     || !Number.isSafeInteger(generation.characterGeneration) || generation.characterGeneration < 0
     || !Number.isSafeInteger(generation.memoryGeneration) || generation.memoryGeneration < 0) return;
   try {
-    kvSet(keyFor(accountId, characterId), JSON.stringify(generation));
+    const existing = loadCachedVectorMemoryGeneration(accountId, characterId);
+    // Focus/online/bootstrap refreshes can overlap. A slower response that
+    // started earlier must never roll either monotonic server generation back.
+    const monotonicGeneration = {
+      characterGeneration: Math.max(existing?.characterGeneration ?? 0, generation.characterGeneration),
+      memoryGeneration: Math.max(existing?.memoryGeneration ?? 0, generation.memoryGeneration),
+    };
+    kvSet(keyFor(accountId, characterId), JSON.stringify(monotonicGeneration));
   } catch {
     // A cache failure only pauses cloud indexing; local saves remain unaffected.
   }
