@@ -2,6 +2,7 @@
 
 import { Character } from "./character-types";
 import { ChatMessage } from "./chat-storage";
+import { getStickerDescriptionCacheKey } from "./sticker-description-cache";
 import type { StateValue } from "./chat-storage";
 import { PresetConfig, Prompt, PromptOrderEntry, WorldBookConfig, RegexConfig, WorldBookEntry } from "./settings-types";
 import type { UserIdentity } from "@/components/settings/user-identity";
@@ -189,14 +190,25 @@ function getPromptVisionImageUrl(msg: ChatMessage): string | undefined {
         return msg.mediaUrl;
     }
     if (msg.role === "user" && msg.mediaType === "sticker") {
+        if (msg.mediaData?.stickerDescription?.trim()) return undefined;
         const stickerUrl = msg.mediaData?.stickerUrl?.trim();
         return stickerUrl || undefined;
     }
     return undefined;
 }
 
+function formatStickerVisionBody(msg: ChatMessage, prefix = ""): string {
+    const base = `${prefix}${formatRichMediaForHistory(msg, "", "")}`;
+    const description = msg.mediaData?.stickerDescription?.trim();
+    if (description) return base;
+    const stickerUrl = msg.mediaData?.stickerUrl?.trim();
+    if (!stickerUrl) return base;
+    const key = msg.mediaData?.stickerCacheKey || getStickerDescriptionCacheKey(stickerUrl);
+    return `${base}\n请识别这张表情包的画面内容、人物动作和情绪。请在本轮最终回复末尾额外输出一条隐藏标记：<sticker_description key="${key}">用一句简短客观的话描述图片</sticker_description>。不要向用户解释这个标记，也不要把标记内容显示在正常回复中。`;
+}
+
 function formatDirectVisionBody(msg: ChatMessage, userName: string, charName: string): string {
-    if (msg.mediaType === "sticker") return formatRichMediaForHistory(msg, userName, charName);
+    if (msg.mediaType === "sticker") return formatStickerVisionBody(msg);
     return isImageGenerationMediaMessage(msg)
         ? formatImageGenerationDirective(msg)
         : formatPhotoDirective(msg);
@@ -210,7 +222,7 @@ function getAnnotatedSenderPrefix(body: string, msg: ChatMessage): string {
 function formatAnnotatedVisionBody(msg: ChatMessage, body: string): string {
     const prefix = getAnnotatedSenderPrefix(body, msg);
     if (msg.mediaType === "sticker") {
-        return `${prefix}${formatRichMediaForHistory(msg, "", "", true)}`;
+        return formatStickerVisionBody(msg, prefix);
     }
     return isImageGenerationMediaMessage(msg)
         ? formatImageGenerationDirective(msg, prefix)
@@ -1215,8 +1227,11 @@ export function formatRichMediaForHistory(msg: ChatMessage, userName: string, ch
             const pokeTarget = d?.pokeTarget || (msg.role === "assistant" ? userName : charName);
             return `[我拍了拍${pokeTarget}]`;
         }
-        case "sticker":
-            return `[表情包:${d?.label ?? "表情"}]`;
+        case "sticker": {
+            const name = d?.label ?? "表情";
+            const description = d?.stickerDescription?.trim();
+            return description ? `[表情包:${name}；图像描述:${description}]` : `[表情包:${name}]`;
+        }
         case "quote":
             return `[引用:${d?.quotePreview ?? ""}]${msg.content}`;
         case "music": {

@@ -157,6 +157,8 @@ export type ChatMessage = {
         quotePreview?: string;    // 引用消息预览文本
         quoteRole?: ChatMessageRole; // 引用消息的 role
         stickerUrl?: string;      // 表情包图片路径
+        stickerCacheKey?: string; // 表情包图片内容指纹，用于复用图像描述
+        stickerDescription?: string; // 首次识图后缓存的简短图像描述
         diceFace?: number;        // 骰子点数（1-6），气泡翻滚后定格并与全屏动效一致
         pokeSender?: string;      // 拍一拍发起人名字
         pokeTarget?: string;      // 拍一拍目标名字

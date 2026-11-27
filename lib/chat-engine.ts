@@ -24,7 +24,9 @@ import {
     createToolExecutionId,
     isSessionStreamingEnabled,
     resolveMeetingInviteCardConfig,
+    updateChatMessage,
 } from "./chat-storage";
+import { getStickerDescriptionCacheKey, extractStickerDescriptionMarkers } from "./sticker-description-cache";
 import { extractTextToolDirectiveText, stripTextToolDirectives } from "./text-tool-protocol";
 import { applyWithProtectedAvatarDecisionMarkers, findUserAvatarChangeIntent } from "./chat-avatar-intent";
 import type { ApiConfig, PresetConfig, Prompt, PromptOrderEntry, RegexConfig } from "./settings-types";
@@ -281,6 +283,10 @@ export async function prepareVisionPromptImageMessage(msg: ChatMessage): Promise
         if (msg.role !== "user") return;
         const stickerUrl = msg.mediaData?.stickerUrl?.trim();
         if (!stickerUrl) return;
+        msg.mediaData = {
+            ...(msg.mediaData ?? {}),
+            stickerCacheKey: msg.mediaData?.stickerCacheKey || getStickerDescriptionCacheKey(stickerUrl),
+        };
         const result = await resolveVisionImageRefForApi(stickerUrl);
         if ("url" in result) {
             msg.mediaData = { ...(msg.mediaData ?? {}), stickerUrl: result.url };
@@ -2757,6 +2763,21 @@ async function generateChatCompletionCore(
         }
         // 剔除预设配置的文本片段（<思考结束> 等残留标签），不进入消息/提示词
         filteredOutput = stripPresetTexts(filteredOutput, preset);
+
+        // 首次识图时模型会附带隐藏描述标记；保存到对应表情包消息，后续历史只注入文字。
+        const stickerDescriptions = extractStickerDescriptionMarkers(filteredOutput);
+        filteredOutput = stickerDescriptions.cleanText;
+        for (const entry of stickerDescriptions.entries) {
+            const target = [...history].reverse().find(message =>
+                message.role === "user"
+                && message.mediaType === "sticker"
+                && message.mediaData?.stickerCacheKey === entry.key,
+            );
+            if (!target || target.mediaData?.stickerDescription) continue;
+            const mediaData = { ...(target.mediaData ?? {}), stickerDescription: entry.description };
+            target.mediaData = mediaData;
+            updateChatMessage(target.id, { mediaData });
+        }
 
         // Parse actions (朋友圈 etc) — strip from display text but keep tool tags
         const { cleanText: afterActionStrip, actions } = parseActionTags(filteredOutput);
