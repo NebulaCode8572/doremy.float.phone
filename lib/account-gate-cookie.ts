@@ -5,6 +5,7 @@ function getGateSecret(): string {
     process.env.ACCOUNT_GATE_SECRET ||
     process.env.SITE_ACCESS_PASSWORD ||
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SECRET_KEY ||
     process.env.NEXTAUTH_SECRET ||
     ""
   ).trim();
