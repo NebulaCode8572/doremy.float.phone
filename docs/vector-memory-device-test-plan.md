@@ -46,6 +46,7 @@ This is a manual verification plan. No tests or device actions have been run.
 7. Expected: divergent snapshots remain separately searchable; the system does not silently choose one based on client timestamps.
 8. Delete the session.
 9. Expected: session-wide deletion removes all device-scoped chunks and tombstones the session against late uploads.
+10. Delete an individual message, then delete the last message in a bucket. Expected: deleted text is never reintroduced by the affected-message snapshot, and an empty bucket deletes its cloud source.
 
 ## 5. Isolation and local-save guarantees
 
