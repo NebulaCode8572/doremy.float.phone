@@ -85,18 +85,37 @@ export async function refreshCachedVectorMemoryGeneration(characterId: string): 
       cache: "no-store",
       body: JSON.stringify({ characterIds: [characterId] }),
     });
-    if (!response.ok) return;
+    if (!response.ok) {
+      const failure = await response.json().catch(() => null) as { errorCode?: string; error?: string } | null;
+      console.warn("[VectorMemory] Single-character generation refresh failed.", {
+        httpStatus: response.status,
+        errorCode: failure?.errorCode,
+        error: failure?.error,
+        accountMode: accountId === "local_user" ? "self_hosted" : "account",
+      });
+      return;
+    }
     const payload = await response.json().catch(() => null) as {
-      results?: Array<{ characterId: string; success: boolean; characterGeneration?: number; memoryGeneration?: number }>;
+      results?: Array<{ characterId: string; success: boolean; errorCode?: string; characterGeneration?: number; memoryGeneration?: number }>;
     } | null;
     if (loadActiveAccountId() !== accountId) return;
-    const result = payload?.results?.find(item => item.characterId === characterId && item.success);
-    if (!result || !Number.isSafeInteger(result.characterGeneration) || !Number.isSafeInteger(result.memoryGeneration)) return;
+    const result = payload?.results?.find(item => item.characterId === characterId);
+    if (!result?.success || !Number.isSafeInteger(result.characterGeneration) || !Number.isSafeInteger(result.memoryGeneration)) {
+      console.warn("[VectorMemory] Single-character generation refresh returned no usable generation.", {
+        resultFound: Boolean(result),
+        errorCode: result?.errorCode,
+        accountMode: accountId === "local_user" ? "self_hosted" : "account",
+      });
+      return;
+    }
     saveCachedVectorMemoryGeneration(accountId, characterId, {
       characterGeneration: result.characterGeneration!,
       memoryGeneration: result.memoryGeneration!,
     });
-  } catch {
-    // Failed refresh leaves the old generation in place, so new uploads fail closed.
+  } catch (error) {
+    console.warn("[VectorMemory] Single-character generation refresh threw an exception.", {
+      message: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
+      accountMode: accountId === "local_user" ? "self_hosted" : "account",
+    });
   }
 }
