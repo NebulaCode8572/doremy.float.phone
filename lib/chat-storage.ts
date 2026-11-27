@@ -1311,13 +1311,33 @@ export function isChatStorageHydrated(): boolean {
 
 let _vectorHistoryBackfillPromise: Promise<void> | null = null;
 const _vectorHistoryBackfillRequestedCharacters = new Set<string>();
+const _vectorHistoryBackfillAgainCharacters = new Set<string>();
 
 function requestHistoricalChatVectorBackfill(characterId: string): void {
-    if (!characterId || _vectorHistoryBackfillRequestedCharacters.has(characterId)) return;
+    if (!characterId) return;
+    if (_vectorHistoryBackfillRequestedCharacters.has(characterId)) {
+        // A new message can arrive after the active pass has already snapshotted
+        // this session's buckets. Remember the request and run one more pass;
+        // dropping it here could leave that message permanently unindexed.
+        _vectorHistoryBackfillAgainCharacters.add(characterId);
+        return;
+    }
     _vectorHistoryBackfillRequestedCharacters.add(characterId);
-    void backfillHistoricalChatVectors([characterId]).finally(() => {
-        _vectorHistoryBackfillRequestedCharacters.delete(characterId);
-    });
+    void (async () => {
+        try {
+            do {
+                _vectorHistoryBackfillAgainCharacters.delete(characterId);
+                await backfillHistoricalChatVectors([characterId]);
+            } while (_vectorHistoryBackfillAgainCharacters.has(characterId));
+        } finally {
+            _vectorHistoryBackfillRequestedCharacters.delete(characterId);
+            // Keep the handoff race-free if another request arrived as the loop
+            // was settling or if a future refactor adds an asynchronous boundary.
+            if (_vectorHistoryBackfillAgainCharacters.has(characterId)) {
+                requestHistoricalChatVectorBackfill(characterId);
+            }
+        }
+    })();
 }
 
 export async function backfillHistoricalChatVectors(allowedCharacterIds?: string[]): Promise<void> {
