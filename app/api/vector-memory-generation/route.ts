@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getCurrentAccount } from "@/lib/server/account-auth";
-import { getSupabaseServerConfig } from "@/lib/server/supabase-rest";
 import { readLimitedJson } from "@/lib/server/read-limited-json";
 import { getVectorMemoryGeneration } from "@/lib/server/vector-memory-store";
 
@@ -9,9 +8,6 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    if (!getSupabaseServerConfig()) {
-      return NextResponse.json({ error: "Supabase 服务未配置" }, { status: 503 });
-    }
     const account = await getCurrentAccount(request);
     if (!account) return NextResponse.json({ error: "请先登录" }, { status: 401 });
 
