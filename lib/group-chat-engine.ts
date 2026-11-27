@@ -1,7 +1,8 @@
 // lib/group-chat-engine.ts
 // Group chat engine: single API call for all characters.
 
-import { ChatSession, ChatMessage, loadChatAppSettings, createResponseBatchId, createResponseRoundId, createToolExecutionId, loadChatSessions, getLatestCharacterStateValues, isSessionStreamingEnabled, resolveVisionImagePromptLimit } from "./chat-storage";
+import { ChatSession, ChatMessage, loadChatAppSettings, createResponseBatchId, createResponseRoundId, createToolExecutionId, loadChatSessions, getLatestCharacterStateValues, isSessionStreamingEnabled, resolveVisionImagePromptLimit, updateChatMessage } from "./chat-storage";
+import { getStickerDescriptionCacheKey, saveCachedStickerDescription, extractStickerDescriptionMarkers } from "./sticker-description-cache";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import type { ApiConfig, PresetConfig, RegexConfig } from "./settings-types";
 import { loadCharacters } from "./character-storage";
@@ -1057,6 +1058,28 @@ export async function generateGroupChatCompletion(
             }
         }
     }
+    }
+
+    // Parse and persist hidden sticker descriptions before the text is split into character bubbles.
+    const stickerDescriptions = extractStickerDescriptionMarkers(finalRawOutput);
+    finalRawOutput = stickerDescriptions.cleanText;
+    for (const entry of stickerDescriptions.entries) {
+        const target = [...history].reverse().find(message =>
+            message.role === "user"
+            && message.mediaType === "sticker"
+            && (message.mediaData?.stickerCacheKey
+                || (message.mediaData?.stickerUrl ? getStickerDescriptionCacheKey(message.mediaData.stickerUrl) : ""))
+                === entry.key,
+        );
+        if (!target || target.mediaData?.stickerDescription) continue;
+        saveCachedStickerDescription(entry.key, entry.description);
+        const mediaData = {
+            ...(target.mediaData ?? {}),
+            stickerCacheKey: entry.key,
+            stickerDescription: entry.description,
+        };
+        target.mediaData = mediaData;
+        updateChatMessage(target.id, { mediaData });
     }
 
     // Parse final output into per-character results
