@@ -5,18 +5,19 @@ import {
     initChatDb,
     dbPutMessage, dbPutMessageAndWait, dbDeleteMessage, dbDeleteMessagesBySession, dbDeleteMessagesByIds,
     dbPutMessages, dbPutSessions, dbPutContacts, dbDeleteSession,
+    dbStampSessionVectorMemoryAndWait, dbUpdateMessageOrdersAndWait, dbStampMessagesVectorMemoryAndWait,
     dbReplaceContacts, dbReplaceSessions, dbBulkPutMessages,
 } from "./chat-db";
 import { resolveUserIdentity } from "./settings-storage";
 import { loadCharacters, saveCharacters } from "./character-storage";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { loadActiveAccountId } from "./account-client";
-import { loadCachedVectorMemoryGeneration } from "./vector-memory-generation";
+import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "./vector-memory-generation";
 import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-hooks";
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import { findUserAvatarChangeIntent, inferAvatarDecisionFromReply } from "./chat-avatar-intent";
-import { syncChatMessageChunkToVectorCloud, refreshChatMessageBucketsToVectorCloud, deleteChatSessionVectorsFromCloud } from "./vector-memory-chat-sync";
+import { syncChatMessageChunkToVectorCloud, refreshChatMessageBucketsToVectorCloud, deleteChatSessionVectorsFromCloud, waitForChatVectorChunkQueue } from "./vector-memory-chat-sync";
 
 function refreshVectorChunksForMessages(messages: ChatMessage[]): void {
     if (typeof window === "undefined" || messages.length === 0) return;
@@ -33,12 +34,21 @@ function refreshVectorChunksForMessages(messages: ChatMessage[]): void {
             for (const remaining of _messagesCache.filter(item => item.sessionId === sessionId)) {
                 buckets.add(Math.floor(Math.max(0, remaining.order ?? 0) / 4));
             }
+            // The caller supplies both edits and deletions. Only messages that
+            // still exist in the live cache may override the bucket snapshot;
+            // passing removed messages here would resurrect their content in cloud.
+            const liveMessageIds = new Set(_messagesCache
+                .filter(current => current.sessionId === sessionId)
+                .map(current => current.id));
+            const survivingAffectedMessages = messages.filter(message =>
+                message.sessionId === sessionId && liveMessageIds.has(message.id)
+            );
             refreshChatMessageBucketsToVectorCloud(
                 session,
                 _messagesCache,
                 [...buckets],
                 undefined,
-                messages.filter(message => message.sessionId === sessionId),
+                survivingAffectedMessages,
             );
         }
     }
@@ -1308,6 +1318,198 @@ export function isChatStorageHydrated(): boolean {
     return _hydrated;
 }
 
+let _vectorHistoryBackfillPromise: Promise<void> | null = null;
+const _vectorHistoryBackfillRequestedCharacters = new Set<string>();
+const _vectorHistoryBackfillAgainCharacters = new Set<string>();
+
+function requestHistoricalChatVectorBackfill(characterId: string): void {
+    if (!characterId) return;
+    if (_vectorHistoryBackfillRequestedCharacters.has(characterId)) {
+        // A new message can arrive after the active pass has already snapshotted
+        // this session's buckets. Remember the request and run one more pass;
+        // dropping it here could leave that message permanently unindexed.
+        _vectorHistoryBackfillAgainCharacters.add(characterId);
+        return;
+    }
+    _vectorHistoryBackfillRequestedCharacters.add(characterId);
+    void (async () => {
+        try {
+            do {
+                _vectorHistoryBackfillAgainCharacters.delete(characterId);
+                await backfillHistoricalChatVectors([characterId]);
+            } while (_vectorHistoryBackfillAgainCharacters.has(characterId));
+        } finally {
+            _vectorHistoryBackfillRequestedCharacters.delete(characterId);
+            // Keep the handoff race-free if another request arrived as the loop
+            // was settling or if a future refactor adds an asynchronous boundary.
+            if (_vectorHistoryBackfillAgainCharacters.has(characterId)) {
+                requestHistoricalChatVectorBackfill(characterId);
+            }
+        }
+    })();
+}
+
+export async function backfillHistoricalChatVectors(allowedCharacterIds?: string[]): Promise<void> {
+    if (typeof window === "undefined") return;
+    const accountId = loadActiveAccountId();
+    const allowedCharacters = allowedCharacterIds ? new Set(allowedCharacterIds) : null;
+    if (!accountId) return;
+
+    if (_vectorHistoryBackfillPromise) {
+        // Do not drop a later character-scoped request just because another
+        // character's backfill is already running for the same account.
+        await _vectorHistoryBackfillPromise;
+        if (loadActiveAccountId() !== accountId) return;
+        return backfillHistoricalChatVectors(allowedCharacterIds);
+    }
+
+    _vectorHistoryBackfillPromise = (async () => {
+        const eligibleSessions = _sessionsCache.filter(session =>
+            !session.isGroup
+            && Boolean(session.contactId)
+            && (!allowedCharacters || allowedCharacters.has(session.contactId))
+            && (!session.vectorMemoryAccountId || session.vectorMemoryAccountId === accountId)
+        );
+        let updatedMessageCount = 0;
+        for (const originalSession of eligibleSessions) {
+            if (loadActiveAccountId() !== accountId) return;
+            // A missing local generation cache must not silently skip every
+            // historical chat for this character. Fetch the authoritative generation
+            // from the Vector Memory backend, then continue the same backfill pass.
+            let generation = loadCachedVectorMemoryGeneration(accountId, originalSession.contactId);
+            if (!generation) {
+                await refreshCachedVectorMemoryGeneration(originalSession.contactId);
+                if (loadActiveAccountId() !== accountId) return;
+                generation = loadCachedVectorMemoryGeneration(accountId, originalSession.contactId);
+            }
+            if (!generation) {
+                console.warn("[VectorMemory] Historical chat backfill skipped: generation unavailable for character " + originalSession.contactId);
+                continue;
+            }
+
+            const sessionIndex = _sessionsCache.findIndex(item => item.id === originalSession.id);
+            if (sessionIndex < 0) continue;
+            let effectiveSession = _sessionsCache[sessionIndex];
+            if (effectiveSession.vectorMemoryAccountId && effectiveSession.vectorMemoryAccountId !== accountId) continue;
+            const replaceStaleGeneration = effectiveSession.vectorMemoryAccountId === accountId
+                && Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)
+                && effectiveSession.vectorMemoryCharacterGeneration !== generation.characterGeneration;
+
+            if (effectiveSession.vectorMemoryAccountId !== accountId
+                || !Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)
+                || replaceStaleGeneration) {
+                const stampedGeneration = await dbStampSessionVectorMemoryAndWait(
+                    effectiveSession.id,
+                    accountId,
+                    generation.characterGeneration,
+                    replaceStaleGeneration ? effectiveSession.vectorMemoryCharacterGeneration : undefined,
+                );
+                if (loadActiveAccountId() !== accountId) return;
+                if (stampedGeneration === null) continue;
+
+                // Merge only the two metadata fields into the latest cache object.
+                // If the session was deleted while IndexedDB was updating, do not recreate it.
+                const currentSessionIndex = _sessionsCache.findIndex(item => item.id === originalSession.id);
+                if (currentSessionIndex < 0) continue;
+                const latestSession = _sessionsCache[currentSessionIndex];
+                if (latestSession.vectorMemoryAccountId && latestSession.vectorMemoryAccountId !== accountId) continue;
+                effectiveSession = {
+                    ...latestSession,
+                    vectorMemoryAccountId: accountId,
+                    vectorMemoryCharacterGeneration: stampedGeneration,
+                };
+                // Do not pre-stamp the message cache here. The IndexedDB message rows
+                // may still carry the old generation; keep that observed value so the
+                // per-message CAS below can safely replace it and recover after a crash.
+                _sessionsCache[currentSessionIndex] = effectiveSession;
+            }
+
+            let sessionMessages = _messagesCache.filter(message => message.sessionId === effectiveSession.id);
+            if (sessionMessages.some(message => !Number.isSafeInteger(message.order) || (message.order ?? -1) < 0)) {
+                const ordered = [...sessionMessages]
+                    .sort(compareChatMessages)
+                    .map((message, index) => ({ id: message.id, order: index }));
+                const currentOrderById = new Map(sessionMessages.map(message => [message.id, message.order]));
+                const changedOrders = ordered.filter(item => currentOrderById.get(item.id) !== item.order);
+                if (changedOrders.length) {
+                    await dbUpdateMessageOrdersAndWait(changedOrders);
+                    const orderById = new Map(changedOrders.map(item => [item.id, item.order]));
+                    _messagesCache = _messagesCache.map(message => orderById.has(message.id)
+                        ? { ...message, order: orderById.get(message.id)! }
+                        : message);
+                }
+                sessionMessages = _messagesCache.filter(message => message.sessionId === effectiveSession.id);
+            }
+
+            const targetCharacterGeneration = effectiveSession.vectorMemoryCharacterGeneration!;
+            const stampCandidates = sessionMessages
+                .filter(message =>
+                    (!message.vectorMemoryAccountId || message.vectorMemoryAccountId === accountId)
+                    && (message.vectorMemoryAccountId !== accountId
+                        || !Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
+                        || message.vectorMemoryCharacterGeneration !== targetCharacterGeneration)
+                )
+                .map(message => ({
+                    id: message.id,
+                    characterGeneration: targetCharacterGeneration,
+                    ...(message.vectorMemoryAccountId === accountId
+                        && Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
+                        && message.vectorMemoryCharacterGeneration !== targetCharacterGeneration
+                        ? { expectedCharacterGeneration: message.vectorMemoryCharacterGeneration }
+                        : {}),
+                }));
+            // The session and its messages are stamped in separate IndexedDB
+            // transactions. If the app stops between them, this pass must detect
+            // message generations that still differ from the already-current
+            // session generation and repair only the exact stale value observed.
+            const stampedMessages = await dbStampMessagesVectorMemoryAndWait(stampCandidates, accountId);
+            if (loadActiveAccountId() !== accountId) return;
+            if (stampedMessages.length) {
+                const generationById = new Map(stampedMessages.map(item => [item.id, item.characterGeneration]));
+                _messagesCache = _messagesCache.map(message => {
+                    const characterGeneration = generationById.get(message.id);
+                    return characterGeneration === undefined ? message : {
+                        ...message,
+                        vectorMemoryAccountId: accountId,
+                        vectorMemoryCharacterGeneration: characterGeneration,
+                    };
+                });
+                updatedMessageCount += stampedMessages.length;
+            }
+
+            // Deletion can race the metadata transaction. Never enqueue chunks for a
+            // session that has disappeared from the live cache.
+            if (!_sessionsCache.some(item => item.id === effectiveSession.id)) continue;
+            const eligibleMessages = _messagesCache.filter(message =>
+                message.sessionId === effectiveSession.id
+                && message.vectorMemoryAccountId === accountId
+                && message.vectorMemoryCharacterGeneration === effectiveSession.vectorMemoryCharacterGeneration
+            );
+            const buckets = [...new Set(eligibleMessages
+                .map(message => Math.floor(Math.max(0, message.order ?? 0) / 4)))]
+                .sort((a, b) => a - b);
+            for (let offset = 0; offset < buckets.length; offset += 16) {
+                if (loadActiveAccountId() !== accountId) return;
+                if (!_sessionsCache.some(item => item.id === effectiveSession.id)) break;
+                refreshChatMessageBucketsToVectorCloud(
+                    effectiveSession,
+                    _messagesCache,
+                    buckets.slice(offset, offset + 16),
+                );
+                await waitForChatVectorChunkQueue();
+            }
+        }
+        if (updatedMessageCount > 0) {
+            console.info(`[VectorMemory] Historical chat backfill stamped ${updatedMessageCount} messages.`);
+        }
+    })().catch(error => {
+        console.warn("[VectorMemory] Historical chat backfill failed; pending chunks remain retryable.", error);
+    }).finally(() => {
+        _vectorHistoryBackfillPromise = null;
+     });
+    return _vectorHistoryBackfillPromise;
+}
+
 function _loadAllMessages(): ChatMessage[] {
     return _messagesCache;
 }
@@ -1384,10 +1586,24 @@ export function saveChatSessions(sessions: ChatSession[]) {
 
 export function createOrGetSession(contactId: string): ChatSession {
     const sessions = loadChatSessions();
+    const accountId = loadActiveAccountId();
+
+    // Opening an existing chat can be the first Vector Memory touch for this
+    // character on this device. Warm the generation cache and backfill its
+    // historical private-chat messages instead of leaving the session unstamped.
+    if (accountId && !loadCachedVectorMemoryGeneration(accountId, contactId)) {
+        void refreshCachedVectorMemoryGeneration(contactId).then(() => {
+            if (loadActiveAccountId() === accountId) {
+                return backfillHistoricalChatVectors([contactId]);
+            }
+        }).catch(error => {
+            console.warn("[VectorMemory] Could not initialize chat history indexing for character " + contactId, error);
+        });
+    }
+
     const existing = sessions.find(s => s.contactId === contactId);
     if (existing) return existing;
 
-    const accountId = loadActiveAccountId();
     const generation = loadCachedVectorMemoryGeneration(accountId, contactId);
     const newSession: ChatSession = {
         id: `sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -1432,10 +1648,11 @@ export function createGroupSession(groupName: string, participantIds: string[], 
 export function deleteChatSession(sessionId: string) {
     const sessions = loadChatSessions();
     const targetSession = sessions.find(s => s.id === sessionId);
+    // Start persisting the cloud deletion intent before removing local session data.
+    if (targetSession) deleteChatSessionVectorsFromCloud(targetSession);
     const filtered = sessions.filter(s => s.id !== sessionId);
     saveChatSessions(filtered);
     dbDeleteSession(sessionId);
-    if (targetSession) deleteChatSessionVectorsFromCloud(targetSession);
     clearChatSessionMessages(sessionId); // Cleanup associated messages
 }
 
@@ -1537,7 +1754,26 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     _messagesCache.push(newMsg);
     dbPutMessage(newMsg);
     const vectorSession = _sessionsCache.find(session => session.id === newMsg.sessionId);
-    if (vectorSession) syncChatMessageChunkToVectorCloud(vectorSession, newMsg, _messagesCache);
+    if (vectorSession) {
+        const activeAccountId = loadActiveAccountId();
+        const canBackfillVectorMessage = Boolean(
+            activeAccountId
+            && !vectorSession.isGroup
+            && vectorSession.contactId
+            && (!vectorSession.vectorMemoryAccountId || vectorSession.vectorMemoryAccountId === activeAccountId)
+            && (!newMsg.vectorMemoryAccountId || newMsg.vectorMemoryAccountId === activeAccountId)
+            && (newMsg.role === "user" || newMsg.role === "assistant")
+            && !Number.isSafeInteger(newMsg.vectorMemoryCharacterGeneration)
+        );
+        if (canBackfillVectorMessage) {
+            // The message is already in the local cache and IndexedDB. If its
+            // generation stamp was unavailable at save time, run the existing
+            // account-scoped historical backfill to fetch the authoritative
+            // generation, stamp the session/messages, and index their buckets.
+            requestHistoricalChatVectorBackfill(vectorSession.contactId!);
+        }
+        syncChatMessageChunkToVectorCloud(vectorSession, newMsg, _messagesCache);
+    }
     resolvePendingAvatarRecommendation(newMsg);
 
     // Auto update session last message only for records that can produce a list preview.

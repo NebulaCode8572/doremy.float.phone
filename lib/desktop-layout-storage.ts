@@ -115,6 +115,8 @@ export function createDefaultDesktopIconLayout(_widgets: WidgetInstance[] = []):
       row: 4 + Math.floor(i / 2),
       col: 3 + (i % 2),
     })),
+    // 向量记忆独立放在第五页，不占用第三页现有图标位置。
+    page5: [{ id: "vector_memory", row: 1, col: 1 }],
   } as DesktopIconLayout;
 }
 

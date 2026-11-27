@@ -194,6 +194,12 @@ export function dbPutMessages(msgs: ChatMessage[]): void {
     chatDb.messages.bulkPut(msgs).catch(err => console.warn("[ChatDB] bulkPut messages failed:", err));
 }
 
+/** Awaited bulk persistence for migrations that must finish before cloud indexing. */
+export async function dbPutMessagesAndWait(msgs: ChatMessage[]): Promise<void> {
+    if (msgs.length === 0) return;
+    await chatDb.messages.bulkPut(msgs);
+}
+
 // 可等待、错误上抛、分块提交的批量写入。导入聊天记录这类大批量落库必须
 // 感知真实结果（配额满/写入失败要能反馈给用户），且分块避免巨型单事务
 // 卡死主线程；每块之间自然让出事件循环，页面保持可响应。
@@ -224,6 +230,89 @@ export function dbPutSession(session: ChatSession): void {
 
 export function dbPutSessions(sessions: ChatSession[]): void {
     chatDb.sessions.bulkPut(sessions).catch(err => console.warn("[ChatDB] bulkPut sessions failed:", err));
+}
+
+/** Awaited bulk persistence for migrations that must finish before cloud indexing. */
+export async function dbPutSessionsAndWait(sessions: ChatSession[]): Promise<void> {
+    if (sessions.length === 0) return;
+    await chatDb.sessions.bulkPut(sessions);
+}
+
+/** Patch only vector ownership metadata; never replace a concurrently edited session. */
+export async function dbStampSessionVectorMemoryAndWait(
+    id: string,
+    accountId: string,
+    fallbackCharacterGeneration: number,
+    expectedStaleGeneration?: number,
+): Promise<number | null> {
+    return chatDb.transaction("rw", chatDb.sessions, async () => {
+        const current = await chatDb.sessions.get(id);
+        if (!current || (current.vectorMemoryAccountId && current.vectorMemoryAccountId !== accountId)) return null;
+        const sameAccount = current.vectorMemoryAccountId === accountId;
+        const currentGenerationIsValid = Number.isSafeInteger(current.vectorMemoryCharacterGeneration);
+        const mayReplaceExpectedStaleGeneration = sameAccount
+            && currentGenerationIsValid
+            && expectedStaleGeneration !== undefined
+            && current.vectorMemoryCharacterGeneration === expectedStaleGeneration;
+        // A concurrent tab may already have stamped a newer server generation.
+        // Replace only the exact stale value observed by this backfill pass.
+        const characterGeneration = sameAccount && currentGenerationIsValid && !mayReplaceExpectedStaleGeneration
+            ? current.vectorMemoryCharacterGeneration!
+            : fallbackCharacterGeneration;
+        await chatDb.sessions.update(id, {
+            vectorMemoryAccountId: accountId,
+            vectorMemoryCharacterGeneration: characterGeneration,
+        });
+        return characterGeneration;
+    });
+}
+
+/** Patch message ordering without overwriting content/status changes made during backfill. */
+export async function dbUpdateMessageOrdersAndWait(
+    updates: Array<{ id: string; order: number }>,
+): Promise<void> {
+    for (let start = 0; start < updates.length; start += 500) {
+        const batch = updates.slice(start, start + 500);
+        await chatDb.transaction("rw", chatDb.messages, async () => {
+            for (const item of batch) {
+                await chatDb.messages.update(item.id, { order: item.order });
+            }
+        });
+    }
+}
+
+/** Stamp only vector ownership/generation fields, preserving the latest message payload. */
+export async function dbStampMessagesVectorMemoryAndWait(
+    updates: Array<{ id: string; characterGeneration: number; expectedCharacterGeneration?: number }>,
+    accountId: string,
+): Promise<Array<{ id: string; characterGeneration: number }>> {
+    const stamped: Array<{ id: string; characterGeneration: number }> = [];
+    for (let start = 0; start < updates.length; start += 500) {
+        const batch = updates.slice(start, start + 500);
+        await chatDb.transaction("rw", chatDb.messages, async () => {
+            for (const item of batch) {
+                const current = await chatDb.messages.get(item.id);
+                if (!current || (current.vectorMemoryAccountId && current.vectorMemoryAccountId !== accountId)) continue;
+                const sameAccount = current.vectorMemoryAccountId === accountId;
+                const currentGenerationIsValid = Number.isSafeInteger(current.vectorMemoryCharacterGeneration);
+                const mayReplaceExpectedStaleGeneration = sameAccount
+                    && currentGenerationIsValid
+                    && item.expectedCharacterGeneration !== undefined
+                    && current.vectorMemoryCharacterGeneration === item.expectedCharacterGeneration;
+                const characterGeneration = sameAccount
+                    && currentGenerationIsValid
+                    && !mayReplaceExpectedStaleGeneration
+                    ? current.vectorMemoryCharacterGeneration!
+                    : item.characterGeneration;
+                await chatDb.messages.update(item.id, {
+                    vectorMemoryAccountId: accountId,
+                    vectorMemoryCharacterGeneration: characterGeneration,
+                });
+                stamped.push({ id: item.id, characterGeneration });
+            }
+        });
+    }
+    return stamped;
 }
 
 export function dbReplaceSessions(sessions: ChatSession[]): void {

@@ -11,6 +11,7 @@ import { bgTimerCleanup } from "@/lib/bg-timer";
 import { PhoneThemeApp } from "@/components/phone-theme-app";
 import { PhoneCharacterApp } from "@/components/phone-character-app";
 import { PhoneSettingsApp } from "@/components/phone-settings-app";
+import { VectorMemoryApp } from "@/components/vector-memory-app";
 import { PhoneChatApp } from "@/components/chat/phone-chat-app";
 import { PhonePlaceholderApp } from "@/components/phone-placeholder-app";
 import MusicApp from "@/components/music/music-app";
@@ -519,11 +520,11 @@ function normalizeLayout(raw: unknown, widgets: WidgetInstance[], dockIds: Set<D
   for (const folder of Object.values(folders)) {
     for (const memberId of folder.icons) allPlaced.add(memberId);
   }
-  const allDefaults = [...PAGE_1_DEFAULT, ...PAGE_2_DEFAULT, ...PAGE_3_DEFAULT, ...DOCK_DEFAULT];
+  const allDefaults = [...PAGE_1_DEFAULT, ...PAGE_2_DEFAULT, ...PAGE_3_DEFAULT, "vector_memory" as DesktopIconId, ...DOCK_DEFAULT];
 
   for (const id of allDefaults) {
     if (allPlaced.has(id) || dockIds.has(id)) continue;
-    const primaryPage = PAGE_1_DEFAULT.includes(id) ? 1 : PAGE_2_DEFAULT.includes(id) ? 2 : PAGE_3_DEFAULT.includes(id) ? 3 : 1;
+    const primaryPage = id === "vector_memory" ? 5 : PAGE_1_DEFAULT.includes(id) ? 1 : PAGE_2_DEFAULT.includes(id) ? 2 : PAGE_3_DEFAULT.includes(id) ? 3 : 1;
     // placeIconOnAvailablePage 页满会顺延到下一页乃至新开一页——
     // 曾经这里只在现有页里找空格，页面被图标和组件占满时就静默放弃，
     // 图标（如外观）从此永久丢失且每次重启都救不回
@@ -1605,10 +1606,19 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           const parsed = JSON.parse(rawV1) as Record<string, unknown>;
           const w1 = hydratedWidgets.filter(w => w.page === 1);
           const w2 = hydratedWidgets.filter(w => w.page === 2);
-          setLayout({
+          const migratedLayout = {
             page1: migratePageV1(parsed.page1, PAGE_1_DEFAULT, w1).filter(ic => !dockIds.has(ic.id)),
             page2: migratePageV1(parsed.page2, PAGE_2_DEFAULT, w2).filter(ic => !dockIds.has(ic.id)),
-          } as DesktopLayout);
+          } as DesktopLayout;
+          // Run the normal default-icon recovery after V1 migration too.
+          // Otherwise newly added built-in apps (including Vector Memory) never
+          // appear for users whose persisted layout is still on the V1 format.
+          const normalized = normalizeLayout(migratedLayout, hydratedWidgets, dockIds, hydratedFolders);
+          const sane = sanitizeDesktopFolders(hydratedFolders, normalized, hydratedDock, hydratedWidgets);
+          setFolders(sane.folders);
+          setLayout(sane.layout);
+          kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(sane.layout));
+          writeDesktopFolders(sane.folders);
           kvRemove(ICON_LAYOUT_STORAGE_KEY_V1);
           setDesktopReady(true);
           return;
@@ -4206,6 +4216,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
           onNotice={setNotice}
         />
       );
+    }
+
+    if (activeApp === "vector_memory") {
+      return <VectorMemoryApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
     }
 
     if (activeApp === "settings") {

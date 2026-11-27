@@ -180,7 +180,17 @@ export function loadMemoryConfig(): MemoryConfig {
     try {
         const raw = kvGet(CONFIG_KEY);
         if (!raw) return { ...DEFAULT_MEMORY_CONFIG };
-        return { ...DEFAULT_MEMORY_CONFIG, ...JSON.parse(raw) };
+        const stored = JSON.parse(raw) as Record<string, unknown>;
+        if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+            return { ...DEFAULT_MEMORY_CONFIG };
+        }
+        // Permanently discard the obsolete cloud Vector Memory gate. Keeping it
+        // in the persisted config could let a stale UI snapshot reintroduce it.
+        if (Object.prototype.hasOwnProperty.call(stored, "vectorMemoryEnabled")) {
+            delete stored.vectorMemoryEnabled;
+            try { kvSet(CONFIG_KEY, JSON.stringify(stored)); } catch { /* Cleanup failure must not hide the rest of the config. */ }
+        }
+        return { ...DEFAULT_MEMORY_CONFIG, ...stored };
     } catch {
         return { ...DEFAULT_MEMORY_CONFIG };
     }
@@ -188,7 +198,9 @@ export function loadMemoryConfig(): MemoryConfig {
 
 export function saveMemoryConfig(config: MemoryConfig): void {
     if (typeof window === "undefined") return;
-    kvSet(CONFIG_KEY, JSON.stringify(config));
+    const persisted = { ...config } as MemoryConfig & { vectorMemoryEnabled?: unknown };
+    delete persisted.vectorMemoryEnabled;
+    kvSet(CONFIG_KEY, JSON.stringify(persisted));
 }
 
 // ── Per-character event counter (localStorage) ──

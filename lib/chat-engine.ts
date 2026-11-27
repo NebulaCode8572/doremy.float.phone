@@ -2054,10 +2054,32 @@ export async function buildChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
-    if (memConfig.vectorMemoryEnabled && !session.isGroup
-        && session.vectorMemoryAccountId === loadActiveAccountId()) {
-        const vectorRecallText = await retrieveVectorMemoryForPrompt(character.id, wbActivationContext).catch(() => "");
-        if (vectorRecallText) llmMessages.push({ role: "system", content: vectorRecallText });
+    const latestVectorMemorySession = !session.isGroup
+        ? loadChatSessions().find(item => item.id === session.id)
+        : undefined;
+    const vectorMemorySessionAccountId = latestVectorMemorySession
+        ? latestVectorMemorySession.vectorMemoryAccountId
+        : session.vectorMemoryAccountId;
+    const vectorRecallQuery = [
+        historyForPrompt
+            .filter(message => (message.role === "user" || message.role === "assistant")
+                && !message.isRetracted && message.status !== "rejected"
+                && !message.mediaType && typeof message.content === "string" && message.content.trim())
+            .slice(-8)
+            .map(message => `${message.role === "user" ? "用户" : "角色"}：${message.content.trim()}`)
+            .join("\n"),
+        wbActivationContext.slice(-1800),
+    ].filter(Boolean).join("\n").slice(-5000);
+    const vectorRecallAllowed = !options?.appTags?.includes("offline")
+        && !options?.promptProfile?.appTags?.includes("offline");
+    if (!session.isGroup && vectorRecallAllowed
+        && vectorMemorySessionAccountId === loadActiveAccountId() && vectorRecallQuery.trim()) {
+        const vectorRecallText = await retrieveVectorMemoryForPrompt(character.id, vectorRecallQuery).catch(() => "");
+        if (vectorRecallText) {
+            const firstConversationMessage = llmMessages.findIndex(message => message.role === "user");
+            const insertionIndex = firstConversationMessage >= 0 ? firstConversationMessage : llmMessages.length;
+            llmMessages.splice(insertionIndex, 0, { role: "system", content: vectorRecallText });
+        }
     }
     const avatarChangeIntent = !session.isGroup
         ? findUserAvatarChangeIntent(historyForPrompt, session.id, character.id)

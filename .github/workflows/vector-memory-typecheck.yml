@@ -1,0 +1,41 @@
+name: Vector Memory branch typecheck
+
+on:
+  push:
+    branches:
+      - fix/remove-vector-memory-toggle
+  pull_request:
+    branches:
+      - feature/vector-memory
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vector-memory-typecheck-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+      - name: Production build
+        run: npm run build
+      - name: SDK consistency checks
+        run: npm run check:sdk
+      - name: WeChat prompt equivalence
+        run: npm run check:weixin
+      - name: Personal push distribution check
+        run: npm run check:push

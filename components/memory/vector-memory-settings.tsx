@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { VECTOR_MEMORY_SETTINGS_UPDATED_EVENT } from "@/lib/vector-memory-generation";
 import { X, Save, PlugZap, Loader2 } from "lucide-react";
 
 type Settings = { configured: boolean; baseUrl: string; model: string; dimensions: number };
@@ -34,6 +35,7 @@ export function VectorMemorySettings() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "保存失败");
       setConfigured(true); setApiKey(""); setNotice("配置已保存");
+      window.dispatchEvent(new Event(VECTOR_MEMORY_SETTINGS_UPDATED_EVENT));
     } catch (e) { setNotice(e instanceof Error ? e.message : "保存失败"); }
     finally { setSaving(false); }
   }
@@ -43,7 +45,7 @@ export function VectorMemorySettings() {
       const response = await fetch("/api/vector-memory-settings/test", { method: "POST" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "连接测试失败");
-      setNotice(`连接成功 · ${data.dimensions} 维`);
+      setNotice(`Embedding 与向量数据库连接成功 · ${data.dimensions} 维`);
     } catch (e) { setNotice(e instanceof Error ? e.message : "连接测试失败"); }
     finally { setTesting(false); }
   }

@@ -42,6 +42,7 @@ export async function supabaseRestFetch<T>(
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
+    signal: init?.signal ?? AbortSignal.timeout(20_000),
     cache: "no-store",
   });
   const text = await response.text();
@@ -69,19 +70,24 @@ export function encodeSupabaseFilter(value: string): string {
 }
 
 
-// Vector Memory can use an isolated Supabase project while account/session
-// authentication continues using the primary application database.
-// If either dedicated variable is supplied, require the matching pair rather
-// than accidentally sending a production key to the test project (or vice versa).
+// Vector Memory must use its dedicated project. Never fall back to the
+// primary application Supabase project: auth/session data and cloud vectors
+// are intentionally isolated, and a missing dedicated config must fail closed.
 export function getVectorMemorySupabaseServerConfig(): SupabaseConfig | null {
   const dedicatedUrl = process.env.VECTOR_MEMORY_SUPABASE_URL;
   const dedicatedKey = process.env.VECTOR_MEMORY_SUPABASE_SERVICE_ROLE_KEY
     || process.env.VECTOR_MEMORY_SUPABASE_SECRET_KEY;
-  if (dedicatedUrl || dedicatedKey) {
-    if (!dedicatedUrl || !dedicatedKey) return null;
-    return { url: dedicatedUrl.replace(/\/$/, ""), key: dedicatedKey };
+  if (!dedicatedUrl || !dedicatedKey) return null;
+  try {
+    const parsed = new URL(dedicatedUrl);
+    // This branch is being verified against the isolated test project only.
+    // Refuse every other Supabase host so a misconfigured environment cannot
+    // silently direct Vector Memory writes to the production application project.
+    if (parsed.protocol !== "https:" || parsed.hostname !== "hcohoykrxearxqsdbotg.supabase.co") return null;
+    return { url: parsed.toString().replace(/\/$/, ""), key: dedicatedKey };
+  } catch {
+    return null;
   }
-  return getSupabaseServerConfig();
 }
 
 export async function vectorMemorySupabaseRestFetch<T>(
@@ -99,6 +105,7 @@ export async function vectorMemorySupabaseRestFetch<T>(
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
+    signal: init?.signal ?? AbortSignal.timeout(15_000),
     cache: "no-store",
   });
   const text = await response.text();
