@@ -18,6 +18,7 @@ import {
 type GenerationResult = {
   characterId: string;
   success: boolean;
+  errorCode?: string;
   characterGeneration?: number;
   memoryGeneration?: number;
 };
@@ -47,7 +48,12 @@ export function VectorMemoryGenerationBootstrap() {
           body: JSON.stringify({ characterIds: batch }),
         });
         if (!response.ok) {
-          console.warn("[VectorMemory] Generation refresh returned HTTP " + response.status + "; continuing with successfully refreshed characters.");
+          const failure = await response.json().catch(() => null) as { errorCode?: string; error?: string } | null;
+          console.warn("[VectorMemory] Generation refresh request failed.", {
+            httpStatus: response.status,
+            errorCode: failure?.errorCode,
+            error: failure?.error,
+          });
           break;
         }
         const payload = await response.json().catch(() => null) as { results?: GenerationResult[] } | null;
@@ -55,6 +61,13 @@ export function VectorMemoryGenerationBootstrap() {
         if (!Array.isArray(payload?.results)) {
           console.warn("[VectorMemory] Generation refresh returned malformed results; continuing with successfully refreshed characters.");
           break;
+        }
+        const failedGenerations = payload.results.filter(item => !item.success);
+        if (failedGenerations.length) {
+          console.warn("[VectorMemory] Generation lookup failed for some characters.", failedGenerations.map(item => ({
+            characterId: item.characterId,
+            errorCode: item.errorCode,
+          })));
         }
         for (const item of payload.results) {
           if (!item.success || !item.characterId
