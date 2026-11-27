@@ -15,10 +15,16 @@ function safeDiagnosticMessage(error: unknown): string {
 export async function POST(request: Request) {
   try {
     if (!getVectorMemorySupabaseServerConfig()) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[VectorMemory] generation route blocked: dedicated Supabase URL/service-role key is missing or the host is not the isolated test project.");
+      }
       return NextResponse.json({ errorCode: "vector_memory_supabase_not_configured", error: "Vector Memory Supabase 服务未配置" }, { status: 503 });
     }
     const account = await getCurrentAccount(request);
-    if (!account) return NextResponse.json({ errorCode: "unauthorized", error: "请先登录" }, { status: 401 });
+    if (!account) {
+      if (process.env.NODE_ENV !== "production") console.warn("[VectorMemory] generation route blocked: account authentication failed.");
+      return NextResponse.json({ errorCode: "unauthorized", error: "请先登录" }, { status: 401 });
+    }
 
     const parsed = await readLimitedJson(request, 32_000);
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
@@ -29,6 +35,9 @@ export async function POST(request: Request) {
     const characterIds = [...new Set(rawIds.filter((value): value is string =>
       typeof value === "string" && value.length > 0 && value.length <= 160
     ))];
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[VectorMemory] generation route accepted request.", { characterCount: characterIds.length });
+    }
     if (characterIds.length !== rawIds.length) {
       return NextResponse.json({ error: "角色 ID 列表包含无效项" }, { status: 400 });
     }
