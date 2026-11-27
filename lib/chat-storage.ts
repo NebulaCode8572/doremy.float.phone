@@ -1362,20 +1362,18 @@ export async function backfillHistoricalChatVectors(allowedCharacterIds?: string
             if (sessionIndex < 0) continue;
             let effectiveSession = _sessionsCache[sessionIndex];
             if (effectiveSession.vectorMemoryAccountId && effectiveSession.vectorMemoryAccountId !== accountId) continue;
-            if (effectiveSession.vectorMemoryAccountId === accountId
+            const replaceStaleGeneration = effectiveSession.vectorMemoryAccountId === accountId
                 && Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)
-                && effectiveSession.vectorMemoryCharacterGeneration !== generation.characterGeneration) {
-                // A server character-generation bump invalidates old session chunks.
-                // Do not relabel historical content into the new generation.
-                continue;
-            }
+                && effectiveSession.vectorMemoryCharacterGeneration !== generation.characterGeneration;
 
             if (effectiveSession.vectorMemoryAccountId !== accountId
-                || !Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)) {
+                || !Number.isSafeInteger(effectiveSession.vectorMemoryCharacterGeneration)
+                || replaceStaleGeneration) {
                 const stampedGeneration = await dbStampSessionVectorMemoryAndWait(
                     effectiveSession.id,
                     accountId,
                     generation.characterGeneration,
+                    replaceStaleGeneration,
                 );
                 if (loadActiveAccountId() !== accountId) return;
                 if (stampedGeneration === null) continue;
@@ -1391,6 +1389,12 @@ export async function backfillHistoricalChatVectors(allowedCharacterIds?: string
                     vectorMemoryAccountId: accountId,
                     vectorMemoryCharacterGeneration: stampedGeneration,
                 };
+                if (replaceStaleGeneration) {
+                    _messagesCache = _messagesCache.map(message => message.sessionId === effectiveSession.id
+                        && (!message.vectorMemoryAccountId || message.vectorMemoryAccountId === accountId)
+                        ? { ...message, vectorMemoryAccountId: accountId, vectorMemoryCharacterGeneration: stampedGeneration }
+                        : message);
+                }
                 _sessionsCache[currentSessionIndex] = effectiveSession;
             }
 
@@ -1414,17 +1418,19 @@ export async function backfillHistoricalChatVectors(allowedCharacterIds?: string
             const stampCandidates = sessionMessages
                 .filter(message =>
                     (!message.vectorMemoryAccountId || message.vectorMemoryAccountId === accountId)
-                    && (message.vectorMemoryAccountId !== accountId
+                    && (replaceStaleGeneration || message.vectorMemoryAccountId !== accountId
                         || !Number.isSafeInteger(message.vectorMemoryCharacterGeneration))
                 )
                 .map(message => ({
                     id: message.id,
-                    characterGeneration: message.vectorMemoryAccountId === accountId
-                        && Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
-                        ? message.vectorMemoryCharacterGeneration!
-                        : effectiveSession.vectorMemoryCharacterGeneration!,
+                    characterGeneration: replaceStaleGeneration
+                        ? effectiveSession.vectorMemoryCharacterGeneration!
+                        : message.vectorMemoryAccountId === accountId
+                            && Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
+                            ? message.vectorMemoryCharacterGeneration!
+                            : effectiveSession.vectorMemoryCharacterGeneration!,
                 }));
-            const stampedMessages = await dbStampMessagesVectorMemoryAndWait(stampCandidates, accountId);
+            const stampedMessages = await dbStampMessagesVectorMemoryAndWait(stampCandidates, accountId, replaceStaleGeneration);
             if (loadActiveAccountId() !== accountId) return;
             if (stampedMessages.length) {
                 const generationById = new Map(stampedMessages.map(item => [item.id, item.characterGeneration]));
