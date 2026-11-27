@@ -28,6 +28,7 @@ import { SystemCalendarSettings } from "./system-calendar/system-calendar-settin
 import { ScreenshotSettings } from "./screenshot/screenshot-settings";
 import { WidgetSettings } from "./widget/widget-settings";
 import { DailyAlarmSettings } from "./settings/daily-alarm-settings";
+import { VisionApiSettings } from "./settings/vision-api-settings";
 import { fetchIsAdmin } from "@/lib/moderation-client";
 import { PageShell } from "./ui/page-shell";
 import { CardGrid, FeaturedCard, type CardItem, type FeaturedCardItem } from "./ui/card-grid";
@@ -51,6 +52,7 @@ type SettingsPageProps = {
 type SubPage =
     | "main"
     | "api"
+    | "vision"
     | "voice"
     | "imageGeneration"
     | "presets"
@@ -75,6 +77,7 @@ type SubPage =
 
 const SETTINGS_MENU = [
     { id: "api", icon: HardDrive, label: "API 设置", desc: "大模型接口", iconColor: BINDING_ACCENTS.api , glass: "api" },
+    { id: "vision", icon: Image, label: "视觉模型 API", desc: "全局图片理解模型", iconColor: CONTENT_APP_ACCENTS.moments, glass: "image-generation" },
     { id: "voice", icon: Mic, label: "语音 API", desc: "语音合成", iconColor: BINDING_ACCENTS.voice , glass: "voice" },
     { id: "imageGeneration", icon: Image, label: "图像生成 API", desc: "模型、参考图与提示词", iconColor: CONTENT_APP_ACCENTS.moments , glass: "image-generation" },
     { id: "presets", icon: Fingerprint, label: "预设", desc: "角色预设", iconColor: BINDING_ACCENTS.preset , glass: "presets" },
@@ -199,7 +202,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
 
     const defaultTitle = currentPage === "main"
         ? "设置"
-        : currentPage === "api" || currentPage === "voice" || currentPage === "imageGeneration" || currentPage === "presets" || currentPage === "worldbook" || currentPage === "regex" || currentPage === "identity"
+        : currentPage === "api" || currentPage === "vision" || currentPage === "voice" || currentPage === "imageGeneration" || currentPage === "presets" || currentPage === "worldbook" || currentPage === "regex" || currentPage === "identity"
             ? ""
             : currentPage === "moderation"
                 ? "管理中心"
@@ -321,6 +324,8 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         switch (currentPage) {
             case "api":
                 return <ApiSettings />;
+            case "vision":
+                return <VisionApiSettings />;
             case "voice":
                 return <VoiceSettings />;
             case "imageGeneration":
@@ -500,7 +505,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                         <CardGrid
                             label="API Config"
                             labelClassName="settings-menu-section-title"
-                            items={SETTINGS_MENU.filter(item => ["api", "voice"].includes(item.id)).map(makeCardItem)}
+                            items={SETTINGS_MENU.filter(item => ["api", "vision", "voice"].includes(item.id)).map(makeCardItem)}
                         />
                         <div className="settings-data-rules-section">
                             <h3 className="settings-menu-section-title">Data & Rules</h3>
