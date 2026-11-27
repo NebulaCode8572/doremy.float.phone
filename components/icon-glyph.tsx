@@ -67,6 +67,7 @@ const MDI_PATHS: Record<IconId, string> = {
   worldbuilder: mdiEarth,
   qa: mdiHammerWrench,
   mixology: mdiGlassCocktail,
+  vector_memory: mdiDatabase,
   vnplay: mdiPlayCircle,
   vnchapters: mdiBookmark,
   moments: mdiCamera,
