@@ -277,7 +277,7 @@ export async function dbUpdateMessageOrdersAndWait(
 
 /** Stamp only vector ownership/generation fields, preserving the latest message payload. */
 export async function dbStampMessagesVectorMemoryAndWait(
-    updates: Array<{ id: string; characterGeneration: number }>,
+    updates: Array<{ id: string; characterGeneration: number; expectedCharacterGeneration?: number }>,
     accountId: string,
     replaceGeneration = false,
 ): Promise<Array<{ id: string; characterGeneration: number }>> {
@@ -288,9 +288,16 @@ export async function dbStampMessagesVectorMemoryAndWait(
             for (const item of batch) {
                 const current = await chatDb.messages.get(item.id);
                 if (!current || (current.vectorMemoryAccountId && current.vectorMemoryAccountId !== accountId)) continue;
-                const characterGeneration = !replaceGeneration
-                    && current.vectorMemoryAccountId === accountId
-                    && Number.isSafeInteger(current.vectorMemoryCharacterGeneration)
+                const sameAccount = current.vectorMemoryAccountId === accountId;
+                const currentGenerationIsValid = Number.isSafeInteger(current.vectorMemoryCharacterGeneration);
+                const mayReplaceExpectedStaleGeneration = sameAccount
+                    && currentGenerationIsValid
+                    && item.expectedCharacterGeneration !== undefined
+                    && current.vectorMemoryCharacterGeneration === item.expectedCharacterGeneration;
+                const characterGeneration = sameAccount
+                    && currentGenerationIsValid
+                    && !replaceGeneration
+                    && !mayReplaceExpectedStaleGeneration
                     ? current.vectorMemoryCharacterGeneration!
                     : item.characterGeneration;
                 await chatDb.messages.update(item.id, {
