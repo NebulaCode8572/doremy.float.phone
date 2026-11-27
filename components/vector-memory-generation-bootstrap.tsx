@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useAccount } from "@/lib/account-context";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { loadActiveAccountId, saveActiveAccountId } from "@/lib/account-client";
@@ -25,16 +25,20 @@ type GenerationResult = {
 
 export function VectorMemoryGenerationBootstrap() {
   const { account } = useAccount();
+  const currentAccountIdRef = useRef(account.id);
+  currentAccountIdRef.current = account.id;
 
   const refresh = useCallback(async () => {
     if (!account.id) return;
     try {
       await hydrateKvDb();
-      // AccountGate and this child bootstrap mount together. In self-hosted mode
-      // this effect can run before AccountGate persists local_user. Seed the
-      // active account from the authenticated provider before the first request.
-      if (!loadActiveAccountId()) saveActiveAccountId(account.id);
-      if (account.id !== loadActiveAccountId()) return;
+      // The AccountProvider is the authenticated source of truth. Align the
+      // persisted cache owner with it even when a stale ID from a previous mode
+      // or account is already present. An obsolete in-flight refresh must never
+      // overwrite the identity after the provider has switched accounts.
+      if (currentAccountIdRef.current !== account.id) return;
+      if (loadActiveAccountId() !== account.id) saveActiveAccountId(account.id);
+      if (currentAccountIdRef.current !== account.id || account.id !== loadActiveAccountId()) return;
       // Hydrate chat sessions before selecting generation targets. A private chat can
       // outlive its character card (or the card can be temporarily absent from the
       // character library); its contactId is still a valid indexing target as long
@@ -45,10 +49,24 @@ export function VectorMemoryGenerationBootstrap() {
         .filter(session => !session.isGroup && Boolean(session.contactId)
           && (!session.vectorMemoryAccountId || session.vectorMemoryAccountId === account.id))
         .map(session => session.contactId);
+      const characterCardIds = loadCharacters().map(character => character.id);
       const characterIds = [...new Set([
-        ...loadCharacters().map(character => character.id),
+        ...characterCardIds,
         ...chatCharacterIds,
       ].filter(Boolean))];
+      if (!characterIds.length) {
+        console.warn("[VectorMemory] Generation bootstrap found no character targets.", {
+          characterCardCount: characterCardIds.length,
+          privateSessionCount: chatCharacterIds.length,
+        });
+      } else {
+        console.info("[VectorMemory] Generation bootstrap requesting targets.", {
+          characterCardCount: characterCardIds.length,
+          privateSessionCount: chatCharacterIds.length,
+          uniqueCharacterCount: characterIds.length,
+          accountMode: account.id === "local_user" ? "self_hosted" : "account",
+        });
+      }
       const refreshedCharacterIds = new Set<string>();
       for (let offset = 0; offset < characterIds.length; offset += 200) {
         if (account.id !== loadActiveAccountId()) return;
