@@ -105,6 +105,10 @@ export async function middleware(request: NextRequest) {
     }
 
     if (isApiRoute(pathname)) {
+      console.warn("[AccessGate] self-hosted API request blocked: access cookie missing or invalid.", {
+        pathname,
+        hasAccessCookie: Boolean(accessCookie),
+      });
       return NextResponse.json(
         { ok: false, error: "请先输入站点访问口令。" },
         { status: 401, headers: { "Cache-Control": "no-store, max-age=0" } },
