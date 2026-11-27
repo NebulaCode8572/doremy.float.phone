@@ -593,8 +593,25 @@ export function refreshChatMessageBucketsToVectorCloud(
   }
 }
 
+const chatSyncDiagnosticSessions = new Set<string>();
+
 /** Refresh the fixed four-message bucket containing the saved assistant turn. */
 export function syncChatMessageChunkToVectorCloud(session: ChatSession, message: ChatMessage, allMessages: ChatMessage[]): void {
   if (message.sessionId !== session.id || (message.role !== "user" && message.role !== "assistant")) return;
+  const accountId = loadActiveAccountId();
+  const diagnosticKey = accountId + ":" + session.id;
+  if (!chatSyncDiagnosticSessions.has(diagnosticKey)) {
+    chatSyncDiagnosticSessions.add(diagnosticKey);
+    console.info("[VectorMemory] Chat message reached the cloud-sync entry point.", {
+      accountMode: accountId === "local_user" ? "self_hosted" : accountId ? "account" : "none",
+      isPrivateSession: !session.isGroup,
+      hasCharacterId: Boolean(session.contactId),
+      sessionAccountMatches: Boolean(accountId && session.vectorMemoryAccountId === accountId),
+      messageAccountMatches: Boolean(accountId && message.vectorMemoryAccountId === accountId),
+      hasCharacterGeneration: Number.isSafeInteger(message.vectorMemoryCharacterGeneration),
+      cachedGenerationAvailable: Boolean(accountId && session.contactId && loadCachedVectorMemoryGeneration(accountId, session.contactId)),
+      role: message.role,
+    });
+  }
   refreshChatMessageBucketsToVectorCloud(session, allMessages, [bucketForOrder(message.order)]);
 }
