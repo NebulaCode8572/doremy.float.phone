@@ -37,9 +37,11 @@ function refreshVectorChunksForMessages(messages: ChatMessage[]): void {
             // The caller supplies both edits and deletions. Only messages that
             // still exist in the live cache may override the bucket snapshot;
             // passing removed messages here would resurrect their content in cloud.
+            const liveMessageIds = new Set(_messagesCache
+                .filter(current => current.sessionId === sessionId)
+                .map(current => current.id));
             const survivingAffectedMessages = messages.filter(message =>
-                message.sessionId === sessionId
-                && _messagesCache.some(current => current.id === message.id && current.sessionId === sessionId)
+                message.sessionId === sessionId && liveMessageIds.has(message.id)
             );
             refreshChatMessageBucketsToVectorCloud(
                 session,
