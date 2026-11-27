@@ -156,11 +156,20 @@ export function VectorMemoryGenerationBootstrap() {
 
   useEffect(() => {
     void refresh();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
     window.addEventListener("online", refresh);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("pageshow", refresh);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
     window.addEventListener(CHARACTERS_UPDATED_EVENT, refresh);
     window.addEventListener(VECTOR_MEMORY_SETTINGS_UPDATED_EVENT, refresh);
     return () => {
       window.removeEventListener("online", refresh);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("pageshow", refresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
       window.removeEventListener(CHARACTERS_UPDATED_EVENT, refresh);
       window.removeEventListener(VECTOR_MEMORY_SETTINGS_UPDATED_EVENT, refresh);
     };
