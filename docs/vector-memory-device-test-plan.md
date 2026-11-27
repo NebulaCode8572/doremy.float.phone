@@ -47,6 +47,7 @@ This is a manual verification plan. No tests or device actions have been run.
 8. Delete the session.
 9. Expected: session-wide deletion removes all device-scoped chunks and tombstones the session against late uploads.
 10. Delete an individual message, then delete the last message in a bucket. Expected: deleted text is never reintroduced by the affected-message snapshot, and an empty bucket deletes its cloud source.
+11. Upgrade a device that already has generation-stamped messages and a legacy shared bucket source. Expected: the first generation-scoped sync retires the legacy source even though no message is missing a generation stamp.
 
 ## 5. Isolation and local-save guarantees
 
