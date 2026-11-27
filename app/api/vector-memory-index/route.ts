@@ -15,7 +15,7 @@ const SOURCE_KINDS = new Set(["summary", "core_memory", "long_term_memory", "cha
 
 function safeDiagnosticMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  return message.replace(/Bearer\\s+\\S+/gi, "Bearer [redacted]").slice(0, 500);
+  return message.replace(/Bearer\s+\S+/gi, "Bearer [redacted]").slice(0, 500);
 }
 
 export async function POST(request: Request) {
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const body = parsed.value;
     const entries = Array.isArray(body.entries) ? body.entries : [];
     if (!entries.length || entries.length > MAX_BATCH) return NextResponse.json({ error: "每批最多索引 3 条向量内容" }, { status: 400 });
-    const results: Array<{ id: string; success: boolean; status?: string; revision?: number; currentRevision?: number; error?: string; skipped?: "deleted" }> = [];
+    const results: Array<{ id: string; success: boolean; status?: string; revision?: number; currentRevision?: number; errorCode?: string; error?: string; skipped?: "deleted" }> = [];
     for (const item of entries) {
       const id = typeof item?.id === "string" ? item.id.slice(0, 240) : "";
       const characterId = typeof item?.characterId === "string" ? item.characterId.slice(0, 160) : "";
