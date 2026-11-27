@@ -408,6 +408,15 @@ export function refreshChatMessageBucketsToVectorCloud(
       .map(item => item.vectorMemoryCharacterGeneration)
       .filter((value): value is number => Number.isSafeInteger(value) && (value ?? -1) >= 0)
       .filter(value => generationFilter === undefined || value === generationFilter))];
+    // Deleting the last message in a bucket leaves no message from which to
+    // infer its generation. Fall back to the session's current generation so
+    // the persisted active source is still deleted from the cloud.
+    if (generations.length === 0
+      && Number.isSafeInteger(session.vectorMemoryCharacterGeneration)
+      && (session.vectorMemoryCharacterGeneration ?? -1) >= 0
+      && (generationFilter === undefined || session.vectorMemoryCharacterGeneration === generationFilter)) {
+      generations.push(session.vectorMemoryCharacterGeneration!);
+    }
 
     if (generationFilter === undefined && affectedInBucket.some(item => !Number.isSafeInteger(item.vectorMemoryCharacterGeneration))) {
       const legacyDelete: PendingChatChunk = {
