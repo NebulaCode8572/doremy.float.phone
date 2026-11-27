@@ -1539,10 +1539,24 @@ export function saveChatSessions(sessions: ChatSession[]) {
 
 export function createOrGetSession(contactId: string): ChatSession {
     const sessions = loadChatSessions();
+    const accountId = loadActiveAccountId();
+
+    // Opening an existing chat can be the first Vector Memory touch for this
+    // character on this device. Warm the generation cache and backfill its
+    // historical private-chat messages instead of leaving the session unstamped.
+    if (accountId && !loadCachedVectorMemoryGeneration(accountId, contactId)) {
+        void refreshCachedVectorMemoryGeneration(contactId).then(() => {
+            if (loadActiveAccountId() === accountId) {
+                return backfillHistoricalChatVectors([contactId]);
+            }
+        }).catch(error => {
+            console.warn("[VectorMemory] Could not initialize chat history indexing for character " + contactId, error);
+        });
+    }
+
     const existing = sessions.find(s => s.contactId === contactId);
     if (existing) return existing;
 
-    const accountId = loadActiveAccountId();
     const generation = loadCachedVectorMemoryGeneration(accountId, contactId);
     const newSession: ChatSession = {
         id: `sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
