@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentAccount } from "@/lib/server/account-auth";
-import { getSupabaseServerConfig } from "@/lib/server/supabase-rest";
+import { getVectorMemorySupabaseServerConfig } from "@/lib/server/supabase-rest";
 import { readLimitedJson } from "@/lib/server/read-limited-json";
 import { deleteVectorMemorySource, deleteVectorMemoriesForCharacter, deleteVectorMemoryEntriesForCharacter } from "@/lib/server/vector-memory-store";
 
@@ -11,7 +11,7 @@ const ALLOWED_SOURCE_KINDS = new Set(["summary", "core_memory", "long_term_memor
 
 export async function DELETE(request: Request) {
   try {
-    if (!getSupabaseServerConfig()) return NextResponse.json({ error: "Supabase 服务未配置" }, { status: 503 });
+    if (!getVectorMemorySupabaseServerConfig()) return NextResponse.json({ error: "Vector Memory Supabase 服务未配置" }, { status: 503 });
     const account = await getCurrentAccount(request);
     if (!account) return NextResponse.json({ error: "请先登录" }, { status: 401 });
     const parsed = await readLimitedJson(request, 4000);
