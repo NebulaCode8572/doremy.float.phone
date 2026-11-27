@@ -243,11 +243,13 @@ export async function dbStampSessionVectorMemoryAndWait(
     id: string,
     accountId: string,
     fallbackCharacterGeneration: number,
+    replaceGeneration = false,
 ): Promise<number | null> {
     return chatDb.transaction("rw", chatDb.sessions, async () => {
         const current = await chatDb.sessions.get(id);
         if (!current || (current.vectorMemoryAccountId && current.vectorMemoryAccountId !== accountId)) return null;
-        const characterGeneration = current.vectorMemoryAccountId === accountId
+        const characterGeneration = !replaceGeneration
+            && current.vectorMemoryAccountId === accountId
             && Number.isSafeInteger(current.vectorMemoryCharacterGeneration)
             ? current.vectorMemoryCharacterGeneration!
             : fallbackCharacterGeneration;
@@ -277,6 +279,7 @@ export async function dbUpdateMessageOrdersAndWait(
 export async function dbStampMessagesVectorMemoryAndWait(
     updates: Array<{ id: string; characterGeneration: number }>,
     accountId: string,
+    replaceGeneration = false,
 ): Promise<Array<{ id: string; characterGeneration: number }>> {
     const stamped: Array<{ id: string; characterGeneration: number }> = [];
     for (let start = 0; start < updates.length; start += 500) {
@@ -285,7 +288,8 @@ export async function dbStampMessagesVectorMemoryAndWait(
             for (const item of batch) {
                 const current = await chatDb.messages.get(item.id);
                 if (!current || (current.vectorMemoryAccountId && current.vectorMemoryAccountId !== accountId)) continue;
-                const characterGeneration = current.vectorMemoryAccountId === accountId
+                const characterGeneration = !replaceGeneration
+                    && current.vectorMemoryAccountId === accountId
                     && Number.isSafeInteger(current.vectorMemoryCharacterGeneration)
                     ? current.vectorMemoryCharacterGeneration!
                     : item.characterGeneration;
