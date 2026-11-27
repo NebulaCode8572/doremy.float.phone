@@ -597,8 +597,26 @@ export function refreshChatMessageBucketsToVectorCloud(
           const result = await response.json().catch(() => null);
           const itemResult = Array.isArray(result?.results) ? result.results[0] : null;
           if (itemResult?.success === true && ["deleted", "stale_generation"].includes(itemResult.status)) {
-            await saveActiveChunkState(stateKey, { version: nextState.version });
+            await saveActiveChunkState(stateKey, {
+              version: nextState.version,
+              legacySourceCleanupDone: nextState.legacySourceCleanupDone,
+            });
             await clearChatChunkPending(queueEntry);
+          } else if (itemResult?.status === "conflict"
+            && Number.isSafeInteger(itemResult.currentRevision)
+            && Number(itemResult.currentRevision) >= 0) {
+            // Another tab/device committed this source first. Advance the CAS
+            // base and discard this operation token so the persisted retry can
+            // submit a fresh full-bucket snapshot instead of conflicting forever.
+            await saveActiveChunkState(stateKey, {
+              ...nextState,
+              revision: Number(itemResult.currentRevision),
+              operationId: undefined,
+            });
+            await markChatChunkPending(queueEntry);
+            console.warn("[VectorMemory] Chat chunk CAS conflict; retry will use the latest server revision.", {
+              currentRevision: Number(itemResult.currentRevision),
+            });
           } else if (!itemResult || itemResult.success !== true
             || !["committed", "already_committed"].includes(itemResult.status)
             || !Number.isSafeInteger(itemResult.revision)) {
