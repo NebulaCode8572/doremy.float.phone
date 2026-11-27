@@ -12,7 +12,7 @@ import { resolveUserIdentity } from "./settings-storage";
 import { loadCharacters, saveCharacters } from "./character-storage";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { loadActiveAccountId } from "./account-client";
-import { loadCachedVectorMemoryGeneration } from "./vector-memory-generation";
+import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "./vector-memory-generation";
 import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-hooks";
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
@@ -1335,8 +1335,19 @@ export async function backfillHistoricalChatVectors(allowedCharacterIds?: string
         let updatedMessageCount = 0;
         for (const originalSession of eligibleSessions) {
             if (loadActiveAccountId() !== accountId) return;
-            const generation = loadCachedVectorMemoryGeneration(accountId, originalSession.contactId);
-            if (!generation) continue;
+            // A missing local generation cache must not silently skip every
+            // historical chat for this character. Fetch the authoritative generation
+            // from the Vector Memory backend, then continue the same backfill pass.
+            let generation = loadCachedVectorMemoryGeneration(accountId, originalSession.contactId);
+            if (!generation) {
+                await refreshCachedVectorMemoryGeneration(originalSession.contactId);
+                if (loadActiveAccountId() !== accountId) return;
+                generation = loadCachedVectorMemoryGeneration(accountId, originalSession.contactId);
+            }
+            if (!generation) {
+                console.warn("[VectorMemory] Historical chat backfill skipped: generation unavailable for character " + originalSession.contactId);
+                continue;
+            }
 
             const sessionIndex = _sessionsCache.findIndex(item => item.id === originalSession.id);
             if (sessionIndex < 0) continue;
