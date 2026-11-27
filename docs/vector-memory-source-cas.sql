@@ -153,7 +153,9 @@ begin
       or v_existing.source_kind <> p_source_kind
       or v_existing.expected_revision <> p_expected_revision
       or v_existing.character_generation <> p_character_generation
-      or v_existing.memory_generation <> p_memory_generation
+      -- Chat chunks are governed by character_generation only. A memory-only
+      -- clear must not invalidate an in-flight chat operation's idempotency key.
+      or (p_source_kind <> 'chat_chunk' and v_existing.memory_generation <> p_memory_generation)
       or v_existing.payload_fingerprint <> v_fingerprint then
       return pg_catalog.jsonb_build_object('status','operation_id_reused');
     end if;
