@@ -20,13 +20,24 @@ function safeDiagnosticMessage(error: unknown): string {
 
 export async function POST(request: Request) {
   try {
-    if (!getVectorMemorySupabaseServerConfig()) return NextResponse.json({ errorCode: "vector_memory_supabase_not_configured", error: "Vector Memory Supabase 服务未配置" }, { status: 503 });
+    if (!getVectorMemorySupabaseServerConfig()) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[VectorMemory] index route blocked: dedicated Supabase URL/service-role key is missing or the host is not the isolated test project.");
+      }
+      return NextResponse.json({ errorCode: "vector_memory_supabase_not_configured", error: "Vector Memory Supabase 服务未配置" }, { status: 503 });
+    }
     const account = await getCurrentAccount(request);
-    if (!account) return NextResponse.json({ errorCode: "unauthorized", error: "请先登录" }, { status: 401 });
+    if (!account) {
+      if (process.env.NODE_ENV !== "production") console.warn("[VectorMemory] index route blocked: account authentication failed.");
+      return NextResponse.json({ errorCode: "unauthorized", error: "请先登录" }, { status: 401 });
+    }
     const parsed = await readLimitedJson(request, 48_000);
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
     const body = parsed.value;
     const entries = Array.isArray(body.entries) ? body.entries : [];
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[VectorMemory] index route accepted request.", { entryCount: entries.length });
+    }
     if (!entries.length || entries.length > MAX_BATCH) return NextResponse.json({ error: "每批最多索引 3 条向量内容" }, { status: 400 });
     const results: Array<{ id: string; success: boolean; status?: string; revision?: number; currentRevision?: number; errorCode?: string; error?: string; skipped?: "deleted" }> = [];
     for (const item of entries) {
