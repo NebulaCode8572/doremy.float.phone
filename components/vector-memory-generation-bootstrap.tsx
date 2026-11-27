@@ -35,7 +35,20 @@ export function VectorMemoryGenerationBootstrap() {
       // active account from the authenticated provider before the first request.
       if (!loadActiveAccountId()) saveActiveAccountId(account.id);
       if (account.id !== loadActiveAccountId()) return;
-      const characterIds = [...new Set(loadCharacters().map(character => character.id))];
+      // Hydrate chat sessions before selecting generation targets. A private chat can
+      // outlive its character card (or the card can be temporarily absent from the
+      // character library); its contactId is still a valid indexing target as long
+      // as the session is unowned or belongs to this account.
+      await hydrateChatStorage();
+      if (!isChatStorageHydrated() || account.id !== loadActiveAccountId()) return;
+      const chatCharacterIds = loadChatSessions()
+        .filter(session => !session.isGroup && Boolean(session.contactId)
+          && (!session.vectorMemoryAccountId || session.vectorMemoryAccountId === account.id))
+        .map(session => session.contactId);
+      const characterIds = [...new Set([
+        ...loadCharacters().map(character => character.id),
+        ...chatCharacterIds,
+      ].filter(Boolean))];
       const refreshedCharacterIds = new Set<string>();
       for (let offset = 0; offset < characterIds.length; offset += 200) {
         if (account.id !== loadActiveAccountId()) return;
@@ -108,10 +121,10 @@ export function VectorMemoryGenerationBootstrap() {
         if (account.id !== loadActiveAccountId()) return;
       }
 
-      await hydrateChatStorage();
       if (!isChatStorageHydrated() || account.id !== loadActiveAccountId()) return;
       const refreshedSessions = loadChatSessions().filter(session =>
-        Boolean(session.contactId) && refreshedCharacterIds.has(session.contactId)
+        !session.isGroup && Boolean(session.contactId) && refreshedCharacterIds.has(session.contactId)
+        && (!session.vectorMemoryAccountId || session.vectorMemoryAccountId === account.id)
       );
       await retryPendingChatVectorChunks(refreshedSessions, loadChatMessages);
       if (account.id !== loadActiveAccountId()) return;
