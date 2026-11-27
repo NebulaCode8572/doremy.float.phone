@@ -11,6 +11,7 @@ import { bgTimerCleanup } from "@/lib/bg-timer";
 import { PhoneThemeApp } from "@/components/phone-theme-app";
 import { PhoneCharacterApp } from "@/components/phone-character-app";
 import { PhoneSettingsApp } from "@/components/phone-settings-app";
+import { VectorMemoryApp } from "@/components/vector-memory-app";
 import { PhoneChatApp } from "@/components/chat/phone-chat-app";
 import { PhonePlaceholderApp } from "@/components/phone-placeholder-app";
 import MusicApp from "@/components/music/music-app";
@@ -4206,6 +4207,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
           onNotice={setNotice}
         />
       );
+    }
+
+    if (activeApp === "vector_memory") {
+      return <VectorMemoryApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
     }
 
     if (activeApp === "settings") {
