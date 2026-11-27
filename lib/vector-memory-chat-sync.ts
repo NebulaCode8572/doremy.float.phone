@@ -553,8 +553,13 @@ export function refreshChatMessageBucketsToVectorCloud(
             }] }),
           });
           if (!response.ok) {
+            const failure = await response.json().catch(() => null) as { errorCode?: string; error?: string } | null;
             await markChatChunkPending(queueEntry);
-            console.warn(`[VectorMemory] Chat chunk indexing returned HTTP ${response.status}`);
+            console.warn("[VectorMemory] Chat chunk indexing request failed.", {
+              httpStatus: response.status,
+              errorCode: failure?.errorCode,
+              error: failure?.error,
+            });
             return;
           }
           const result = await response.json().catch(() => null);
@@ -566,7 +571,11 @@ export function refreshChatMessageBucketsToVectorCloud(
             || !["committed", "already_committed"].includes(itemResult.status)
             || !Number.isSafeInteger(itemResult.revision)) {
             await markChatChunkPending(queueEntry);
-            console.warn("[VectorMemory] Chat chunk CAS was not committed; pending state is retained.");
+            console.warn("[VectorMemory] Chat chunk CAS was not committed; pending state is retained.", {
+              status: itemResult?.status,
+              errorCode: itemResult?.errorCode,
+              error: itemResult?.error,
+            });
           } else {
             await saveActiveChunkState(stateKey, {
               ...nextState,
