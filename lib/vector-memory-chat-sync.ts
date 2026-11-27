@@ -60,7 +60,7 @@ function createChatVectorOperationId(): string {
 }
 
 
-type ActiveChunkState = { version: number; sourceId?: string; fingerprint?: string; revision?: number; operationId?: string };
+type ActiveChunkState = { version: number; sourceId?: string; fingerprint?: string; revision?: number; operationId?: string; legacySourceCleanupDone?: boolean };
 
 function activeChunkStateKey(accountId: string, characterId: string, sessionId: string, bucket: number, generation: number): string {
   return ACTIVE_CHUNK_PREFIX + [
@@ -80,6 +80,7 @@ function loadActiveChunkState(key: string): ActiveChunkState {
       ...(typeof value.fingerprint === "string" ? { fingerprint: value.fingerprint } : {}),
       ...(Number.isSafeInteger(value.revision) && (value.revision ?? -1) >= 0 ? { revision: value.revision } : {}),
       ...(typeof value.operationId === "string" ? { operationId: value.operationId } : {}),
+      ...(value.legacySourceCleanupDone === true ? { legacySourceCleanupDone: true } : {}),
     };
   } catch { return { version: 0 }; }
 }
@@ -233,8 +234,8 @@ export async function retryPendingChatVectorChunks(
       try {
         const stateKey = activeChunkStateKey(entry.accountId, entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration);
         const state = loadActiveChunkState(stateKey);
-        await deleteChatChunk(entry.accountId, entry.characterId, state.sourceId || `session:${entry.sessionId}:chunk:${entry.bucket}`);
-        await saveActiveChunkState(stateKey, { version: state.version });
+        await deleteActiveAndLegacyChatChunk(entry.accountId, entry.characterId, entry.sessionId, entry.bucket, state);
+        await saveActiveChunkState(stateKey, { version: state.version, legacySourceCleanupDone: true });
         await clearChatChunkPending(entry);
       } catch {
         await markChatChunkPending(entry);
@@ -263,8 +264,8 @@ export async function retryPendingChatVectorChunks(
         try {
           await markChatChunkPending(entry);
           const state = loadActiveChunkState(stateKey);
-          await deleteChatChunk(accountId, entry.characterId, state.sourceId || `session:${entry.sessionId}:chunk:${entry.bucket}`);
-          await saveActiveChunkState(stateKey, { version: state.version });
+          await deleteActiveAndLegacyChatChunk(accountId, entry.characterId, entry.sessionId, entry.bucket, state);
+          await saveActiveChunkState(stateKey, { version: state.version, legacySourceCleanupDone: true });
           await clearChatChunkPending(entry);
         } catch (error) {
           await markChatChunkPending(entry);
@@ -330,6 +331,20 @@ async function deleteChatChunk(accountId: string, characterId: string, sourceId:
   if (!response.ok) throw new Error(`[VectorMemory] Chat chunk deletion returned HTTP ${response.status}`);
 }
 
+async function deleteActiveAndLegacyChatChunk(
+  accountId: string,
+  characterId: string,
+  sessionId: string,
+  bucket: number,
+  state: ActiveChunkState,
+): Promise<void> {
+  const legacySourceId = `session:${sessionId}:chunk:${bucket}`;
+  if (state.sourceId) await deleteChatChunk(accountId, characterId, state.sourceId);
+  if (!state.legacySourceCleanupDone && state.sourceId !== legacySourceId) {
+    await deleteChatChunk(accountId, characterId, legacySourceId);
+  }
+}
+
 export function deleteChatSessionVectorsFromCloud(session: ChatSession): void {
   const accountId = loadActiveAccountId();
   if (typeof window === "undefined" || !accountId || session.vectorMemoryAccountId !== accountId || session.isGroup || !session.contactId) return;
@@ -369,8 +384,8 @@ export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, bu
         }
         const stateKey = activeChunkStateKey(accountId, session.contactId!, session.id, bucket, generation);
         const state = loadActiveChunkState(stateKey);
-        await deleteChatChunk(accountId, session.contactId!, state.sourceId || `session:${session.id}:chunk:${bucket}`);
-        await saveActiveChunkState(stateKey, { version: state.version });
+        await deleteActiveAndLegacyChatChunk(accountId, session.contactId!, session.id, bucket, state);
+        await saveActiveChunkState(stateKey, { version: state.version, legacySourceCleanupDone: true });
         await clearChatChunkPending(queueEntry);
       } catch (error) {
         await markChatChunkPending(queueEntry);
@@ -452,8 +467,8 @@ export function refreshChatMessageBucketsToVectorCloud(
           try {
             await markChatChunkPending(queueEntry);
             const state = loadActiveChunkState(stateKey);
-            await deleteChatChunk(accountId, session.contactId!, state.sourceId || `session:${session.id}:chunk:${bucket}`);
-            await saveActiveChunkState(stateKey, { version: state.version });
+            await deleteActiveAndLegacyChatChunk(accountId, session.contactId!, session.id, bucket, state);
+            await saveActiveChunkState(stateKey, { version: state.version, legacySourceCleanupDone: true });
             await clearChatChunkPending(queueEntry);
           } catch (error) {
             await markChatChunkPending(queueEntry);
@@ -525,6 +540,7 @@ export function refreshChatMessageBucketsToVectorCloud(
           const deviceId = await getChatVectorDeviceId();
           const legacySourceId = `session:${session.id}:chunk:${bucket}`;
           const statePointsToLegacySource = state.sourceId === legacySourceId;
+          const legacySourceCleanupNeeded = state.legacySourceCleanupDone !== true;
           let sourceId: string;
           let nextState: ActiveChunkState;
           if (state.sourceId && !statePointsToLegacySource && state.fingerprint === fingerprint) {
@@ -538,17 +554,17 @@ export function refreshChatMessageBucketsToVectorCloud(
             nextState = { version: nextVersion, sourceId, fingerprint };
           }
           const operationId = nextState.operationId ?? createChatVectorOperationId();
-          nextState = { ...nextState, operationId };
+          nextState = { ...nextState, operationId, legacySourceCleanupDone: true };
           // Persist retry intent before deleting the previous source, saving the
           // new CAS operation, or sending the request. A crash at any point after
           // this marker can safely retry the idempotent source deletion and upsert.
           await markChatChunkPending(queueEntry);
           if (state.sourceId && (state.fingerprint !== fingerprint || statePointsToLegacySource)) {
             await deleteChatChunk(accountId, session.contactId!, state.sourceId);
-          } else if (!state.sourceId && state.version === 0) {
-            // Migrate pre-generation/pre-device buckets even when their messages
-            // were already stamped by historical backfill. Otherwise the old
-            // shared source could keep returning stale content beside new chunks.
+          }
+          if (legacySourceCleanupNeeded && !statePointsToLegacySource) {
+            // Retire the pre-generation shared source even if every local message
+            // was already stamped before this device-specific state was created.
             await deleteChatChunk(accountId, session.contactId!, legacySourceId);
           }
           await saveActiveChunkState(stateKey, nextState);
