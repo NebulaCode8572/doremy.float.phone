@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Activity, CheckCircle2, CircleAlert, LoaderCircle, Save, Wifi } from "lucide-react";
 import { PageShell } from "@/components/ui/page-shell";
 
@@ -14,7 +14,7 @@ type VectorMemorySettings = {
 
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 
-const fieldStyle: React.CSSProperties = {
+const fieldStyle: CSSProperties = {
   width: "100%",
   minHeight: 46,
   boxSizing: "border-box",
@@ -27,7 +27,7 @@ const fieldStyle: React.CSSProperties = {
   outline: "none",
 };
 
-const labelStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
   display: "block",
   fontSize: 13,
   fontWeight: 600,
@@ -204,7 +204,7 @@ export function VectorMemoryApp({ onClose, onNotice }: Props) {
             <strong style={{ fontSize: 15 }}>连接测试</strong>
           </div>
           <div style={{ fontSize: 12, lineHeight: 1.65, opacity: .72, marginBottom: 14 }}>
-            发起一次真实 Embedding 请求，并使用返回的向量调用测试数据库的只读匹配 RPC；不会插入或删除聊天向量。
+            测试服务端当前已保存的配置：发起真实 Embedding 请求，并使用返回的向量调用测试数据库只读匹配 RPC；不会插入或删除聊天向量。修改配置后请先保存，再测试。
           </div>
           <button
             type="button"
