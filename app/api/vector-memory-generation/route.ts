@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 function safeDiagnosticMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  return message.replace(/Bearer\\s+\\S+/gi, "Bearer [redacted]").slice(0, 500);
+  return message.replace(/Bearer\s+\S+/gi, "Bearer [redacted]").slice(0, 500);
 }
 
 export async function POST(request: Request) {
