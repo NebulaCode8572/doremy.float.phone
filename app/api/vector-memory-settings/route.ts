@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { getCurrentAccount } from "@/lib/server/account-auth";
-import { getSupabaseServerConfig } from "@/lib/server/supabase-rest";
+import { getVectorMemorySupabaseServerConfig } from "@/lib/server/supabase-rest";
 import { readLimitedJson } from "@/lib/server/read-limited-json";
 import { loadVectorMemorySettings, saveVectorMemorySettings } from "@/lib/server/vector-memory-credentials";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 async function authenticate(request: Request) {
-  if (!getSupabaseServerConfig()) return { account: null, response: NextResponse.json({ error: "Supabase 服务未配置" }, { status: 503 }) };
+  if (!getVectorMemorySupabaseServerConfig()) return { account: null, response: NextResponse.json({ error: "Vector Memory Supabase 服务未配置" }, { status: 503 }) };
   const account = await getCurrentAccount(request);
   if (!account) return { account: null, response: NextResponse.json({ error: "请先登录" }, { status: 401 }) };
   return { account, response: null };
