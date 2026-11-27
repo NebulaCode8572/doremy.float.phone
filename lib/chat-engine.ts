@@ -2771,7 +2771,9 @@ async function generateChatCompletionCore(
             const target = [...history].reverse().find(message =>
                 message.role === "user"
                 && message.mediaType === "sticker"
-                && message.mediaData?.stickerCacheKey === entry.key,
+                && (message.mediaData?.stickerCacheKey
+                    || (message.mediaData?.stickerUrl ? getStickerDescriptionCacheKey(message.mediaData.stickerUrl) : ""))
+                    === entry.key,
             );
             if (!target || target.mediaData?.stickerDescription) continue;
             const mediaData = { ...(target.mediaData ?? {}), stickerDescription: entry.description };
