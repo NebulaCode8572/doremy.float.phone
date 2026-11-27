@@ -1,7 +1,7 @@
 import { hydrateKvDb, kvGet, kvSetAsync, registerKvMigration, registerDynamicPrefix } from "@/lib/kv-db";
 import { loadActiveAccountId } from "@/lib/account-client";
 import type { ChatMessage, ChatSession } from "@/lib/chat-storage";
-import { loadCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
+import { loadCachedVectorMemoryGeneration, refreshCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
 const CHUNK_SIZE = 4;
 const MAX_CHUNK_CONTENT = 10_000;
@@ -298,7 +298,7 @@ function cleanMessageText(message: ChatMessage): string {
   if (message.role !== "user" && message.role !== "assistant") return "";
   if (message.isRetracted || message.mediaType || message.status === "rejected") return "";
   const text = typeof message.content === "string" ? message.content.trim() : "";
-  if (!text || text.length < 2) return "";
+  if (!text) return "";
   return text.slice(0, 5000);
 }
 
@@ -380,20 +380,20 @@ export function refreshChatMessageBucketsToVectorCloud(
   if (typeof window === "undefined" || !accountId || session.vectorMemoryAccountId !== accountId || session.isGroup || !session.contactId) return;
   if (deletedChatSessions.has(chatSessionKey(accountId, session.contactId, session.id))) return;
   const currentGeneration = loadCachedVectorMemoryGeneration(accountId, session.contactId);
-  if (!currentGeneration) {
-    console.warn("[VectorMemory] Chat chunk indexing paused: character generation cache is unavailable.");
-    return;
-  }
   const uniqueBuckets = [...new Set(buckets.filter(bucket => Number.isInteger(bucket) && bucket >= 0))];
 
   for (const bucket of uniqueBuckets) {
-    const bucketMessages = allMessages
-      .filter(item => item.sessionId === session.id && item.vectorMemoryAccountId === accountId && bucketForOrder(item.order) === bucket);
     const affectedInBucket = affectedMessages
       .filter(item => item.sessionId === session.id && item.vectorMemoryAccountId === accountId && bucketForOrder(item.order) === bucket);
+    const bucketMessagesById = new Map(allMessages
+      .filter(item => item.sessionId === session.id && item.vectorMemoryAccountId === accountId && bucketForOrder(item.order) === bucket)
+      .map(item => [item.id, item]));
+    // The affected snapshot is authoritative when a caller has edited/replaced
+    // a message but its updated object is not yet present in allMessages.
+    for (const message of affectedInBucket) bucketMessagesById.set(message.id, message);
+    const bucketMessages = [...bucketMessagesById.values()];
     const generations = [...new Set(bucketMessages
       .map(item => item.vectorMemoryCharacterGeneration)
-      .concat(affectedInBucket.map(item => item.vectorMemoryCharacterGeneration))
       .filter((value): value is number => Number.isSafeInteger(value) && (value ?? -1) >= 0)
       .filter(value => generationFilter === undefined || value === generationFilter))];
 
@@ -447,6 +447,26 @@ export function refreshChatMessageBucketsToVectorCloud(
         .join("\n")
         .slice(0, MAX_CHUNK_CONTENT);
       if (!content.trim()) continue;
+
+      // A cold generation cache must trigger a refresh, not permanently block
+      // this bucket. Re-enter indexing after the authoritative generation arrives.
+      if (!currentGeneration) {
+        enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, characterGeneration, accountId), async () => {
+          try {
+            await markChatChunkPending(queueEntry);
+            await refreshCachedVectorMemoryGeneration(session.contactId!);
+            if (loadActiveAccountId() !== accountId) return;
+            if (!loadCachedVectorMemoryGeneration(accountId, session.contactId!)) {
+              throw new Error("[VectorMemory] Character generation refresh did not return a usable generation.");
+            }
+            refreshChatMessageBucketsToVectorCloud(session, allMessages, [bucket], generationFilter, affectedMessages);
+          } catch (error) {
+            await markChatChunkPending(queueEntry);
+            throw error;
+          }
+        });
+        continue;
+      }
 
       const messageIds = selected.map(entry => entry.item.id);
       const fingerprint = fingerprintChunk(content, messageIds);
@@ -554,6 +574,6 @@ export function refreshChatMessageBucketsToVectorCloud(
 
 /** Refresh the fixed four-message bucket containing the saved assistant turn. */
 export function syncChatMessageChunkToVectorCloud(session: ChatSession, message: ChatMessage, allMessages: ChatMessage[]): void {
-  if (message.sessionId !== session.id || message.role !== "assistant") return;
+  if (message.sessionId !== session.id || (message.role !== "user" && message.role !== "assistant")) return;
   refreshChatMessageBucketsToVectorCloud(session, allMessages, [bucketForOrder(message.order)]);
 }
