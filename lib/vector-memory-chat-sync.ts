@@ -233,7 +233,7 @@ export async function retryPendingChatVectorChunks(
       try {
         const stateKey = activeChunkStateKey(entry.accountId, entry.characterId, entry.sessionId, entry.bucket, entry.characterGeneration);
         const state = loadActiveChunkState(stateKey);
-        if (state.sourceId) await deleteChatChunk(entry.accountId, entry.characterId, state.sourceId);
+        await deleteChatChunk(entry.accountId, entry.characterId, state.sourceId || `session:${entry.sessionId}:chunk:${entry.bucket}`);
         await saveActiveChunkState(stateKey, { version: state.version });
         await clearChatChunkPending(entry);
       } catch {
@@ -263,7 +263,7 @@ export async function retryPendingChatVectorChunks(
         try {
           await markChatChunkPending(entry);
           const state = loadActiveChunkState(stateKey);
-          if (state.sourceId) await deleteChatChunk(accountId, entry.characterId, state.sourceId);
+          await deleteChatChunk(accountId, entry.characterId, state.sourceId || `session:${entry.sessionId}:chunk:${entry.bucket}`);
           await saveActiveChunkState(stateKey, { version: state.version });
           await clearChatChunkPending(entry);
         } catch (error) {
@@ -369,7 +369,7 @@ export function deleteChatMessageBucketsFromVectorCloud(session: ChatSession, bu
         }
         const stateKey = activeChunkStateKey(accountId, session.contactId!, session.id, bucket, generation);
         const state = loadActiveChunkState(stateKey);
-        if (state.sourceId) await deleteChatChunk(accountId, session.contactId!, state.sourceId);
+        await deleteChatChunk(accountId, session.contactId!, state.sourceId || `session:${session.id}:chunk:${bucket}`);
         await saveActiveChunkState(stateKey, { version: state.version });
         await clearChatChunkPending(queueEntry);
       } catch (error) {
@@ -452,7 +452,7 @@ export function refreshChatMessageBucketsToVectorCloud(
           try {
             await markChatChunkPending(queueEntry);
             const state = loadActiveChunkState(stateKey);
-            if (state.sourceId) await deleteChatChunk(accountId, session.contactId!, state.sourceId);
+            await deleteChatChunk(accountId, session.contactId!, state.sourceId || `session:${session.id}:chunk:${bucket}`);
             await saveActiveChunkState(stateKey, { version: state.version });
             await clearChatChunkPending(queueEntry);
           } catch (error) {
