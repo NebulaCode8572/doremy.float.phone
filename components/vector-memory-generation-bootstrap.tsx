@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAccount } from "@/lib/account-context";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { loadActiveAccountId } from "@/lib/account-client";
@@ -101,8 +102,7 @@ export function VectorMemoryGenerationBootstrap() {
       if (account.id !== loadActiveAccountId()) return;
       await backfillHistoricalChatVectors(refreshedIds);
     } catch (error) {
-      // Generation unavailable means cloud indexing pauses; local chat/memory writes continue.
-      // Keep the failure visible so a configuration/network problem is diagnosable.
+      // Generation unavailable means cloud indexing pauses; local memory/chat writes remain queued.
       console.warn("[VectorMemory] Generation bootstrap paused; pending work remains queued.", error);
     }
   }, [account.id]);
@@ -119,7 +119,6 @@ export function VectorMemoryGenerationBootstrap() {
       });
       const payload = await response.json().catch(() => null) as {
         ok?: boolean;
-        message?: string;
         dimensions?: number;
         database?: boolean;
         error?: string;
@@ -147,12 +146,13 @@ export function VectorMemoryGenerationBootstrap() {
     };
   }, [refresh]);
 
-  if (process.env.NODE_ENV !== "development") return null;
+  if (process.env.NODE_ENV !== "development" || typeof document === "undefined") return null;
 
-  return (
-    <div style={{ position: "fixed", right: 14, bottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)", zIndex: 99999, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+  // Portal escapes the desktop shell's stacking contexts and touch overlays.
+  return createPortal(
+    <div style={{ position: "fixed", right: 14, bottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)", zIndex: 2147483647, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, pointerEvents: "none" }}>
       {testMessage ? (
-        <pre role="status" style={{ maxWidth: "min(86vw, 360px)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: 0, padding: "10px 12px", borderRadius: 12, background: "var(--background, #fff)", color: "var(--foreground, #111)", border: "1px solid var(--border, #999)", boxShadow: "0 2px 12px #0003", fontSize: 12 }}>
+        <pre role="status" style={{ maxWidth: "min(86vw, 360px)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: 0, padding: "10px 12px", borderRadius: 12, background: "var(--background, #fff)", color: "var(--foreground, #111)", border: "1px solid var(--border, #999)", boxShadow: "0 2px 12px #0003", fontSize: 12, pointerEvents: "auto" }}>
           {testMessage}
         </pre>
       ) : null}
@@ -160,10 +160,11 @@ export function VectorMemoryGenerationBootstrap() {
         type="button"
         onClick={() => void runConnectionTest()}
         disabled={testState === "running"}
-        style={{ border: 0, borderRadius: 999, padding: "11px 16px", background: "#245fd6", color: "#fff", fontSize: 13, fontWeight: 600, boxShadow: "0 2px 12px #0004", opacity: testState === "running" ? 0.65 : 1 }}
+        style={{ border: 0, borderRadius: 999, padding: "11px 16px", background: "#245fd6", color: "#fff", fontSize: 13, fontWeight: 600, boxShadow: "0 2px 12px #0004", opacity: testState === "running" ? 0.65 : 1, cursor: "pointer", touchAction: "manipulation", pointerEvents: "auto" }}
       >
         {testState === "running" ? "正在测试…" : testState === "success" ? "重新测试向量连接" : "测试向量连接"}
       </button>
-    </div>
+    </div>,
+    document.body
   );
 }
