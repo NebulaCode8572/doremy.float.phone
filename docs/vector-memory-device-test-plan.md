@@ -70,13 +70,36 @@ project with server-only environment variables:
 - `VECTOR_MEMORY_SUPABASE_SERVICE_ROLE_KEY`: isolated test project's service-role/secret key. Server only; never use a `NEXT_PUBLIC_` prefix.
 - `VECTOR_MEMORY_CREDENTIAL_ENCRYPTION_KEY`: independent 32-byte key, encoded as 64 hexadecimal characters (or base64).
 
-If either dedicated Vector Memory Supabase variable is set, both must be set.
-When neither is set, Vector Memory falls back to the primary Supabase server
-configuration for backward compatibility. Account authentication never uses the
-dedicated Vector Memory project URL.
+Both dedicated Vector Memory Supabase variables are required. There is no
+fallback to the primary application Supabase project: settings, embeddings
+configuration, indexing, retrieval, and deletion all fail closed when the
+dedicated project is unavailable. The current test branch additionally
+allowlists the isolated project host
+`hcohoykrxearxqsdbotg.supabase.co`; changing that host requires an explicit
+code review. Account authentication remains separate and continues to use the
+app's normal authentication path (or the self-hosted access-code identity).
 
 For local testing, add these values only to the local server's ignored
 `.env.local` file. Generate the encryption key locally with
 `openssl rand -hex 32`; do not paste the key or service-role secret into chat,
 GitHub, browser/client variables, or committed files. The dedicated project must
 contain the Vector Memory migrations; it does not need the app's account tables.
+
+
+## Additional regression checks added during generation/retrieval repair
+
+- With a current character generation of 2 and memory generation of 5, retrieval
+  must exclude chat chunks committed under character generation 1 and ordinary
+  memories committed under memory generation 4; it must retain current chat
+  chunks and ordinary memories committed under both current generations.
+- Interrupt historical chat backfill after the session row is stamped but before
+  message rows are stamped. On the next run, messages whose generation differs
+  from the session must be repaired and indexed.
+- Run two tabs with different cached generation snapshots. A stale tab must not
+  overwrite a newer generation already stored by the other tab.
+- Verify the settings GET/PUT, embedding connection test, memory deletion,
+  indexing, chat-chunk deletion, generation lookup, and semantic search routes
+  all check the dedicated Vector Memory database configuration rather than the
+  primary application database configuration.
+- Verify semantic recall can finish within the API's 45-second execution window;
+  the client request must not abort after the previous 8-second timeout.
