@@ -1373,7 +1373,7 @@ export async function backfillHistoricalChatVectors(allowedCharacterIds?: string
                     effectiveSession.id,
                     accountId,
                     generation.characterGeneration,
-                    replaceStaleGeneration,
+                    replaceStaleGeneration ? effectiveSession.vectorMemoryCharacterGeneration : undefined,
                 );
                 if (loadActiveAccountId() !== accountId) return;
                 if (stampedGeneration === null) continue;
