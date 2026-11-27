@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect } from "react";
 import { useAccount } from "@/lib/account-context";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { loadActiveAccountId } from "@/lib/account-client";
@@ -25,8 +24,6 @@ type GenerationResult = {
 
 export function VectorMemoryGenerationBootstrap() {
   const { account } = useAccount();
-  const [testState, setTestState] = useState<"idle" | "running" | "success" | "error">("idle");
-  const [testMessage, setTestMessage] = useState("");
 
   const refresh = useCallback(async () => {
     if (!account.id || account.id !== loadActiveAccountId()) return;
@@ -102,37 +99,11 @@ export function VectorMemoryGenerationBootstrap() {
       if (account.id !== loadActiveAccountId()) return;
       await backfillHistoricalChatVectors(refreshedIds);
     } catch (error) {
-      // Generation unavailable means cloud indexing pauses; local memory/chat writes remain queued.
+      // Generation unavailable means cloud indexing pauses; local chat/memory writes continue.
+      // Keep the failure visible so pending work can be diagnosed without stopping local writes.
       console.warn("[VectorMemory] Generation bootstrap paused; pending work remains queued.", error);
     }
   }, [account.id]);
-
-  const runConnectionTest = async () => {
-    if (testState === "running") return;
-    setTestState("running");
-    setTestMessage("正在请求 Embedding API，并检查测试向量数据库……");
-    try {
-      const response = await fetch("/api/vector-memory-settings/test", {
-        method: "POST",
-        credentials: "same-origin",
-        cache: "no-store",
-      });
-      const payload = await response.json().catch(() => null) as {
-        ok?: boolean;
-        dimensions?: number;
-        database?: boolean;
-        error?: string;
-      } | null;
-      if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.error || `测试接口返回 HTTP ${response.status}`);
-      }
-      setTestState("success");
-      setTestMessage(`Embedding API：成功（${payload.dimensions} 维）\nVector DB RPC：${payload.database ? "成功" : "失败"}`);
-    } catch (error) {
-      setTestState("error");
-      setTestMessage(error instanceof Error ? error.message : "测试失败");
-    }
-  };
 
   useEffect(() => {
     void refresh();
@@ -146,25 +117,5 @@ export function VectorMemoryGenerationBootstrap() {
     };
   }, [refresh]);
 
-  if (process.env.NODE_ENV !== "development" || typeof document === "undefined") return null;
-
-  // Portal escapes the desktop shell's stacking contexts and touch overlays.
-  return createPortal(
-    <div style={{ position: "fixed", right: 14, bottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)", zIndex: 2147483647, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, pointerEvents: "none" }}>
-      {testMessage ? (
-        <pre role="status" style={{ maxWidth: "min(86vw, 360px)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: 0, padding: "10px 12px", borderRadius: 12, background: "var(--background, #fff)", color: "var(--foreground, #111)", border: "1px solid var(--border, #999)", boxShadow: "0 2px 12px #0003", fontSize: 12, pointerEvents: "auto" }}>
-          {testMessage}
-        </pre>
-      ) : null}
-      <button
-        type="button"
-        onClick={() => void runConnectionTest()}
-        disabled={testState === "running"}
-        style={{ border: 0, borderRadius: 999, padding: "11px 16px", background: "#245fd6", color: "#fff", fontSize: 13, fontWeight: 600, boxShadow: "0 2px 12px #0004", opacity: testState === "running" ? 0.65 : 1, cursor: "pointer", touchAction: "manipulation", pointerEvents: "auto" }}
-      >
-        {testState === "running" ? "正在测试…" : testState === "success" ? "重新测试向量连接" : "测试向量连接"}
-      </button>
-    </div>,
-    document.body
-  );
+  return null;
 }
