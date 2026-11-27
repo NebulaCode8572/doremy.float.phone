@@ -3,7 +3,7 @@
 import { useCallback, useEffect } from "react";
 import { useAccount } from "@/lib/account-context";
 import { hydrateKvDb } from "@/lib/kv-db";
-import { loadActiveAccountId } from "@/lib/account-client";
+import { loadActiveAccountId, saveActiveAccountId } from "@/lib/account-client";
 import { CHARACTERS_UPDATED_EVENT, loadCharacters } from "@/lib/character-storage";
 import { saveCachedVectorMemoryGeneration, VECTOR_MEMORY_SETTINGS_UPDATED_EVENT } from "@/lib/vector-memory-generation";
 import { hydrateChatStorage, isChatStorageHydrated, loadChatMessages, loadChatSessions, backfillHistoricalChatVectors } from "@/lib/chat-storage";
@@ -26,9 +26,14 @@ export function VectorMemoryGenerationBootstrap() {
   const { account } = useAccount();
 
   const refresh = useCallback(async () => {
-    if (!account.id || account.id !== loadActiveAccountId()) return;
+    if (!account.id) return;
     try {
       await hydrateKvDb();
+      // AccountGate and this child bootstrap mount together. In self-hosted mode
+      // this effect can run before AccountGate persists local_user. Seed the
+      // active account from the authenticated provider before the first request.
+      if (!loadActiveAccountId()) saveActiveAccountId(account.id);
+      if (account.id !== loadActiveAccountId()) return;
       const characterIds = [...new Set(loadCharacters().map(character => character.id))];
       const refreshedCharacterIds = new Set<string>();
       for (let offset = 0; offset < characterIds.length; offset += 200) {
