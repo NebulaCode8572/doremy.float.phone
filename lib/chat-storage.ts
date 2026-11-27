@@ -1310,6 +1310,15 @@ export function isChatStorageHydrated(): boolean {
 }
 
 let _vectorHistoryBackfillPromise: Promise<void> | null = null;
+const _vectorHistoryBackfillRequestedCharacters = new Set<string>();
+
+function requestHistoricalChatVectorBackfill(characterId: string): void {
+    if (!characterId || _vectorHistoryBackfillRequestedCharacters.has(characterId)) return;
+    _vectorHistoryBackfillRequestedCharacters.add(characterId);
+    void backfillHistoricalChatVectors([characterId]).finally(() => {
+        _vectorHistoryBackfillRequestedCharacters.delete(characterId);
+    });
+}
 
 export async function backfillHistoricalChatVectors(allowedCharacterIds?: string[]): Promise<void> {
     if (typeof window === "undefined") return;
@@ -1707,7 +1716,26 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     _messagesCache.push(newMsg);
     dbPutMessage(newMsg);
     const vectorSession = _sessionsCache.find(session => session.id === newMsg.sessionId);
-    if (vectorSession) syncChatMessageChunkToVectorCloud(vectorSession, newMsg, _messagesCache);
+    if (vectorSession) {
+        const activeAccountId = loadActiveAccountId();
+        const canBackfillVectorMessage = Boolean(
+            activeAccountId
+            && !vectorSession.isGroup
+            && vectorSession.contactId
+            && (!vectorSession.vectorMemoryAccountId || vectorSession.vectorMemoryAccountId === activeAccountId)
+            && (!newMsg.vectorMemoryAccountId || newMsg.vectorMemoryAccountId === activeAccountId)
+            && (newMsg.role === "user" || newMsg.role === "assistant")
+            && !Number.isSafeInteger(newMsg.vectorMemoryCharacterGeneration)
+        );
+        if (canBackfillVectorMessage) {
+            // The message is already in the local cache and IndexedDB. If its
+            // generation stamp was unavailable at save time, run the existing
+            // account-scoped historical backfill to fetch the authoritative
+            // generation, stamp the session/messages, and index their buckets.
+            requestHistoricalChatVectorBackfill(vectorSession.contactId!);
+        }
+        syncChatMessageChunkToVectorCloud(vectorSession, newMsg, _messagesCache);
+    }
     resolvePendingAvatarRecommendation(newMsg);
 
     // Auto update session last message only for records that can produce a list preview.
