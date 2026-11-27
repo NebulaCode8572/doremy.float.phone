@@ -1415,22 +1415,28 @@ export async function backfillHistoricalChatVectors(allowedCharacterIds?: string
                 sessionMessages = _messagesCache.filter(message => message.sessionId === effectiveSession.id);
             }
 
+            const targetCharacterGeneration = effectiveSession.vectorMemoryCharacterGeneration!;
             const stampCandidates = sessionMessages
                 .filter(message =>
                     (!message.vectorMemoryAccountId || message.vectorMemoryAccountId === accountId)
-                    && (replaceStaleGeneration || message.vectorMemoryAccountId !== accountId
-                        || !Number.isSafeInteger(message.vectorMemoryCharacterGeneration))
+                    && (message.vectorMemoryAccountId !== accountId
+                        || !Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
+                        || message.vectorMemoryCharacterGeneration !== targetCharacterGeneration)
                 )
                 .map(message => ({
                     id: message.id,
-                    characterGeneration: replaceStaleGeneration
-                        ? effectiveSession.vectorMemoryCharacterGeneration!
-                        : message.vectorMemoryAccountId === accountId
-                            && Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
-                            ? message.vectorMemoryCharacterGeneration!
-                            : effectiveSession.vectorMemoryCharacterGeneration!,
+                    characterGeneration: targetCharacterGeneration,
+                    ...(message.vectorMemoryAccountId === accountId
+                        && Number.isSafeInteger(message.vectorMemoryCharacterGeneration)
+                        && message.vectorMemoryCharacterGeneration !== targetCharacterGeneration
+                        ? { expectedCharacterGeneration: message.vectorMemoryCharacterGeneration }
+                        : {}),
                 }));
-            const stampedMessages = await dbStampMessagesVectorMemoryAndWait(stampCandidates, accountId, replaceStaleGeneration);
+            // The session and its messages are stamped in separate IndexedDB
+            // transactions. If the app stops between them, this pass must detect
+            // message generations that still differ from the already-current
+            // session generation and repair only the exact stale value observed.
+            const stampedMessages = await dbStampMessagesVectorMemoryAndWait(stampCandidates, accountId);
             if (loadActiveAccountId() !== accountId) return;
             if (stampedMessages.length) {
                 const generationById = new Map(stampedMessages.map(item => [item.id, item.characterGeneration]));
