@@ -95,6 +95,9 @@ contain the Vector Memory migrations; it does not need the app's account tables.
 - Interrupt historical chat backfill after the session row is stamped but before
   message rows are stamped. On the next run, messages whose generation differs
   from the session must be repaired and indexed.
+- Send a new message while that character's historical backfill is in progress,
+  including after the pass has snapshotted its buckets. A coalesced follow-up pass
+  must index the new message rather than dropping the request.
 - Run two tabs with different cached generation snapshots. A stale tab must not
   overwrite a newer generation already stored by the other tab; delayed generation
   API responses must not regress either cached counter.
