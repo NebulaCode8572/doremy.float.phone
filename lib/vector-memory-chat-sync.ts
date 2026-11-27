@@ -308,7 +308,7 @@ function chunkQueueKey(characterId: string, sessionId: string, bucket: number, c
 
 function cleanMessageText(message: ChatMessage): string {
   if (message.role !== "user" && message.role !== "assistant") return "";
-  if (message.isRetracted || message.mediaType || message.status === "rejected") return "";
+  if (message.isRetracted || message.status === "rejected") return "";
   const text = typeof message.content === "string" ? message.content.trim() : "";
   if (!text) return "";
   return text.slice(0, 5000);
