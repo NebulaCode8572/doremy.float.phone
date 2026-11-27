@@ -523,9 +523,11 @@ export function refreshChatMessageBucketsToVectorCloud(
             return;
           }
           const deviceId = await getChatVectorDeviceId();
+          const legacySourceId = `session:${session.id}:chunk:${bucket}`;
+          const statePointsToLegacySource = state.sourceId === legacySourceId;
           let sourceId: string;
           let nextState: ActiveChunkState;
-          if (state.sourceId && state.fingerprint === fingerprint) {
+          if (state.sourceId && !statePointsToLegacySource && state.fingerprint === fingerprint) {
             sourceId = state.sourceId;
             nextState = { ...state };
           } else {
@@ -541,8 +543,13 @@ export function refreshChatMessageBucketsToVectorCloud(
           // new CAS operation, or sending the request. A crash at any point after
           // this marker can safely retry the idempotent source deletion and upsert.
           await markChatChunkPending(queueEntry);
-          if (state.sourceId && state.fingerprint !== fingerprint) {
+          if (state.sourceId && (state.fingerprint !== fingerprint || statePointsToLegacySource)) {
             await deleteChatChunk(accountId, session.contactId!, state.sourceId);
+          } else if (!state.sourceId && state.version === 0) {
+            // Migrate pre-generation/pre-device buckets even when their messages
+            // were already stamped by historical backfill. Otherwise the old
+            // shared source could keep returning stale content beside new chunks.
+            await deleteChatChunk(accountId, session.contactId!, legacySourceId);
           }
           await saveActiveChunkState(stateKey, nextState);
 
