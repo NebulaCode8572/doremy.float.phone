@@ -9,6 +9,18 @@ const MAX_CHUNK_CONTENT = 10_000;
 const chunkOperationQueues = new Map<string, Promise<void>>();
 // A deleted session must not be re-indexed by stale refresh calls.
 const deletedChatSessions = new Set<string>();
+const characterGenerationRefreshes = new Map<string, Promise<void>>();
+
+function refreshCharacterGenerationOnce(accountId: string, characterId: string): Promise<void> {
+  const key = accountId + ":" + characterId;
+  const existing = characterGenerationRefreshes.get(key);
+  if (existing) return existing;
+  const pending = refreshCachedVectorMemoryGeneration(characterId).finally(() => {
+    if (characterGenerationRefreshes.get(key) === pending) characterGenerationRefreshes.delete(key);
+  });
+  characterGenerationRefreshes.set(key, pending);
+  return pending;
+}
 
 const CHAT_CHUNK_PENDING_KEY = "ai_phone_vector_memory_chat_chunk_pending_v1";
 const CHAT_SESSION_DELETE_PENDING_KEY = "ai_phone_vector_memory_chat_session_delete_pending_v1";
@@ -454,7 +466,7 @@ export function refreshChatMessageBucketsToVectorCloud(
         enqueueChatChunkOperation(chunkQueueKey(session.contactId, session.id, bucket, characterGeneration, accountId), async () => {
           try {
             await markChatChunkPending(queueEntry);
-            await refreshCachedVectorMemoryGeneration(session.contactId!);
+            await refreshCharacterGenerationOnce(accountId, session.contactId!);
             if (loadActiveAccountId() !== accountId) return;
             if (!loadCachedVectorMemoryGeneration(accountId, session.contactId!)) {
               throw new Error("[VectorMemory] Character generation refresh did not return a usable generation.");
