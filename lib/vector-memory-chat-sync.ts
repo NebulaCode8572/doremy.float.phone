@@ -1,6 +1,7 @@
 import { hydrateKvDb, kvGet, kvSetAsync, registerKvMigration, registerDynamicPrefix } from "@/lib/kv-db";
 import { loadActiveAccountId } from "@/lib/account-client";
 import type { ChatMessage, ChatSession } from "@/lib/chat-storage";
+import { loadCachedVectorMemoryGeneration } from "@/lib/vector-memory-generation";
 
 const CHUNK_SIZE = 4;
 const MAX_CHUNK_CONTENT = 10_000;
@@ -378,6 +379,11 @@ export function refreshChatMessageBucketsToVectorCloud(
   const accountId = loadActiveAccountId();
   if (typeof window === "undefined" || !accountId || session.vectorMemoryAccountId !== accountId || session.isGroup || !session.contactId) return;
   if (deletedChatSessions.has(chatSessionKey(accountId, session.contactId, session.id))) return;
+  const currentGeneration = loadCachedVectorMemoryGeneration(accountId, session.contactId);
+  if (!currentGeneration) {
+    console.warn("[VectorMemory] Chat chunk indexing paused: character generation cache is unavailable.");
+    return;
+  }
   const uniqueBuckets = [...new Set(buckets.filter(bucket => Number.isInteger(bucket) && bucket >= 0))];
 
   for (const bucket of uniqueBuckets) {
@@ -450,7 +456,7 @@ export function refreshChatMessageBucketsToVectorCloud(
         sourceKind: "chat_chunk",
         content,
         characterGeneration,
-        memoryGeneration: 0,
+        memoryGeneration: currentGeneration.memoryGeneration,
         metadata: {
           sessionId: session.id,
           chunkIndex: bucket,
