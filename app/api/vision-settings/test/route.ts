@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     const account = await getCurrentAccount(request);
     if (!account) return NextResponse.json({ error: "请先登录" }, { status: 401 });
     const { publicSettings, apiKey } = await loadVisionSettings(account.id);
-    if (!publicSettings.configured || !apiKey) return NextResponse.json({ error: "请先保存视觉模型配置" }, { status: 400 });
+    if (!publicSettings.configured || !apiKey) return NextResponse.json({ error: "请先配置视觉模型 API" }, { status: 400 });
     const response = await callVisionProvider(publicSettings.baseUrl, apiKey, {
       model: publicSettings.model,
       messages: [{
