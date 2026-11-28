@@ -163,7 +163,7 @@ export function hasLocalVisionSettings(): boolean {
 }
 
 function loadLocalVisionSettings(): { publicSettings: VisionPublicSettings; apiKey: string } | null {
-  const baseUrl = (process.env.VISION_API_BASE_URL || "").trim().replace(/\\/+$/, "");
+  const baseUrl = (process.env.VISION_API_BASE_URL || "").trim().replace(/\/+$/, "");
   const model = (process.env.VISION_API_MODEL || "").trim();
   const apiKey = (process.env.VISION_API_KEY || "").trim();
   if (!baseUrl && !model && !apiKey) return null;
@@ -180,7 +180,9 @@ function loadLocalVisionSettings(): { publicSettings: VisionPublicSettings; apiK
 }
 
 export async function loadVisionSettings(userId: string): Promise<{ publicSettings: VisionPublicSettings; apiKey: string }> {
-  const localSettings = loadLocalVisionSettings();\n  if (localSettings) return localSettings;\n  const result = await supabaseRestFetch<VisionRow[]>(`${TABLE}?user_id=eq.${encodeSupabaseFilter(userId)}&select=provider,base_url,model,api_key_ciphertext,api_key_iv,api_key_tag,updated_at&limit=1`);
+  const localSettings = loadLocalVisionSettings();
+  if (localSettings) return localSettings;
+  const result = await supabaseRestFetch<VisionRow[]>(`${TABLE}?user_id=eq.${encodeSupabaseFilter(userId)}&select=provider,base_url,model,api_key_ciphertext,api_key_iv,api_key_tag,updated_at&limit=1`);
   if (!result.ok) throw new Error(result.error);
   const row = result.data[0];
   if (!row) return { publicSettings: { configured: false, provider: "openai-compatible", baseUrl: "", model: "" }, apiKey: "" };
