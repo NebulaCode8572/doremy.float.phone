@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentAccount } from "@/lib/server/account-auth";
-import { callVisionProvider, hasLocalVisionSettings, loadVisionSettings } from "@/lib/server/vision-credentials";
+import { callVisionProvider, loadVisionSettings } from "@/lib/server/vision-credentials";
 import { readLimitedJson } from "@/lib/server/read-limited-json";
 
 export const runtime = "nodejs";
