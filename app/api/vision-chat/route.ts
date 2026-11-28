@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
         const { publicSettings, apiKey } = await loadVisionSettings(account.id);
         if (!publicSettings.configured || !apiKey) {
-            return NextResponse.json({ error: "尚未配置全局视觉模型，请先前往系统设置配置。" }, { status: 409 });
+            return NextResponse.json({ error: "尚未配置视觉模型，请检查 Termux 环境变量或系统设置。" }, { status: 409 });
         }
 
         const content: Array<Record<string, unknown>> = [
